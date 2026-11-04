@@ -14,9 +14,10 @@ impl Clock for SystemClock {
 
 struct UuidIds;
 impl Ids for UuidIds {
-    /// UUID v7: sortable by creation time.
+    /// Random UUIDs. v7 was tried first, but its leading digits are the timestamp, so every id made
+    /// within weeks shares the same visible prefix, which breaks short ids in a terminal.
     fn new_id(&self) -> String {
-        uuid::Uuid::now_v7().to_string()
+        uuid::Uuid::new_v4().to_string()
     }
 }
 

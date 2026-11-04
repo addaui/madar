@@ -119,12 +119,14 @@ async fn pulse(
     Query(q): Query<HashMap<String, String>>,
 ) -> Result<axum::response::sse::Sse<impl Stream<Item = Result<Sse, Infallible>>>, ApiError> {
     let who = app.core.authenticate(bearer(&headers, q.get("token")).as_deref())?;
-    // An explicit ?after wins, then Last-Event-ID (set by EventSource on reconnect), else live only.
-    let after: u64 = q
-        .get("after")
-        .and_then(|a| a.parse().ok())
-        .or_else(|| header_str(&headers, "last-event-id").and_then(|a| a.parse().ok()))
-        .unwrap_or_else(|| app.core.latest_seq());
+    // EventSource resends the last id it saw as Last-Event-ID when it reconnects, but keeps the
+    // original URL, so the header can be newer than ?after. Take whichever is further along.
+    let from_query: Option<u64> = q.get("after").and_then(|a| a.parse().ok());
+    let from_header: Option<u64> = header_str(&headers, "last-event-id").and_then(|a| a.parse().ok());
+    let after: u64 = match (from_query, from_header) {
+        (None, None) => app.core.latest_seq(), // live only
+        (a, b) => a.unwrap_or(0).max(b.unwrap_or(0)),
+    };
     let core = app.core.clone();
     let mut rx = core.subscribe(); // before the replay, so nothing falls in the gap
     let stream = async_stream::stream! {

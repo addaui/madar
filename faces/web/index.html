@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Madar</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar" id="bar" hidden>
+    <div class="brand">Madar</div>
+    <label class="sr" for="project-select">Project</label>
+    <select id="project-select"></select>
+    <button id="new-project" type="button">New project</button>
+    <label class="sr" for="search">Search tasks</label>
+    <input id="search" type="search" placeholder="Search tasks" autocomplete="off">
+    <span class="spacer"></span>
+    <span id="slot-toolbar" class="slot"></span>
+    <label class="sr" for="theme-select">Theme</label>
+    <select id="theme-select"></select>
+    <span id="user" class="user"></span>
+    <button id="signout" type="button" hidden>Sign out</button>
+    <span id="live" class="live" role="status" aria-live="polite" title="Realtime connection"></span>
+  </header>
+
+  <main id="main" aria-live="off"></main>
+
+  <aside id="drawer" class="drawer" hidden aria-label="Task details"></aside>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

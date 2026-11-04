@@ -1,0 +1,15 @@
+{
+  "name": "server",
+  "enabled": ["std", "adapter-sqlite", "auth-token", "policy-roles",
+              "tasks", "audit", "quota", "prefs", "export", "theme-paper", "theme-ink"],
+  "bindings": {},
+  "settings": {
+    "adapter-sqlite": {"path": "data/server.db"},
+    "auth-token": {"tokens": {
+      "demo-owner":  {"subject": "demo",  "display": "Demo",  "roles": ["owner"]},
+      "demo-viewer": {"subject": "demo",  "display": "Demo (read only)", "roles": ["viewer"]},
+      "other-user":  {"subject": "other", "display": "Other", "roles": ["member"]}
+    }},
+    "quota": {"max_tasks": 5000}
+  }
+}

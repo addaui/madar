@@ -755,6 +755,13 @@ dependencies = [
 [[package]]
 name = "nuah-cli"
 version = "0.0.1"
+dependencies = [
+ "clap",
+ "nuah-client",
+ "nuah-kernel",
+ "nuah-madar",
+ "serde_json",
+]
 
 [[package]]
 name = "nuah-client"
