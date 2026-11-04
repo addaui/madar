@@ -70,7 +70,10 @@ pub struct Core {
 
 struct PipelineOut {
     data: Value,
+    /// Events already written to the log (top-level calls).
     events: Vec<Event>,
+    /// Events handed back unwritten (nested calls); the outer call writes them.
+    pending: Vec<PendingEvent>,
     replayed: bool,
 }
 
@@ -144,6 +147,17 @@ impl Core {
             for i in &manifests[id].implements {
                 if !PORT_NAMES.contains(&i.port.as_str()) {
                     problems.push(format!("plugin `{id}` implements unknown port `{}`", i.port));
+                }
+            }
+            for dep in manifests[id].requires.plugins.iter() {
+                let (dep_id, want) = match dep.split_once('@') { Some((a, b)) => (a, Some(b)), None => (dep.as_str(), None) };
+                match manifests.get(dep_id).filter(|_| active.iter().any(|a| a == dep_id)) {
+                    None => problems.push(format!("plugin `{id}` requires plugin `{dep_id}`, which is not enabled")),
+                    Some(m) => {
+                        if want.is_some_and(|w| !(m.version == w || m.version.starts_with(&format!("{w}.")))) {
+                            problems.push(format!("plugin `{id}` requires `{dep}`, but `{dep_id}` is version {}", m.version));
+                        }
+                    }
                 }
             }
             for cap in manifests[id].requires.capabilities.iter() {
@@ -307,6 +321,8 @@ impl Core {
             Arc::new(m.allowed_capabilities()),
             self.inner.ports.clone(),
             self.inner.settings.get(plugin).cloned().unwrap_or(Value::Null),
+            &m.data,
+            self.clone(),
         )
     }
 
@@ -344,25 +360,25 @@ impl Core {
             // either all of it is stored, or none of it.
             let mut out: Option<Result<PipelineOut>> = None;
             inner.ports.db.transaction(&mut || {
-                let r = self.pipeline(&ctx, &spec, &handler, &owner, &req.input, idem_id.as_deref());
+                let r = self.pipeline(&ctx, &spec, &handler, &owner, &req.input, idem_id.as_deref(), true);
                 let verdict = r.as_ref().map(|_| ()).map_err(|e| e.clone());
                 out = Some(r);
                 verdict
             })?;
             out.expect("transaction ran")?
         } else {
-            self.pipeline(&ctx, &spec, &handler, &owner, &req.input, None)?
+            self.pipeline(&ctx, &spec, &handler, &owner, &req.input, None, true)?
         };
         self.after_commit(out.events, ctx.now_ms, 0);
         Ok(CallResponse { data: out.data, replayed: out.replayed })
     }
 
-    fn pipeline(&self, ctx: &Ctx, spec: &OpSpec, handler: &OpHandler, owner: &str, input: &Value, idem: Option<&str>) -> Result<PipelineOut> {
+    fn pipeline(&self, ctx: &Ctx, spec: &OpSpec, handler: &OpHandler, owner: &str, input: &Value, idem: Option<&str>, append: bool) -> Result<PipelineOut> {
         let inner = &self.inner;
         if let Some(id) = idem {
             if let Some(rec) = inner.ports.db.get("_idem", id)? {
                 return if rec["input"] == *input {
-                    Ok(PipelineOut { data: rec["result"].clone(), events: vec![], replayed: true })
+                    Ok(PipelineOut { data: rec["result"].clone(), events: vec![], pending: vec![], replayed: true })
                 } else {
                     Err(LinkError::new("idempotency_conflict", "this idempotency key was already used with different input"))
                 };
@@ -403,16 +419,56 @@ impl Core {
         }
 
         let mut events = vec![];
+        let mut pending = vec![];
         for s in &used {
             for p in s.take_pending() {
-                events.push(inner.events.append(&p.kind, &p.plugin, &p.audience, p.data, ctx.now_ms)?);
+                if append {
+                    events.push(inner.events.append(&p.kind, &p.plugin, &p.audience, p.data, ctx.now_ms)?);
+                } else {
+                    pending.push(p);
+                }
             }
         }
         if let Some(id) = idem {
             let rec = json!({ "input": original, "result": out, "ts": ctx.now_ms });
             inner.ports.db.put("_idem", id, &rec)?;
         }
-        Ok(PipelineOut { data: out, events, replayed: false })
+        Ok(PipelineOut { data: out, events, pending, replayed: false })
+    }
+
+    /// A plugin calling another plugin's op. Same caller, same policy, same contract checks;
+    /// events it emits are handed back so the outermost call writes them in its own transaction.
+    pub(crate) fn call_nested(&self, parent: &Ctx, op: &str, input: Value) -> Result<(Value, Vec<PendingEvent>)> {
+        if parent.depth >= 5 {
+            return Err(LinkError::internal("plugin calls are nested too deeply"));
+        }
+        let (spec, handler, owner) = {
+            let st = self.inner.state.read().unwrap();
+            match st.ops.get(op) {
+                Some(e) => (e.spec.clone(), e.handler.clone(), e.owner.clone()),
+                None => return Err(LinkError::new("unknown_op", format!("no operation `{op}`"))),
+            }
+        };
+        let caller = &parent.plugin;
+        let allowed = self.inner.manifests.get(caller).map(|m| m.requires.plugins.iter().any(|r| r.split('@').next() == Some(owner.as_str()))).unwrap_or(false);
+        if !allowed {
+            return Err(LinkError::capability_denied(caller, &format!("calling `{op}` (plugin `{owner}` is not in requires.plugins)")));
+        }
+        let ident = parent.identity();
+        if !self.inner.ports.policy.check(&ident, &spec.permission) {
+            return Err(LinkError::permission_denied(&spec.permission));
+        }
+        schema::validate(&spec.input, &input)?;
+        let ctx = parent.nested();
+        let mut out: Option<Result<PipelineOut>> = None;
+        self.inner.ports.db.transaction(&mut || {
+            let r = self.pipeline(&ctx, &spec, &handler, &owner, &input, None, false);
+            let verdict = r.as_ref().map(|_| ()).map_err(|e| e.clone());
+            out = Some(r);
+            verdict
+        })?;
+        let o = out.expect("nested call ran")?;
+        Ok((o.data, o.pending))
     }
 
     /// After a commit: wake readers of the log, then run listeners. Listeners are best-effort and
@@ -517,6 +573,17 @@ impl Core {
         if !st.active.iter().any(|a| a == id) {
             return Err(LinkError::not_found(&format!("active plugin `{id}`")));
         }
+        let dependents: Vec<&String> = st
+            .active
+            .iter()
+            .filter(|a| self.inner.manifests[*a].requires.plugins.iter().any(|r| r.split('@').next() == Some(id)))
+            .collect();
+        if !dependents.is_empty() {
+            return Err(LinkError::conflict(format!(
+                "`{id}` is required by {}; disable those first",
+                dependents.iter().map(|d| format!("`{d}`")).collect::<Vec<_>>().join(", ")
+            )));
+        }
         st.ops.retain(|_, e| e.owner != id);
         st.hooks.retain(|h| h.owner != id);
         st.listeners.retain(|l| l.owner != id);
@@ -570,7 +637,7 @@ impl Core {
                 s["plugin"] = json!(id);
                 s
             }));
-            plugins.push(json!({"id": id, "version": m.version, "kind": m.kind, "runtime": m.runtime, "quality": m.quality}));
+            plugins.push(json!({"id": id, "version": m.version, "kind": m.kind, "runtime": m.runtime, "quality": m.quality, "data": m.data, "requires": m.requires.plugins}));
         }
         let ports: HashMap<&String, &String> = inner.bound.iter().collect();
         json!({

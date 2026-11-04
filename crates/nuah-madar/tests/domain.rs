@@ -592,3 +592,146 @@ fn stale_edits_are_refused_instead_of_overwriting() {
     // without expected_version the last write wins, as before
     assert_eq!(ok(&c, "tasks.update", json!({"id": t["id"], "title": "blind"}))["version"], 3);
 }
+
+// ---------- round 2: ownership, dependencies, plugin-to-plugin calls ----------
+
+struct Meddler(&'static str, &'static str);
+impl Plugin for Meddler {
+    fn manifest(&self) -> Manifest {
+        Manifest::parse(&json!({"id": self.0, "version":"0.0.1","requires":{"ports":["db"]},
+            "data": {"owns": ["meddler_own"], "reads": [self.1]}, "contributes":{"ops":["meddler.write", "meddler.read"]}}).to_string())
+    }
+    fn activate(&self, a: &mut Activation) -> Result<()> {
+        a.op(OpSpec::command("meddler.write", "tasks.write", "", json!({"type":"object"})), |_c, _i, svc| {
+            svc.db()?.put("meddler_own", "x", &json!({"id":"x"}))?;           // allowed: owned
+            svc.db()?.put("tasks", "evil", &json!({"id":"evil"}))?;           // not owned
+            Ok(json!(null))
+        });
+        a.op(OpSpec::query("meddler.read", "tasks.read", "", json!({"type":"object"})), |_c, _i, svc| {
+            Ok(json!(svc.db()?.query(&Query::new("projects"))?.len()))        // only allowed if declared in reads
+        });
+        Ok(())
+    }
+}
+
+#[test]
+fn a_plugin_may_write_only_what_it_owns_and_read_only_what_it_declared() {
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Meddler("meddler", "tasks")));
+    d.enabled.push("meddler".into());
+    let c = Core::start(d).unwrap();
+    assert_eq!(err(&c, "meddler.write", json!({})).code, "capability_denied");
+    assert!(c.ports().db.get("meddler_own", "x").unwrap().is_none(), "the denied call rolled back its allowed write too");
+    assert!(c.ports().db.get("tasks", "evil").unwrap().is_none());
+    assert_eq!(err(&c, "meddler.read", json!({})).code, "capability_denied", "`projects` was not declared in reads");
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Meddler("meddler", "projects")));
+    d.enabled.push("meddler".into());
+    let c = Core::start(d).unwrap();
+    project(&c);
+    assert_eq!(ok(&c, "meddler.read", json!({})), 1, "declared reads work");
+}
+
+#[test]
+fn plugin_dependencies_are_checked_at_start_and_at_disable() {
+    let problems = with(memory_for_tests(), |d| d.enabled.retain(|e| e != "tasks"));
+    assert!(problems.iter().any(|p| p.contains("`quota`") || p.contains("`export`")), "{problems:?}");
+    assert!(problems.iter().any(|p| p.contains("requires plugin `tasks`, which is not enabled")), "{problems:?}");
+
+    // version prefix: "tasks@0.1" matches 0.1.0, "tasks@9" does not
+    struct Needy(&'static str);
+    impl Plugin for Needy {
+        fn manifest(&self) -> Manifest {
+            Manifest::parse(&json!({"id":"needy","version":"0.0.1","requires":{"plugins":[self.0]},"contributes":{"ops":[]}}).to_string())
+        }
+        fn activate(&self, _a: &mut Activation) -> Result<()> { Ok(()) }
+    }
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Needy("tasks@0.1")));
+    d.enabled.push("needy".into());
+    assert!(Core::start(d).is_ok());
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Needy("tasks@9")));
+    d.enabled.push("needy".into());
+    let problems = Core::start(d).err().unwrap();
+    assert!(problems.iter().any(|p| p.contains("`tasks@9`") && p.contains("0.1.0")), "{problems:?}");
+
+    let c = core();
+    let e = c.disable("tasks").unwrap_err();
+    assert_eq!(e.code, "conflict");
+    assert!(e.message.contains("`export`"), "{}", e.message);
+    c.disable("export").unwrap();
+    c.disable("tasks").unwrap();
+    assert_eq!(err(&c, "tasks.list", json!({})).code, "unknown_op");
+}
+
+#[test]
+fn export_goes_through_the_task_plugins_contract_as_the_caller() {
+    let c = start(server_dist()).unwrap();
+    let p = call_as(&c, Some("t-alice"), "projects.create", json!({"name": "E"})).unwrap();
+    let t = call_as(&c, Some("t-alice"), "tasks.create", json!({"project_id": p["id"], "title": "exported"})).unwrap();
+    call_as(&c, Some("t-alice"), "comments.add", json!({"task_id": t["id"], "text": "note"})).unwrap();
+    call_as(&c, Some("t-bob"), "projects.create", json!({"name": "Bob's secret"})).unwrap();
+    let route = |token: &str| c.route("GET", "/x/export/madar.json", Some(token), Default::default(), vec![]);
+    let body: Value = serde_json::from_slice(&route("t-alice").unwrap().body).unwrap();
+    assert_eq!(body["projects"].as_array().unwrap().len(), 1, "only the caller's data, because the call runs as the caller");
+    assert_eq!(body["tasks"][0]["title"], "exported");
+    assert_eq!(body["comments"][0]["text"], "note");
+    assert_eq!(route("t-view").unwrap().status, 200, "a viewer may export: tasks.read is enough");
+    assert_eq!(route("nobody").err().unwrap().code, "unauthenticated");
+}
+
+#[test]
+fn a_plugin_cannot_call_a_plugin_it_did_not_declare() {
+    struct Caller;
+    impl Plugin for Caller {
+        fn manifest(&self) -> Manifest {
+            // requires `prefs` only, then tries to call `tasks`
+            Manifest::parse(&json!({"id":"caller","version":"0.0.1","requires":{"plugins":["prefs"]},"contributes":{"ops":["caller.go"]}}).to_string())
+        }
+        fn activate(&self, a: &mut Activation) -> Result<()> {
+            a.op(OpSpec::command("caller.go", "tasks.write", "", json!({"type":"object"})), |ctx, _i, svc| svc.call(ctx, "projects.create", json!({"name": "sneaky"})));
+            Ok(())
+        }
+    }
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Caller));
+    d.enabled.push("caller".into());
+    let c = Core::start(d).unwrap();
+    assert_eq!(err(&c, "caller.go", json!({})).code, "capability_denied");
+}
+
+#[test]
+fn nested_calls_keep_the_callers_permissions_and_roll_back_together() {
+    struct Chain;
+    impl Plugin for Chain {
+        fn manifest(&self) -> Manifest {
+            Manifest::parse(&json!({"id":"chain","version":"0.0.1","requires":{"plugins":["tasks"],"capabilities":["events"]},"contributes":{"ops":["chain.make"]}}).to_string())
+        }
+        fn activate(&self, a: &mut Activation) -> Result<()> {
+            a.op(OpSpec::command("chain.make", "prefs.write", "creates a project, then a task in it, then fails on demand", json!({"type":"object"})), |ctx, i, svc| {
+                let p = svc.call(ctx, "projects.create", json!({"name": "via chain"}))?;
+                svc.call(ctx, "tasks.create", json!({"project_id": p["id"], "title": "inner"}))?;
+                if i.get("fail").is_some() { return Err(LinkError::internal("late failure")); }
+                Ok(p)
+            });
+            Ok(())
+        }
+    }
+    let mut d = server_dist();
+    d.catalog.push(std::sync::Arc::new(Chain));
+    d.enabled.push("chain".into());
+    let c = Core::start(d).unwrap();
+    // a viewer has prefs.write (so may call chain.make) but not tasks.write: the inner call is refused
+    let e = call_as(&c, Some("t-view"), "chain.make", json!({})).unwrap_err();
+    assert_eq!((e.code.as_str(), e.details.unwrap()["missing"].clone()), ("permission_denied", json!("tasks.write")));
+    // the owner succeeds; events from the nested calls are published
+    let before = c.latest_seq_for("alice");
+    call_as(&c, Some("t-alice"), "chain.make", json!({})).unwrap();
+    assert_eq!(c.events_since("alice", before, 10).unwrap().iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(), ["project.created", "task.created"]);
+    // a failure after the nested calls undoes them, and their events
+    let (projects, seq) = (call_as(&c, Some("t-alice"), "projects.list", json!({})).unwrap().as_array().unwrap().len(), c.latest_seq());
+    assert!(call_as(&c, Some("t-alice"), "chain.make", json!({"fail": true})).is_err());
+    assert_eq!(call_as(&c, Some("t-alice"), "projects.list", json!({})).unwrap().as_array().unwrap().len(), projects);
+    assert_eq!(c.latest_seq(), seq);
+}

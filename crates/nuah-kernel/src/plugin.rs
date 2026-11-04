@@ -54,6 +54,8 @@ pub struct Ctx {
     pub now_ms: i64,
     /// Plugin that owns the handler or hook currently running (for attribution).
     pub plugin: String,
+    /// How many plugin-to-plugin calls deep this is (0 for a call from a face).
+    pub depth: u8,
     scratch: Arc<Mutex<HashMap<String, Value>>>,
 }
 
@@ -67,8 +69,18 @@ impl Ctx {
             face,
             now_ms,
             plugin: String::new(),
+            depth: 0,
             scratch: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+    pub(crate) fn nested(&self) -> Ctx {
+        let mut c = self.clone();
+        c.depth += 1;
+        c.scratch = Arc::new(Mutex::new(HashMap::new()));
+        c
+    }
+    pub(crate) fn identity(&self) -> Identity {
+        Identity { subject: self.subject.clone(), display: self.display.clone(), roles: self.roles.clone() }
     }
     pub(crate) fn for_plugin(&self, plugin: &str) -> Ctx {
         let mut c = self.clone();
@@ -89,12 +101,21 @@ impl Ctx {
 pub(crate) struct GuardedDb {
     inner: Arc<dyn Db>,
     plugin: String,
+    owns: HashSet<String>,
+    reads: HashSet<String>,
 }
 
 impl GuardedDb {
-    fn check(&self, collection: &str) -> Result<()> {
-        if collection.starts_with('_') {
-            Err(LinkError::capability_denied(&self.plugin, &format!("collection `{collection}`")))
+    fn read_ok(&self, collection: &str) -> Result<()> {
+        if collection.starts_with('_') || !(self.owns.contains(collection) || self.reads.contains(collection) || self.reads.contains("*")) {
+            Err(LinkError::capability_denied(&self.plugin, &format!("reading collection `{collection}`")))
+        } else {
+            Ok(())
+        }
+    }
+    fn write_ok(&self, collection: &str) -> Result<()> {
+        if collection.starts_with('_') || !self.owns.contains(collection) {
+            Err(LinkError::capability_denied(&self.plugin, &format!("writing collection `{collection}`")))
         } else {
             Ok(())
         }
@@ -109,39 +130,40 @@ impl Db for GuardedDb {
         self.inner.capabilities()
     }
     fn get(&self, c: &str, id: &str) -> Result<Option<Value>> {
-        self.check(c)?;
+        self.read_ok(c)?;
         self.inner.get(c, id)
     }
     fn put_new(&self, c: &str, id: &str, doc: &Value) -> Result<bool> {
-        self.check(c)?;
+        self.write_ok(c)?;
         self.inner.put_new(c, id, doc)
     }
     fn transaction(&self, f: &mut dyn FnMut() -> Result<()>) -> Result<()> {
         self.inner.transaction(f)
     }
     fn put(&self, c: &str, id: &str, doc: &Value) -> Result<()> {
-        self.check(c)?;
+        self.write_ok(c)?;
         self.inner.put(c, id, doc)
     }
     fn delete(&self, c: &str, id: &str) -> Result<bool> {
-        self.check(c)?;
+        self.write_ok(c)?;
         self.inner.delete(c, id)
     }
     fn query(&self, q: &Query) -> Result<Vec<Value>> {
-        self.check(&q.collection)?;
+        self.read_ok(&q.collection)?;
         self.inner.query(q)
     }
     fn batch(&self, ops: &[WriteOp]) -> Result<()> {
         for op in ops {
             match op {
-                WriteOp::Put { collection, .. } | WriteOp::Delete { collection, .. } => self.check(collection)?,
+                WriteOp::Put { collection, .. } | WriteOp::Delete { collection, .. } => self.write_ok(collection)?,
             }
         }
         self.inner.batch(ops)
     }
 }
 
-pub(crate) struct PendingEvent {
+#[derive(Clone)]
+pub struct PendingEvent {
     pub kind: String,
     pub plugin: String,
     pub audience: String,
@@ -156,12 +178,35 @@ pub struct Services {
     db: Arc<dyn Db>,
     settings: Value,
     pending: Mutex<Vec<PendingEvent>>,
+    core: crate::core::Core,
 }
 
 impl Services {
-    pub(crate) fn new(plugin: &str, allowed: Arc<HashSet<String>>, ports: Arc<Ports>, settings: Value) -> Self {
-        let db: Arc<dyn Db> = Arc::new(GuardedDb { inner: ports.db.clone(), plugin: plugin.to_string() });
-        Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]) }
+    pub(crate) fn new(
+        plugin: &str,
+        allowed: Arc<HashSet<String>>,
+        ports: Arc<Ports>,
+        settings: Value,
+        data: &crate::manifest::Data,
+        core: crate::core::Core,
+    ) -> Self {
+        let db: Arc<dyn Db> = Arc::new(GuardedDb {
+            inner: ports.db.clone(),
+            plugin: plugin.to_string(),
+            owns: data.owns.iter().cloned().collect(),
+            reads: data.reads.iter().cloned().collect(),
+        });
+        Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]), core }
+    }
+    /// Call another plugin's operation through the contract, as the current caller: the same
+    /// permission check, input validation and hooks apply, and it joins the current transaction.
+    /// This is how a plugin uses another plugin's data without reaching into its collections.
+    /// The calling plugin must list the other plugin in `requires.plugins`.
+    pub fn call(&self, ctx: &Ctx, op: &str, input: Value) -> Result<Value> {
+        self.need("call")?;
+        let (data, events) = self.core.call_nested(ctx, op, input)?;
+        self.pending.lock().unwrap().extend(events);
+        Ok(data)
     }
     fn need(&self, cap: &str) -> Result<()> {
         if self.allowed.contains(cap) {

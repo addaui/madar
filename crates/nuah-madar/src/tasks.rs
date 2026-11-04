@@ -24,6 +24,7 @@ impl Plugin for TasksPlugin {
             &json!({
                 "id": "tasks", "version": "0.1.0", "kind": "domain", "quality": "silver",
                 "requires": {"ports": ["db", "ids"], "capabilities": ["events"]},
+                "data": {"owns": ["projects", "tasks", "comments", "followups"]},
                 "contributes": {"ops": OPS}
             })
             .to_string(),

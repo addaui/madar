@@ -20,6 +20,10 @@ pub struct Manifest {
     pub requires: Requires,
     #[serde(default)]
     pub contributes: Contributes,
+    /// Which collections the plugin owns (may write) and which it may read without owning.
+    /// "*" in `reads` means everything (visible in describe, so it is easy to audit).
+    #[serde(default)]
+    pub data: Data,
     /// Empty means every profile.
     #[serde(default)]
     pub profiles: Vec<String>,
@@ -37,7 +41,18 @@ pub struct Implements {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Data {
+    #[serde(default)]
+    pub owns: Vec<String>,
+    #[serde(default)]
+    pub reads: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Requires {
+    /// Other plugins that must be active: "tasks" or "tasks@0.1" (version prefix).
+    #[serde(default)]
+    pub plugins: Vec<String>,
     /// Ports the plugin may call through `Services` ("db", "clock", "ids"). Anything else is denied.
     #[serde(default)]
     pub ports: Vec<String>,
@@ -68,6 +83,11 @@ impl Manifest {
     }
 
     pub fn allowed_capabilities(&self) -> std::collections::HashSet<String> {
-        self.requires.ports.iter().chain(self.requires.capabilities.iter()).cloned().collect()
+        let mut set: std::collections::HashSet<String> =
+            self.requires.ports.iter().chain(self.requires.capabilities.iter()).cloned().collect();
+        if !self.requires.plugins.is_empty() {
+            set.insert("call".to_string()); // may call the plugins it requires
+        }
+        set
     }
 }

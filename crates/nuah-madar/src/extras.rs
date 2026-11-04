@@ -16,7 +16,7 @@ impl Plugin for AuditPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
             &json!({"id":"audit","version":"0.1.0","kind":"wrap","quality":"silver",
-                "requires":{"ports":["db","ids"]},"contributes":{"ops":["audit.list"]}})
+                "requires":{"ports":["db","ids"]},"data":{"owns":["audit"],"reads":["*"]},"contributes":{"ops":["audit.list"]}})
             .to_string(),
         )
     }
@@ -74,7 +74,7 @@ impl Plugin for QuotaPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
             &json!({"id":"quota","version":"0.1.0","kind":"wrap","quality":"bronze",
-                "requires":{"ports":["db"]},"contributes":{"ops":[]}})
+                "requires":{"ports":["db"],"plugins":["tasks"]},"data":{"reads":["tasks"]},"contributes":{"ops":[]}})
             .to_string(),
         )
     }
@@ -101,7 +101,7 @@ impl Plugin for PrefsPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
             &json!({"id":"prefs","version":"0.1.0","kind":"domain","quality":"bronze",
-                "requires":{"ports":["db"],"capabilities":["events"]},
+                "requires":{"ports":["db"],"capabilities":["events"]},"data":{"owns":["prefs"]},
                 "contributes":{"ops":["prefs.get","prefs.set"]}})
             .to_string(),
         )
@@ -147,7 +147,7 @@ impl Plugin for ExportPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
             &json!({"id":"export","version":"0.1.0","kind":"domain","quality":"bronze",
-                "requires":{"ports":["db"]},
+                "requires":{"plugins":["tasks"]},
                 "contributes":{"ops":[],"routes":["GET /x/export/madar.json"],
                     "slots":[{"slot":"toolbar","id":"export","label":"Export JSON","faces":["web"],
                         "action":{"type":"download","href":"/x/export/madar.json","filename":"madar-export.json"}}]}})
@@ -158,11 +158,22 @@ impl Plugin for ExportPlugin {
         a.route(
             RouteSpec { method: "GET".into(), path: "/x/export/madar.json".into(), permission: "tasks.read".into() },
             |ctx, _req, svc| {
-                let db = svc.db()?;
+                // Through the tasks plugin's contract, as the caller: no reading of its tables.
                 let mut out = serde_json::Map::new();
-                for col in ["projects", "tasks", "comments", "followups"] {
-                    out.insert(col.into(), json!(db.query(&Query::new(col).eq("owner", ctx.subject.as_str()).order("created_at", false))?));
+                let projects = svc.call(ctx, "projects.list", json!({}))?;
+                let (mut tasks, mut comments, mut followups) = (vec![], vec![], vec![]);
+                for p in projects.as_array().cloned().unwrap_or_default() {
+                    let list = svc.call(ctx, "tasks.list", json!({"project_id": p["id"], "limit": 500}))?;
+                    for t in list.as_array().cloned().unwrap_or_default() {
+                        comments.extend(svc.call(ctx, "comments.list", json!({"task_id": t["id"]}))?.as_array().cloned().unwrap_or_default());
+                        followups.extend(svc.call(ctx, "followups.list", json!({"task_id": t["id"]}))?.as_array().cloned().unwrap_or_default());
+                        tasks.push(t);
+                    }
                 }
+                out.insert("projects".into(), projects);
+                out.insert("tasks".into(), json!(tasks));
+                out.insert("comments".into(), json!(comments));
+                out.insert("followups".into(), json!(followups));
                 Ok(RouteResponse {
                     status: 200,
                     content_type: "application/json".into(),
