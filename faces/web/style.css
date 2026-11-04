@@ -27,7 +27,7 @@ textarea { width: 100%; resize: vertical; }
 .spacer { flex: 1; }
 .user { color: var(--muted); font-size: 13px; }
 .slot { display: inline-flex; gap: 6px; }
-.live { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.live { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); overflow: hidden; font-size: 0; }
 .live[data-state="live"] { background: #2f9e60; }
 .live[data-state="down"] { background: var(--danger); }
 

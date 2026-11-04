@@ -158,7 +158,7 @@ fn s(v: &Value, k: &str) -> String {
 
 /// Accept a full id, an unambiguous id prefix (4+ characters), an exact name, or a unique
 /// piece of the name. `name_field` is the human label of the entity ("name" or "title").
-fn pick(items: &Value, what: &str, wanted: &str, name_field: Option<&str>) -> R<Value> {
+fn pick(items: &Value, what: &str, wanted: &str, name_field: Option<&str>, fuzzy: bool) -> R<Value> {
     let list = items.as_array().cloned().unwrap_or_default();
     let lower = wanted.to_lowercase();
     let label = |i: &Value| name_field.map(|f| s(i, f).to_lowercase()).unwrap_or_default();
@@ -182,7 +182,7 @@ fn pick(items: &Value, what: &str, wanted: &str, name_field: Option<&str>) -> R<
             return r;
         }
     }
-    if name_field.is_some() {
+    if name_field.is_some() && fuzzy {
         if let Some(r) = unique(list.iter().filter(|i| label(i).contains(&lower)).collect()) {
             return r;
         }
@@ -191,11 +191,25 @@ fn pick(items: &Value, what: &str, wanted: &str, name_field: Option<&str>) -> R<
 }
 
 fn project_of(link: &dyn Link, wanted: &str) -> R<Value> {
-    pick(&link.call("projects.list", json!({}), None)?, "project", wanted, Some("name"))
+    pick(&link.call("projects.list", json!({}), None)?, "project", wanted, Some("name"), true)
 }
 
 fn task_of(link: &dyn Link, wanted: &str) -> R<Value> {
-    pick(&link.call("tasks.list", json!({"limit": 500}), None)?, "task", wanted, Some("title"))
+    task_lookup(link, wanted, true)
+}
+
+/// For destructive commands: an id (or unique prefix) or an exact title, never a piece of a title.
+fn task_of_strict(link: &dyn Link, wanted: &str) -> R<Value> {
+    task_lookup(link, wanted, false)
+}
+
+fn task_lookup(link: &dyn Link, wanted: &str, fuzzy: bool) -> R<Value> {
+    if wanted.len() == 36 {
+        if let Ok(t) = link.call("tasks.get", json!({"id": wanted}), None) {
+            return Ok(t);
+        }
+    }
+    pick(&link.call("tasks.list", json!({"limit": 500}), None)?, "task", wanted, Some("title"), fuzzy)
 }
 
 fn short(id: &str) -> &str {
@@ -283,7 +297,7 @@ fn run(link: &dyn Link, cmd: Cmd) -> R<()> {
             println!("{}", task_line(&link.call("tasks.update", input, Some(&key()))?));
         }
         Cmd::Rm { task } => {
-            let t = task_of(link, &task)?;
+            let t = task_of_strict(link, &task)?;
             link.call("tasks.delete", json!({"id": t["id"]}), Some(&key()))?;
             println!("deleted {}", short(&s(&t, "id")));
         }
@@ -292,7 +306,7 @@ fn run(link: &dyn Link, cmd: Cmd) -> R<()> {
             let mut input = json!({"task_id": t["id"], "text": text});
             if let Some(r) = reply_to {
                 let all = link.call("comments.list", json!({"task_id": t["id"]}), None)?;
-                input["parent_id"] = pick(&all, "comment", &r, None)?["id"].clone();
+                input["parent_id"] = pick(&all, "comment", &r, None, false)?["id"].clone();
             }
             let c = link.call("comments.add", input, Some(&key()))?;
             println!("commented ({})", short(&s(&c, "id")));

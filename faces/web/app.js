@@ -9,7 +9,7 @@ const KINDS = ['task.created', 'task.updated', 'task.deleted', 'project.created'
   'project.deleted', 'comment.added', 'comment.deleted', 'followup.added', 'prefs.changed'];
 
 const state = {
-  desc: null, token: localStorage.getItem(TOKEN_KEY) || '', projects: [], projectId: null,
+  desc: null, token: sessionStorage.getItem(TOKEN_KEY) || '', projects: [], projectId: null,
   tasks: [], q: '', openId: null, lastSeq: 0, es: null, themeId: null,
 };
 
@@ -57,15 +57,28 @@ async function describe() {
 function opInfo(name) { return state.desc.ops.find((o) => o.name === name); }
 const can = (op) => opInfo(op)?.allowed !== false;
 
-// Commands carry an idempotency key so a retry after a dropped connection cannot run twice.
+// crypto.randomUUID exists only in secure contexts (https or localhost); getRandomValues works everywhere.
+function newKey() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+// Commands carry an idempotency key. A network failure is retried with the SAME key, so if the
+// first attempt actually reached the core the retry returns its result instead of running twice.
 async function call(op, input = {}) {
   const headers = { 'Content-Type': 'application/json', 'X-Nuah-Face': 'web', ...authHeaders() };
-  if (opInfo(op)?.kind === 'command') headers['Idempotency-Key'] = crypto.randomUUID();
+  const isCommand = opInfo(op)?.kind === 'command';
+  if (isCommand) headers['Idempotency-Key'] = newKey();
   let r;
-  try {
-    r = await fetch(`/link/call/${op}`, { method: 'POST', headers, body: JSON.stringify(input) });
-  } catch {
-    throw new ApiError({ code: 'transport', message: 'Cannot reach the core. Check your connection.' });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      r = await fetch(`/link/call/${op}`, { method: 'POST', headers, body: JSON.stringify(input) });
+      break;
+    } catch {
+      if (attempt >= (isCommand ? 2 : 0)) throw new ApiError({ code: 'transport', message: 'Cannot reach the core. Check your connection.' });
+      await new Promise((ok) => setTimeout(ok, 400 * (attempt + 1)));
+    }
   }
   const body = await r.json().catch(() => ({}));
   if (!r.ok || !body.ok) throw new ApiError(body.error || { message: `HTTP ${r.status}` });
@@ -97,16 +110,16 @@ function showSignin(msg) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     state.token = new FormData(form).get('token').trim();
-    localStorage.setItem(TOKEN_KEY, state.token);
+    sessionStorage.setItem(TOKEN_KEY, state.token);
     state.desc = await describe();
-    if (state.desc.identity) boot(); else { state.token = ''; localStorage.removeItem(TOKEN_KEY); showSignin('That token was not accepted.'); }
+    if (state.desc.identity) boot(); else { state.token = ''; sessionStorage.removeItem(TOKEN_KEY); showSignin('That token was not accepted.'); }
   });
   main.append(form);
   form.querySelector('input')?.focus();
 }
 
 function signOut() {
-  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
   state.token = '';
   state.es?.close();
   location.reload();
@@ -147,6 +160,8 @@ function renderSlot(name, host) {
   host.replaceChildren();
   for (const item of (state.desc.slots || []).filter((s) => s.slot === name)) {
     const a = item.action || {};
+    // A plugin's descriptor must never send the token elsewhere or run a javascript: link.
+    if (a.href && !(a.href.startsWith('/') && !a.href.startsWith('//'))) continue;
     host.append(h('button', { type: 'button', title: `from plugin ${item.plugin}`, onclick: () => act(async () => {
       if (a.type === 'download') {
         const r = await fetch(a.href, { headers: authHeaders() });
@@ -173,10 +188,14 @@ async function loadProjects() {
   sel.hidden = state.projects.length === 0;
 }
 
+let loadSeq = 0;
 async function loadTasks() {
-  state.tasks = state.projectId
+  // Answers can arrive out of order (switch project A then B quickly); only the newest request counts.
+  const mine = ++loadSeq;
+  const tasks = state.projectId
     ? await call('tasks.list', { project_id: state.projectId, limit: 500, ...(state.q ? { q: state.q } : {}) })
     : [];
+  if (mine === loadSeq) state.tasks = tasks;
 }
 
 let refreshTimer;
@@ -189,7 +208,11 @@ function upsertTask(t) {
   if (t.project_id !== state.projectId) return false;
   if (state.q && !t.title.toLowerCase().includes(state.q.toLowerCase())) return removeTask(t.id);
   const i = state.tasks.findIndex((x) => x.id === t.id);
-  if (i >= 0) { if (state.tasks[i].updated_at === t.updated_at && state.tasks[i].status === t.status) return false; state.tasks[i] = t; }
+  if (i >= 0) {
+    const have = state.tasks[i];
+    if ((have.version || 0) >= (t.version || 0) && have.updated_at >= t.updated_at) return false; // not newer than what we hold
+    state.tasks[i] = t;
+  }
   else state.tasks.push(t);
   return true;
 }
@@ -263,16 +286,16 @@ function card(t, isDone) {
 async function moveTask(id, status) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t || t.status === status) return;
-  const before = { ...t };
+  const was = t.status;
   t.status = status; renderBoard(); // optimistic
   try {
-    const next = await call('tasks.update', { id, status });
-    const i = state.tasks.findIndex((x) => x.id === id);
-    if (i >= 0) state.tasks[i] = next;
+    const next = await call('tasks.update', { id, status, expected_version: t.version });
+    upsertTask(next);
   } catch (e) {
-    const i = state.tasks.findIndex((x) => x.id === id);
-    if (i >= 0) state.tasks[i] = before;
+    const cur = state.tasks.find((x) => x.id === id);
+    if (cur && cur.status === status) cur.status = was; // undo only our own guess, never newer data from Pulse
     toast(e.message, true);
+    if (e.code === 'conflict') act(async () => { await loadTasks(); renderBoard(); });
   }
   renderBoard();
   if (state.openId === id) openDrawer(id);
@@ -280,7 +303,12 @@ async function moveTask(id, status) {
 
 // ---------- drawer ----------
 
-function closeDrawer() { state.openId = null; $('drawer').hidden = true; }
+function closeDrawer() {
+  state.openId = null;
+  $('drawer').hidden = true;
+  const o = state.opener; state.opener = null;
+  if (o && document.contains(o)) o.focus(); // give focus back to the card that opened it
+}
 
 async function openDrawer(id) {
   state.openId = id;
@@ -291,14 +319,18 @@ async function openDrawer(id) {
   const w = can('tasks.update');
   const patch = (field, value) => act(async () => {
     try {
-      const next = await call('tasks.update', { id, [field]: value });
-      const i = state.tasks.findIndex((x) => x.id === id);
-      if (i >= 0) state.tasks[i] = next;
+      const next = await call('tasks.update', { id, [field]: value, expected_version: t.version });
+      upsertTask(next);
       renderBoard();
       openDrawer(id);
-    } catch (e) { toast(e.message, true); openDrawer(id); }
+    } catch (e) {
+      toast(e.message, true);
+      if (e.code === 'conflict') { await loadTasks(); renderBoard(); }
+      openDrawer(id);
+    }
   });
-  const field = (label, control) => h('div', { class: 'row' }, h('label', {}, label), control);
+  let fieldN = 0;
+  const field = (label, control) => { const id = control.id || (control.id = `d-f${++fieldN}`); return h('div', { class: 'row' }, h('label', { for: id }, label), control); };
   const title = h('input', { id: 'd-title', value: t.title, maxlength: 200, disabled: !w, 'aria-label': 'Title' });
   title.addEventListener('change', () => patch('title', title.value));
   const status = h('select', { id: 'd-status', disabled: !w }, p.statuses.map((s) => h('option', { value: s, selected: s === t.status }, s)));
@@ -334,12 +366,17 @@ async function openDrawer(id) {
         if (!confirm('Delete this task with its comments and follow-ups?')) return;
         await call('tasks.delete', { id }); removeTask(id); closeDrawer(); renderBoard();
       }) }, 'Delete task')));
+  const wasHidden = d.hidden;
   d.hidden = false;
+  if (wasHidden) { state.opener = document.activeElement; $('d-title')?.focus(); }
   await renderNotes(id, notes);
 }
 
 async function renderNotes(id, host) {
   if (state.openId !== id) return;
+  // Keep half-typed comments and the focused box across a refresh caused by someone else's note.
+  const keep = new Map([...host.querySelectorAll('input,textarea')].map((el) => [el.getAttribute('aria-label'), el.value]));
+  const focused = document.activeElement?.getAttribute?.('aria-label');
   const [fus, cs] = await Promise.all([call('followups.list', { task_id: id }), call('comments.list', { task_id: id })]);
   if (state.openId !== id) return;
   const writable = can('comments.add');
@@ -382,19 +419,40 @@ async function renderNotes(id, host) {
         await call('comments.add', { task_id: id, text: cInput.value }); renderNotes(id, host);
       }) }, 'Comment'))),
     h('section', {}, history));
+  for (const el of host.querySelectorAll('input,textarea')) {
+    const v = keep.get(el.getAttribute('aria-label'));
+    if (v) el.value = v;
+    if (focused && el.getAttribute('aria-label') === focused) el.focus();
+  }
 }
 
 // ---------- Pulse ----------
 
-function setLive(s) { const el = $('live'); el.dataset.state = s; el.title = s === 'live' ? 'Live' : 'Reconnecting…'; }
+function setLive(s) { const el = $('live'); el.dataset.state = s; el.title = el.textContent = s === 'live' ? 'Live updates on' : 'Reconnecting to live updates'; }
 
+let pulseBackoff = 500;
 function connectPulse() {
   state.es?.close();
   const url = `/pulse?after=${state.lastSeq}` + (state.token ? `&token=${encodeURIComponent(state.token)}` : '');
   const es = new EventSource(url);
   state.es = es;
   es.onopen = () => setLive('live');
-  es.onerror = () => setLive('down'); // EventSource reconnects itself and resends Last-Event-ID
+  es.onerror = () => {
+    setLive('down');
+    // EventSource retries network errors itself and resends Last-Event-ID. After an HTTP error
+    // (expired token, proxy page) it gives up for good, so start over, checking we are still signed in.
+    if (es.readyState === EventSource.CLOSED) {
+      pulseBackoff = Math.min(pulseBackoff * 2, 30000);
+      setTimeout(async () => {
+        try {
+          const d = await describe();
+          if (!d.identity) return signOut();
+          connectPulse();
+        } catch { es.onerror(); }
+      }, pulseBackoff);
+    }
+  };
+  es.addEventListener('ready', () => { pulseBackoff = 500; });
   const handle = (e) => { try { onEvent(JSON.parse(e.data)); } catch { /* ignore malformed */ } };
   for (const k of KINDS) es.addEventListener(k, handle);
 }
@@ -405,7 +463,15 @@ function onEvent(ev) {
   switch (ev.kind) {
     case 'task.created': case 'task.updated':
       refreshProjectsSoon();
-      if (upsertTask(d.task)) { renderBoard(); if (state.openId === d.task.id) openDrawer(d.task.id); }
+      if (upsertTask(d.task)) {
+        renderBoard();
+        if (state.openId === d.task.id) {
+          // Do not rebuild the drawer under someone who is typing in it.
+          const typing = $('drawer').contains(document.activeElement) && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+          if (typing) toast('This task was changed elsewhere. Close and reopen it to see the new version.');
+          else openDrawer(d.task.id);
+        }
+      }
       break;
     case 'task.deleted':
       refreshProjectsSoon();
@@ -467,7 +533,7 @@ async function boot() {
     return;
   }
   if (!state.desc.identity) {
-    if (state.token) { localStorage.removeItem(TOKEN_KEY); state.token = ''; }
+    if (state.token) { sessionStorage.removeItem(TOKEN_KEY); state.token = ''; }
     return showSignin();
   }
   await act(boot);

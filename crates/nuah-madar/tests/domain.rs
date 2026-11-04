@@ -576,3 +576,19 @@ fn two_cores_on_one_database_file_never_share_an_event_number() {
     assert_eq!(b.events_since("local-user", 30, 100).unwrap().len(), 2, "each core sees the other's events");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn stale_edits_are_refused_instead_of_overwriting() {
+    let c = core();
+    let pid = project(&c);
+    let t = ok(&c, "tasks.create", json!({"project_id": pid, "title": "t"}));
+    assert_eq!(t["version"], 1);
+    let t2 = ok(&c, "tasks.update", json!({"id": t["id"], "title": "by A", "expected_version": 1}));
+    assert_eq!(t2["version"], 2);
+    let e = err(&c, "tasks.update", json!({"id": t["id"], "title": "by B, who saw version 1", "expected_version": 1}));
+    assert_eq!(e.code, "conflict");
+    assert_eq!(e.details.unwrap()["current_version"], 2);
+    assert_eq!(ok(&c, "tasks.get", json!({"id": t["id"]}))["title"], "by A");
+    // without expected_version the last write wins, as before
+    assert_eq!(ok(&c, "tasks.update", json!({"id": t["id"], "title": "blind"}))["version"], 3);
+}

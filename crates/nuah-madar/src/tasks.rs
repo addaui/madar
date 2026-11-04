@@ -73,7 +73,8 @@ impl Plugin for TasksPlugin {
                 "status":{"type":"string","minLength":1},
                 "priority":{"type":"integer","minimum":0,"maximum":10},
                 "due":{"type":["string","null"]},
-                "attributes":{"type":"object"}}})).entity("tasks"), tasks_update);
+                "attributes":{"type":"object"},
+                "expected_version":{"type":"integer","minimum":1}}})).entity("tasks"), tasks_update);
         a.op(OpSpec::command("tasks.delete", "tasks.write", "Delete a task with its comments and follow-ups.", id.clone()).entity("tasks"), tasks_delete);
 
         a.op(OpSpec::command("comments.add", "tasks.write", "Comment on a task, or reply to a comment (one level only).",
@@ -326,7 +327,7 @@ fn tasks_create(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
         "description": str_of(&input, "description").unwrap_or(""), "status": status,
         "priority": input.get("priority").and_then(|p| p.as_i64()).unwrap_or(0), "due": due,
         "attributes": attrs, "completed_at": if done { json!(ctx.now_ms) } else { Value::Null },
-        "created_at": ctx.now_ms, "updated_at": ctx.now_ms
+        "created_at": ctx.now_ms, "updated_at": ctx.now_ms, "version": 1
     });
     svc.db()?.put("tasks", task["id"].as_str().unwrap(), &task)?;
     let task = present_task(task);
@@ -357,6 +358,14 @@ fn tasks_update(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
     let mut t = load_owned(svc, ctx, "tasks", str_of(&input, "id").unwrap(), "task")?;
     let project = load_owned(svc, ctx, "projects", str_of(&t, "project_id").unwrap(), "project")?;
     let mut changes: Vec<&str> = vec![];
+    // Optimistic concurrency: a face that edited a stale copy is told, instead of silently overwriting.
+    if let Some(expected) = input.get("expected_version").and_then(|v| v.as_i64()) {
+        let current = t.get("version").and_then(|v| v.as_i64()).unwrap_or(1);
+        if expected != current {
+            return Err(LinkError::conflict("the task was changed by someone else; reload and try again")
+                .with_details(json!({"current_version": current})));
+        }
+    }
 
     if let Some(title) = str_of(&input, "title") {
         if title.trim().is_empty() {
@@ -410,6 +419,7 @@ fn tasks_update(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
     }
     if !changes.is_empty() {
         t["updated_at"] = json!(ctx.now_ms);
+        t["version"] = json!(t.get("version").and_then(|v| v.as_i64()).unwrap_or(1) + 1);
         svc.db()?.put("tasks", t["id"].as_str().unwrap(), &t)?;
     }
     let t = present_task(t);
