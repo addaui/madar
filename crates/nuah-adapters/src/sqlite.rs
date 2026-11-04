@@ -1,14 +1,25 @@
 //! SQLite db adapter. One table of JSON documents; fields are read with json_extract.
 //! Field paths and values are always bound as parameters, never spliced into SQL.
+//!
+//! Transactions use BEGIN IMMEDIATE on a single shared connection that sits behind a re-entrant
+//! lock, so they are serialized in this process and, through SQLite's file lock, across processes.
 
 use crate::memory::require_object;
 use nuah_kernel::*;
+use parking_lot::ReentrantMutex;
 use rusqlite::{params_from_iter, types::Value as Sql, Connection, OptionalExtension};
 use serde_json::Value;
-use std::sync::{Arc, Mutex};
+use std::cell::{Cell, RefCell};
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::sync::Arc;
+
+struct Inner {
+    conn: RefCell<Connection>,
+    depth: Cell<u32>,
+}
 
 pub struct SqliteDb {
-    conn: Mutex<Connection>,
+    inner: ReentrantMutex<Inner>,
 }
 
 fn db_err(e: rusqlite::Error) -> LinkError {
@@ -33,14 +44,12 @@ impl SqliteDb {
              CREATE INDEX IF NOT EXISTS idx_events_seq ON docs (json_extract(body, '$.seq')) WHERE collection = '_events';",
         )
         .map_err(db_err)?;
-        Ok(SqliteDb { conn: Mutex::new(conn) })
+        Ok(SqliteDb { inner: ReentrantMutex::new(Inner { conn: RefCell::new(conn), depth: Cell::new(0) }) })
     }
 }
 
 fn path_param(field: &str) -> Result<Sql> {
-    if field.is_empty() || !field.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.') {
-        return Err(LinkError::new("db_error", format!("invalid field path `{field}`")));
-    }
+    check_field_path(field)?;
     Ok(Sql::Text(format!("$.{field}")))
 }
 
@@ -67,7 +76,8 @@ impl Db for SqliteDb {
     }
 
     fn get(&self, collection: &str, id: &str) -> Result<Option<Value>> {
-        let conn = self.conn.lock().unwrap();
+        let g = self.inner.lock();
+        let conn = g.conn.borrow();
         let body: Option<String> = conn
             .query_row("SELECT body FROM docs WHERE collection = ?1 AND id = ?2", [collection, id], |r| r.get(0))
             .optional()
@@ -75,9 +85,23 @@ impl Db for SqliteDb {
         Ok(body.and_then(|b| serde_json::from_str(&b).ok()))
     }
 
+    fn put_new(&self, collection: &str, id: &str, doc: &Value) -> Result<bool> {
+        require_object(doc)?;
+        let g = self.inner.lock();
+        let conn = g.conn.borrow();
+        let n = conn
+            .execute(
+                "INSERT INTO docs (collection, id, body) VALUES (?1, ?2, ?3) ON CONFLICT (collection, id) DO NOTHING",
+                [collection, id, &doc.to_string()],
+            )
+            .map_err(db_err)?;
+        Ok(n > 0)
+    }
+
     fn put(&self, collection: &str, id: &str, doc: &Value) -> Result<()> {
         require_object(doc)?;
-        let conn = self.conn.lock().unwrap();
+        let g = self.inner.lock();
+        let conn = g.conn.borrow();
         conn.execute(
             "INSERT INTO docs (collection, id, body) VALUES (?1, ?2, ?3)
              ON CONFLICT (collection, id) DO UPDATE SET body = excluded.body",
@@ -88,12 +112,14 @@ impl Db for SqliteDb {
     }
 
     fn delete(&self, collection: &str, id: &str) -> Result<bool> {
-        let conn = self.conn.lock().unwrap();
+        let g = self.inner.lock();
+        let conn = g.conn.borrow();
         let n = conn.execute("DELETE FROM docs WHERE collection = ?1 AND id = ?2", [collection, id]).map_err(db_err)?;
         Ok(n > 0)
     }
 
     fn query(&self, q: &Query) -> Result<Vec<Value>> {
+        check_query(q)?;
         let mut sql = String::from("SELECT body FROM docs WHERE collection = ?");
         let mut params: Vec<Sql> = vec![Sql::Text(q.collection.clone())];
         for f in &q.filters {
@@ -152,7 +178,8 @@ impl Db for SqliteDb {
         params.push(Sql::Integer(q.limit.map(|l| l as i64).unwrap_or(-1)));
         params.push(Sql::Integer(q.offset as i64));
 
-        let conn = self.conn.lock().unwrap();
+        let g = self.inner.lock();
+        let conn = g.conn.borrow();
         let mut stmt = conn.prepare_cached(&sql).map_err(db_err)?;
         let rows = stmt.query_map(params_from_iter(params), |r| r.get::<_, String>(0)).map_err(db_err)?;
         let mut out = vec![];
@@ -169,25 +196,45 @@ impl Db for SqliteDb {
                 require_object(doc)?;
             }
         }
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction().map_err(db_err)?;
-        for op in ops {
-            match op {
-                WriteOp::Put { collection, id, doc } => {
-                    tx.execute(
-                        "INSERT INTO docs (collection, id, body) VALUES (?1, ?2, ?3)
-                         ON CONFLICT (collection, id) DO UPDATE SET body = excluded.body",
-                        [collection.as_str(), id.as_str(), &doc.to_string()],
-                    )
-                    .map_err(db_err)?;
-                }
-                WriteOp::Delete { collection, id } => {
-                    tx.execute("DELETE FROM docs WHERE collection = ?1 AND id = ?2", [collection.as_str(), id.as_str()])
-                        .map_err(db_err)?;
+        self.transaction(&mut || {
+            for op in ops {
+                match op {
+                    WriteOp::Put { collection, id, doc } => self.put(collection, id, doc)?,
+                    WriteOp::Delete { collection, id } => {
+                        self.delete(collection, id)?;
+                    }
                 }
             }
+            Ok(())
+        })
+    }
+
+    fn transaction(&self, f: &mut dyn FnMut() -> Result<()>) -> Result<()> {
+        let g = self.inner.lock();
+        if g.depth.get() > 0 {
+            return f(); // joins the outer transaction
         }
-        tx.commit().map_err(db_err)
+        g.conn.borrow().execute_batch("BEGIN IMMEDIATE").map_err(db_err)?;
+        g.depth.set(1);
+        let result = catch_unwind(AssertUnwindSafe(|| f()));
+        g.depth.set(0);
+        match result {
+            Ok(Ok(())) => match g.conn.borrow().execute_batch("COMMIT") {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    let _ = g.conn.borrow().execute_batch("ROLLBACK");
+                    Err(db_err(e))
+                }
+            },
+            Ok(Err(e)) => {
+                let _ = g.conn.borrow().execute_batch("ROLLBACK");
+                Err(e)
+            }
+            Err(panic) => {
+                let _ = g.conn.borrow().execute_batch("ROLLBACK");
+                resume_unwind(panic)
+            }
+        }
     }
 }
 

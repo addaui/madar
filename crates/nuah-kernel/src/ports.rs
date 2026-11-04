@@ -75,6 +75,13 @@ pub trait Db: Send + Sync {
         vec![]
     }
     fn get(&self, collection: &str, id: &str) -> Result<Option<Value>>;
+    /// Insert only if the id is free. Returns false when it already exists.
+    fn put_new(&self, collection: &str, id: &str, doc: &Value) -> Result<bool>;
+    /// Run `f` as one atomic unit: its writes all commit together, or none do when it returns an
+    /// error (or panics). Transactions are serialized with each other and with every other call on
+    /// this db, so nothing inside sees half-done work and read-then-write cannot lose updates.
+    /// Calls that `f` makes on this same db join the transaction; nesting joins the outer one.
+    fn transaction(&self, f: &mut dyn FnMut() -> Result<()>) -> Result<()>;
     /// Insert or replace.
     fn put(&self, collection: &str, id: &str, doc: &Value) -> Result<()>;
     /// Returns true when something was removed.
@@ -82,6 +89,34 @@ pub trait Db: Send + Sync {
     fn query(&self, q: &Query) -> Result<Vec<Value>>;
     /// All-or-nothing.
     fn batch(&self, ops: &[WriteOp]) -> Result<()>;
+}
+
+/// Field paths are dotted names such as `nested.k`. Adapters must all accept the same syntax.
+pub fn check_field_path(field: &str) -> Result<()> {
+    let ok = !field.is_empty()
+        && field.split('.').all(|seg| {
+            let mut c = seg.chars();
+            c.next().is_some_and(|f| f.is_ascii_alphabetic() || f == '_') && c.all(|x| x.is_ascii_alphanumeric() || x == '_')
+        });
+    if ok {
+        Ok(())
+    } else {
+        Err(crate::error::LinkError::new("db_error", format!("invalid field path `{field}`")))
+    }
+}
+
+/// Filters compare scalars only. Adapters must reject objects and arrays instead of guessing.
+pub fn check_query(q: &Query) -> Result<()> {
+    for f in &q.filters {
+        check_field_path(&f.field)?;
+        if f.value.is_object() || f.value.is_array() {
+            return Err(crate::error::LinkError::new("db_error", format!("filter on `{}` must compare a scalar", f.field)));
+        }
+    }
+    if let Some((f, _)) = &q.order_by {
+        check_field_path(f)?;
+    }
+    Ok(())
 }
 
 // ---------- auth ----------

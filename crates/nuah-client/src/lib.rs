@@ -48,9 +48,10 @@ impl Link for InProcess {
     fn describe(&self) -> Result<Value> {
         Ok(self.core.describe(self.credential.as_deref(), Some(&self.face)))
     }
+    /// Polls the shared log instead of listening to an in-process channel, so that a watcher also
+    /// sees changes made by another process that uses the same database file.
     fn watch(&self, after: u64, on_event: &mut dyn FnMut(Event) -> bool) -> Result<()> {
         let who = self.core.authenticate(self.credential.as_deref())?;
-        let mut rx = self.core.subscribe(); // subscribe first so nothing falls between replay and live
         let mut last = after;
         loop {
             let batch = self.core.events_since(&who.subject, last, 500)?;
@@ -62,27 +63,7 @@ impl Link for InProcess {
                 }
             }
             if !full {
-                break;
-            }
-        }
-        loop {
-            match rx.blocking_recv() {
-                Ok(e) if e.audience == who.subject && e.seq > last => {
-                    last = e.seq;
-                    if !on_event(e) {
-                        return Ok(());
-                    }
-                }
-                Ok(_) => {}
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                    for e in self.core.events_since(&who.subject, last, 5000)? {
-                        last = e.seq;
-                        if !on_event(e) {
-                            return Ok(());
-                        }
-                    }
-                }
-                Err(_) => return Ok(()),
+                std::thread::sleep(Duration::from_millis(300));
             }
         }
     }
@@ -132,20 +113,33 @@ fn read_error(body: &mut ureq::Body, status: u16) -> LinkError {
 
 impl Link for Http {
     fn call(&self, op: &str, input: Value, key: Option<&str>) -> Result<Value> {
-        let mut req = self.agent.post(&format!("{}/link/call/{op}", self.base)).header("X-Nuah-Face", &self.face);
-        if let Some(t) = &self.token {
-            req = req.header("Authorization", &format!("Bearer {t}"));
+        // A retry with the same idempotency key is safe: the core answers a repeat with the first result.
+        let attempts = if key.is_some() { 3 } else { 1 };
+        let mut last_err = LinkError::new("transport", "no attempt made");
+        for attempt in 0..attempts {
+            if attempt > 0 {
+                std::thread::sleep(Duration::from_millis(200 * attempt as u64));
+            }
+            let mut r = self.agent.post(&format!("{}/link/call/{op}", self.base)).header("X-Nuah-Face", &self.face);
+            if let Some(t) = &self.token {
+                r = r.header("Authorization", &format!("Bearer {t}"));
+            }
+            if let Some(k) = key {
+                r = r.header("Idempotency-Key", k);
+            }
+            match r.send_json(&input) {
+                Ok(mut resp) => {
+                    let status = resp.status().as_u16();
+                    if status >= 400 {
+                        return Err(read_error(resp.body_mut(), status));
+                    }
+                    let v: Value = resp.body_mut().read_json().map_err(transport)?;
+                    return Ok(v["data"].clone());
+                }
+                Err(e) => last_err = transport(e),
+            }
         }
-        if let Some(k) = key {
-            req = req.header("Idempotency-Key", k);
-        }
-        let mut resp = req.send_json(&input).map_err(transport)?;
-        let status = resp.status().as_u16();
-        if status >= 400 {
-            return Err(read_error(resp.body_mut(), status));
-        }
-        let v: Value = resp.body_mut().read_json().map_err(transport)?;
-        Ok(v["data"].clone())
+        Err(last_err)
     }
 
     fn describe(&self) -> Result<Value> {

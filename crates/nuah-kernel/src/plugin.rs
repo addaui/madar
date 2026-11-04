@@ -84,6 +84,63 @@ impl Ctx {
     }
 }
 
+/// The storage a plugin gets: the real db, minus the collections that belong to the kernel
+/// (names starting with `_`, such as the event log and idempotency records).
+pub(crate) struct GuardedDb {
+    inner: Arc<dyn Db>,
+    plugin: String,
+}
+
+impl GuardedDb {
+    fn check(&self, collection: &str) -> Result<()> {
+        if collection.starts_with('_') {
+            Err(LinkError::capability_denied(&self.plugin, &format!("collection `{collection}`")))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Db for GuardedDb {
+    fn id(&self) -> &str {
+        self.inner.id()
+    }
+    fn capabilities(&self) -> Vec<String> {
+        self.inner.capabilities()
+    }
+    fn get(&self, c: &str, id: &str) -> Result<Option<Value>> {
+        self.check(c)?;
+        self.inner.get(c, id)
+    }
+    fn put_new(&self, c: &str, id: &str, doc: &Value) -> Result<bool> {
+        self.check(c)?;
+        self.inner.put_new(c, id, doc)
+    }
+    fn transaction(&self, f: &mut dyn FnMut() -> Result<()>) -> Result<()> {
+        self.inner.transaction(f)
+    }
+    fn put(&self, c: &str, id: &str, doc: &Value) -> Result<()> {
+        self.check(c)?;
+        self.inner.put(c, id, doc)
+    }
+    fn delete(&self, c: &str, id: &str) -> Result<bool> {
+        self.check(c)?;
+        self.inner.delete(c, id)
+    }
+    fn query(&self, q: &Query) -> Result<Vec<Value>> {
+        self.check(&q.collection)?;
+        self.inner.query(q)
+    }
+    fn batch(&self, ops: &[WriteOp]) -> Result<()> {
+        for op in ops {
+            match op {
+                WriteOp::Put { collection, .. } | WriteOp::Delete { collection, .. } => self.check(collection)?,
+            }
+        }
+        self.inner.batch(ops)
+    }
+}
+
 pub(crate) struct PendingEvent {
     pub kind: String,
     pub plugin: String,
@@ -96,13 +153,15 @@ pub struct Services {
     plugin: String,
     allowed: Arc<HashSet<String>>,
     ports: Arc<Ports>,
+    db: Arc<dyn Db>,
     settings: Value,
     pending: Mutex<Vec<PendingEvent>>,
 }
 
 impl Services {
     pub(crate) fn new(plugin: &str, allowed: Arc<HashSet<String>>, ports: Arc<Ports>, settings: Value) -> Self {
-        Services { plugin: plugin.to_string(), allowed, ports, settings, pending: Mutex::new(vec![]) }
+        let db: Arc<dyn Db> = Arc::new(GuardedDb { inner: ports.db.clone(), plugin: plugin.to_string() });
+        Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]) }
     }
     fn need(&self, cap: &str) -> Result<()> {
         if self.allowed.contains(cap) {
@@ -113,7 +172,7 @@ impl Services {
     }
     pub fn db(&self) -> Result<&Arc<dyn Db>> {
         self.need("db")?;
-        Ok(&self.ports.db)
+        Ok(&self.db)
     }
     pub fn clock(&self) -> Result<&Arc<dyn Clock>> {
         self.need("clock")?;
@@ -257,7 +316,8 @@ impl Activation {
             f: HookFn::Before(Arc::new(f)),
         });
     }
-    /// Run after a successful operation. Errors are logged and never fail the call.
+    /// Run after the handler, inside the same transaction. An error here fails the whole call and
+    /// rolls everything back, so a hook such as audit can promise that no change goes unrecorded.
     pub fn after(
         &mut self,
         name: &str,

@@ -408,3 +408,171 @@ fn the_same_session_works_on_sqlite_with_a_file() {
     assert_eq!(c.latest_seq(), 2, "and so does the event sequence");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------- review round 1: atomicity, protected storage, resolver, privacy ----------
+
+struct Fragile;
+impl Plugin for Fragile {
+    fn manifest(&self) -> Manifest {
+        Manifest::parse(&json!({"id":"fragile","version":"0.0.1","requires":{"ports":["db"]},"contributes":{"ops":[]}}).to_string())
+    }
+    fn activate(&self, a: &mut Activation) -> Result<()> {
+        // an after-hook that always fails, like an audit sink whose storage is down
+        a.after("always-fails", "tasks.create", 200, |_c, _s, _i, _r, _svc| Err(LinkError::internal("sink down")));
+        Ok(())
+    }
+}
+
+#[test]
+fn a_failing_hook_rolls_back_the_data_the_events_and_the_idempotency_record() {
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Fragile));
+    d.enabled.push("fragile".into());
+    let c = Core::start(d).unwrap();
+    let pid = project(&c);
+    let (events_before, audit_before) = (c.latest_seq(), c.ports().db.query(&Query::new("audit")).unwrap().len());
+    let req = CallRequest { op: "tasks.create".into(), input: json!({"project_id": pid, "title": "doomed"}), idempotency_key: Some("k".into()), ..Default::default() };
+    assert_eq!(c.call(req.clone()).unwrap_err().code, "internal");
+    assert!(c.ports().db.query(&Query::new("tasks")).unwrap().is_empty(), "the task was not kept");
+    assert_eq!(c.latest_seq(), events_before, "no event was published");
+    assert_eq!(c.ports().db.query(&Query::new("audit")).unwrap().len(), audit_before, "the audit row was rolled back too");
+    assert!(c.ports().db.query(&Query::new("_idem")).unwrap().is_empty(), "the key was not consumed, so a retry can succeed");
+    c.disable("fragile").unwrap();
+    assert!(c.call(req).is_ok(), "the retry with the same key works once the fault is gone");
+}
+
+#[test]
+fn plugins_cannot_touch_the_kernels_collections() {
+    let mut d = memory_for_tests();
+    struct Snoop;
+    impl Plugin for Snoop {
+        fn manifest(&self) -> Manifest {
+            Manifest::parse(&json!({"id":"snoop","version":"0.0.1","requires":{"ports":["db"]},"contributes":{"ops":["snoop.read","snoop.forge"]}}).to_string())
+        }
+        fn activate(&self, a: &mut Activation) -> Result<()> {
+            a.op(OpSpec::query("snoop.read", "tasks.read", "", json!({"type":"object"})), |_c, _i, svc| Ok(json!(svc.db()?.query(&Query::new("_idem"))?)));
+            a.op(OpSpec::command("snoop.forge", "tasks.write", "", json!({"type":"object"})), |_c, _i, svc| {
+                svc.db()?.put("_events", "000000000099", &json!({"seq": 99, "audience": "local-user"}))?;
+                Ok(json!(null))
+            });
+            Ok(())
+        }
+    }
+    d.catalog.push(std::sync::Arc::new(Snoop));
+    d.enabled.push("snoop".into());
+    let c = Core::start(d).unwrap();
+    assert_eq!(err(&c, "snoop.read", json!({})).code, "capability_denied");
+    assert_eq!(err(&c, "snoop.forge", json!({})).code, "capability_denied");
+    assert_eq!(c.latest_seq(), 0, "nothing was forged");
+}
+
+#[test]
+fn an_adapter_cannot_fill_a_port_it_is_not_bound_to() {
+    struct Greedy;
+    impl Plugin for Greedy {
+        fn manifest(&self) -> Manifest {
+            Manifest::parse(&json!({"id":"greedy-db","version":"0.0.1","implements":[{"port":"db"}]}).to_string())
+        }
+        fn activate(&self, a: &mut Activation) -> Result<()> {
+            a.provide_db(std::sync::Arc::new(nuah_adapters::memory::MemoryDb::new()));
+            struct Open;
+            impl Policy for Open {
+                fn id(&self) -> &str { "sneaky" }
+                fn check(&self, _w: &Identity, _p: &str) -> bool { true }
+            }
+            a.provide_policy(std::sync::Arc::new(Open)); // not what the manifest said it implements
+            Ok(())
+        }
+    }
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Greedy));
+    d.enabled.push("greedy-db".into());
+    d.bindings.insert("db".into(), "greedy-db".into());
+    d.enabled.retain(|e| e != "adapter-memory");
+    let problems = Core::start(d).err().unwrap();
+    assert!(problems.iter().any(|p| p.contains("provided port `policy` but is not bound to it")), "{problems:?}");
+}
+
+#[test]
+fn resolver_checks_capabilities_routes_and_duplicate_ids() {
+    struct Typo(&'static str, &'static str);
+    impl Plugin for Typo {
+        fn manifest(&self) -> Manifest {
+            Manifest::parse(&json!({"id": self.0, "version":"0.0.1","requires":{"capabilities":[self.1]},"contributes":{"ops":[],"routes":["GET /x/ghost"]}}).to_string())
+        }
+        fn activate(&self, _a: &mut Activation) -> Result<()> { Ok(()) }
+    }
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Typo("typo", "event")));
+    d.catalog.push(std::sync::Arc::new(Typo("twin", "events")));
+    d.catalog.push(std::sync::Arc::new(Typo("twin", "events")));
+    d.enabled.extend(["typo".to_string(), "twin".to_string()]);
+    let problems = Core::start(d).err().unwrap();
+    assert!(problems.iter().any(|p| p.contains("share the id `twin`")), "{problems:?}");
+    assert!(problems.iter().any(|p| p.contains("unknown capability `event`")), "{problems:?}");
+    assert!(problems.iter().any(|p| p.contains("unknown capability `event`")), "{problems:?}");
+
+    // the route check runs in a later phase, once plugins have activated
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Typo("ghost", "events")));
+    d.enabled.push("ghost".into());
+    let problems = Core::start(d).err().unwrap();
+    assert!(problems.iter().any(|p| p.contains("declares route `GET /X/GHOST` but did not register it")), "{problems:?}");
+}
+
+#[test]
+fn describe_before_sign_in_reveals_only_how_to_sign_in() {
+    let c = start(server_dist()).unwrap();
+    let d = c.describe(None, None);
+    assert!(d["identity"].is_null());
+    assert_eq!(d["signin"]["kind"], "token");
+    for hidden in ["ops", "plugins", "ports", "slots", "latest_seq"] {
+        assert!(d.get(hidden).is_none(), "`{hidden}` must not be visible before sign-in");
+    }
+    call_as(&c, Some("t-alice"), "projects.create", json!({"name": "A"})).unwrap();
+    assert_eq!(c.describe(Some("t-alice"), None)["latest_seq"], 1);
+    assert_eq!(c.describe(Some("t-bob"), None)["latest_seq"], 0, "latest_seq counts only the caller's events");
+}
+
+#[test]
+fn whole_number_floats_are_not_integers() {
+    let c = core();
+    let pid = project(&c);
+    assert_eq!(err(&c, "tasks.create", json!({"project_id": pid, "title": "x", "priority": 7.0})).code, "invalid_input");
+}
+
+#[test]
+fn quota_holds_under_concurrent_creates() {
+    let c = start(server_dist()).unwrap(); // max_tasks = 3
+    let p = call_as(&c, Some("t-alice"), "projects.create", json!({"name": "P"})).unwrap();
+    let handles: Vec<_> = (0..12).map(|i| {
+        let (c, pid) = (c.clone(), p["id"].clone());
+        std::thread::spawn(move || call_as(&c, Some("t-alice"), "tasks.create", json!({"project_id": pid, "title": format!("t{i}")})))
+    }).collect();
+    let ok = handles.into_iter().map(|h| h.join().unwrap()).filter(|r| r.is_ok()).count();
+    assert_eq!(ok, 3, "exactly the quota succeeds, however the calls interleave");
+    assert_eq!(call_as(&c, Some("t-alice"), "tasks.list", json!({})).unwrap().as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn two_cores_on_one_database_file_never_share_an_event_number() {
+    let dir = std::env::temp_dir().join(format!("nuah-two-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("shared.db");
+    let _ = std::fs::remove_file(&path);
+    let a = start(embedded(path.to_str().unwrap(), "A")).unwrap();
+    let b = start(embedded(path.to_str().unwrap(), "B")).unwrap();
+    let mut handles = vec![];
+    for (i, c) in [a.clone(), b.clone()].into_iter().enumerate() {
+        handles.push(std::thread::spawn(move || {
+            let pid = ok(&c, "projects.create", json!({"name": format!("P{i}")}))["id"].clone();
+            for n in 0..15 { ok(&c, "tasks.create", json!({"project_id": pid, "title": format!("{i}-{n}")})); }
+        }));
+    }
+    for h in handles { h.join().unwrap(); }
+    let events = a.events_since("local-user", 0, 1000).unwrap();
+    assert_eq!(events.len(), 32, "no event was overwritten");
+    assert_eq!(events.iter().map(|e| e.seq).collect::<Vec<_>>(), (1..=32).collect::<Vec<u64>>(), "numbers are unique and gapless");
+    assert_eq!(b.events_since("local-user", 30, 100).unwrap().len(), 2, "each core sees the other's events");
+    let _ = std::fs::remove_dir_all(&dir);
+}

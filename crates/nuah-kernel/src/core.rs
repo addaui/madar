@@ -12,7 +12,7 @@ use crate::schema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
 
 pub const CONTRACT_VERSION: &str = "0.1";
@@ -61,7 +61,6 @@ struct Inner {
     /// port name -> adapter plugin id
     bound: HashMap<String, String>,
     state: RwLock<State>,
-    inflight: Mutex<HashSet<String>>,
 }
 
 #[derive(Clone)]
@@ -69,14 +68,10 @@ pub struct Core {
     inner: Arc<Inner>,
 }
 
-struct Inflight<'a> {
-    set: &'a Mutex<HashSet<String>>,
-    key: String,
-}
-impl Drop for Inflight<'_> {
-    fn drop(&mut self) {
-        self.set.lock().unwrap().remove(&self.key);
-    }
+struct PipelineOut {
+    data: Value,
+    events: Vec<Event>,
+    replayed: bool,
 }
 
 impl Core {
@@ -84,6 +79,15 @@ impl Core {
     /// (or the setup wizard) can fix them in one go.
     pub fn start(dist: Distribution) -> std::result::Result<Core, Vec<String>> {
         let mut problems: Vec<String> = vec![];
+        {
+            let mut seen = HashSet::new();
+            for p in &dist.catalog {
+                let id = p.manifest().id;
+                if !seen.insert(id.clone()) {
+                    problems.push(format!("two plugins in the catalog share the id `{id}`"));
+                }
+            }
+        }
         let catalog: HashMap<String, Arc<dyn Plugin>> =
             dist.catalog.iter().map(|p| (p.manifest().id, p.clone())).collect();
         let manifests: HashMap<String, Manifest> = catalog.iter().map(|(k, p)| (k.clone(), p.manifest())).collect();
@@ -142,6 +146,11 @@ impl Core {
                     problems.push(format!("plugin `{id}` implements unknown port `{}`", i.port));
                 }
             }
+            for cap in manifests[id].requires.capabilities.iter() {
+                if cap != "events" {
+                    problems.push(format!("plugin `{id}` requires unknown capability `{cap}`"));
+                }
+            }
             for need in manifests[id].requires.ports.iter() {
                 if !PORT_NAMES.contains(&need.as_str()) {
                     problems.push(format!("plugin `{id}` requires unknown port `{need}`"));
@@ -183,11 +192,23 @@ impl Core {
                 continue;
             }
             let p = std::mem::take(&mut act.ports);
-            slots.db = slots.db.or(p.db);
-            slots.auth = slots.auth.or(p.auth);
-            slots.policy = slots.policy.or(p.policy);
-            slots.clock = slots.clock.or(p.clock);
-            slots.ids = slots.ids.or(p.ids);
+            let bound_here = |port: &str| bound.get(port).map(|b| b == id).unwrap_or(false);
+            macro_rules! take {
+                ($port:literal, $field:ident) => {
+                    if p.$field.is_some() {
+                        if bound_here($port) {
+                            slots.$field = p.$field;
+                        } else {
+                            problems.push(format!("adapter `{id}` provided port `{}` but is not bound to it", $port));
+                        }
+                    }
+                };
+            }
+            take!("db", db);
+            take!("auth", auth);
+            take!("policy", policy);
+            take!("clock", clock);
+            take!("ids", ids);
             collected.push((id.clone(), act));
         }
         for (name, missing) in [
@@ -236,6 +257,21 @@ impl Core {
             for missing in declared.difference(&registered) {
                 problems.push(format!("plugin `{id}` declares op `{missing}` but did not register it"));
             }
+            let declared_routes: BTreeSet<String> = m.contributes.routes.iter().map(|r| r.to_uppercase()).collect();
+            let registered_routes: BTreeSet<String> =
+                act.routes.iter().map(|r| format!("{} {}", r.spec.method, r.spec.path).to_uppercase()).collect();
+            for extra in registered_routes.difference(&declared_routes) {
+                problems.push(format!("plugin `{id}` registered route `{extra}` but its manifest does not declare it"));
+            }
+            for missing in declared_routes.difference(&registered_routes) {
+                problems.push(format!("plugin `{id}` declares route `{missing}` but did not register it"));
+            }
+            for r in &act.routes {
+                let key = format!("{} {}", r.spec.method, r.spec.path).to_uppercase();
+                if state.routes.iter().any(|e| format!("{} {}", e.spec.method, e.spec.path).to_uppercase() == key) {
+                    problems.push(format!("route `{key}` is defined by more than one plugin"));
+                }
+            }
             for op in act.ops {
                 if let Some(existing) = state.ops.get(&op.spec.name) {
                     problems.push(format!("op `{}` is defined by both `{}` and `{id}`", op.spec.name, existing.owner));
@@ -260,7 +296,6 @@ impl Core {
                 settings: dist.settings,
                 bound,
                 state: RwLock::new(state),
-                inflight: Mutex::new(HashSet::new()),
             }),
         })
     }
@@ -298,28 +333,41 @@ impl Core {
         }
         schema::validate(&spec.input, &req.input)?;
         let ctx = Ctx::new(&ident, inner.ports.ids.new_id(), req.face.clone(), inner.ports.clock.now_ms());
+        // The key is encoded as a list so no choice of subject or key can collide with another.
+        let idem_id = match (&req.idempotency_key, spec.kind) {
+            (Some(k), OpKind::Command) => Some(json!([ident.subject, spec.name, k]).to_string()),
+            _ => None,
+        };
 
-        // idempotency: the same key with the same input returns the first answer
-        let mut _guard = None;
-        let mut idem_id = None;
-        if spec.kind == OpKind::Command {
-            if let Some(key) = &req.idempotency_key {
-                let id = format!("{}|{}|{}", ident.subject, spec.name, key);
-                if !inner.inflight.lock().unwrap().insert(id.clone()) {
-                    return Err(LinkError::new("request_in_progress", "a call with this idempotency key is still running"));
-                }
-                _guard = Some(Inflight { set: &inner.inflight, key: id.clone() });
-                if let Some(rec) = inner.ports.db.get("_idem", &id)? {
-                    return if rec["input"] == req.input {
-                        Ok(CallResponse { data: rec["result"].clone(), replayed: true })
-                    } else {
-                        Err(LinkError::new("idempotency_conflict", "this idempotency key was already used with different input"))
-                    };
-                }
-                idem_id = Some(id);
+        let out = if spec.kind == OpKind::Command {
+            // One transaction for the handler, its hooks, the event rows and the idempotency record:
+            // either all of it is stored, or none of it.
+            let mut out: Option<Result<PipelineOut>> = None;
+            inner.ports.db.transaction(&mut || {
+                let r = self.pipeline(&ctx, &spec, &handler, &owner, &req.input, idem_id.as_deref());
+                let verdict = r.as_ref().map(|_| ()).map_err(|e| e.clone());
+                out = Some(r);
+                verdict
+            })?;
+            out.expect("transaction ran")?
+        } else {
+            self.pipeline(&ctx, &spec, &handler, &owner, &req.input, None)?
+        };
+        self.after_commit(out.events, ctx.now_ms, 0);
+        Ok(CallResponse { data: out.data, replayed: out.replayed })
+    }
+
+    fn pipeline(&self, ctx: &Ctx, spec: &OpSpec, handler: &OpHandler, owner: &str, input: &Value, idem: Option<&str>) -> Result<PipelineOut> {
+        let inner = &self.inner;
+        if let Some(id) = idem {
+            if let Some(rec) = inner.ports.db.get("_idem", id)? {
+                return if rec["input"] == *input {
+                    Ok(PipelineOut { data: rec["result"].clone(), events: vec![], replayed: true })
+                } else {
+                    Err(LinkError::new("idempotency_conflict", "this idempotency key was already used with different input"))
+                };
             }
         }
-
         let hooks: Vec<HookEntry> = {
             let st = inner.state.read().unwrap();
             let mut h: Vec<HookEntry> =
@@ -329,73 +377,81 @@ impl Core {
         };
 
         let mut used: Vec<Services> = vec![];
-        let mut input = req.input.clone();
-        let mut input_changed = false;
+        let mut input = input.clone();
+        let original = input.clone();
         for h in &hooks {
             if let HookFn::Before(f) = &h.f {
                 let svc = self.services(&h.owner);
-                let before = input.clone();
-                f(&ctx.for_plugin(&h.owner), &spec, &mut input, &svc)?;
-                input_changed |= before != input;
+                f(&ctx.for_plugin(&h.owner), spec, &mut input, &svc)?;
                 used.push(svc);
             }
         }
-        if input_changed {
+        if input != original {
             schema::validate(&spec.input, &input)?;
         }
 
-        let svc = self.services(&owner);
-        let out = handler(&ctx.for_plugin(&owner), input.clone(), &svc)?;
+        let svc = self.services(owner);
+        let out = handler(&ctx.for_plugin(owner), input.clone(), &svc)?;
         used.push(svc);
 
         for h in &hooks {
             if let HookFn::After(f) = &h.f {
                 let svc = self.services(&h.owner);
-                if let Err(e) = f(&ctx.for_plugin(&h.owner), &spec, &input, &out, &svc) {
-                    eprintln!("[nuah] after-hook `{}` of plugin `{}` failed on `{}`: {e}", h.name, h.owner, spec.name);
-                }
+                f(&ctx.for_plugin(&h.owner), spec, &input, &out, &svc)?;
                 used.push(svc);
             }
         }
 
-        let pending: Vec<PendingEvent> = used.iter().flat_map(|s| s.take_pending()).collect();
-        self.publish(pending, ctx.now_ms, 0);
-
-        if let Some(id) = idem_id {
-            let rec = json!({ "input": req.input, "result": out, "ts": ctx.now_ms });
-            if let Err(e) = inner.ports.db.put("_idem", &id, &rec) {
-                eprintln!("[nuah] could not remember idempotency key: {e}");
+        let mut events = vec![];
+        for s in &used {
+            for p in s.take_pending() {
+                events.push(inner.events.append(&p.kind, &p.plugin, &p.audience, p.data, ctx.now_ms)?);
             }
         }
-        Ok(CallResponse { data: out, replayed: false })
+        if let Some(id) = idem {
+            let rec = json!({ "input": original, "result": out, "ts": ctx.now_ms });
+            inner.ports.db.put("_idem", id, &rec)?;
+        }
+        Ok(PipelineOut { data: out, events, replayed: false })
     }
 
-    fn publish(&self, pending: Vec<PendingEvent>, ts: i64, depth: u8) {
+    /// After a commit: wake readers of the log, then run listeners. Listeners are best-effort and
+    /// each batch of events they emit is committed in its own transaction.
+    fn after_commit(&self, events: Vec<Event>, ts: i64, depth: u8) {
+        let Some(last) = events.last().map(|e| e.seq) else { return };
+        self.inner.events.wake(last);
         if depth > 8 {
-            eprintln!("[nuah] event listeners are chaining too deep; dropping {} events", pending.len());
+            eprintln!("[nuah] event listeners are chaining too deep; stopping");
             return;
         }
-        for p in pending {
-            let event = match self.inner.events.append(&p.kind, &p.plugin, &p.audience, p.data, ts) {
-                Ok(e) => e,
-                Err(e) => {
-                    eprintln!("[nuah] could not append event `{}`: {e}", p.kind);
-                    continue;
-                }
-            };
+        for event in events {
             let listeners: Vec<ListenerEntry> = {
                 let st = self.inner.state.read().unwrap();
                 st.listeners.iter().filter(|l| pattern_matches(&l.pattern, &event.kind)).cloned().collect()
             };
-            let mut more = vec![];
+            let mut pending = vec![];
             for l in listeners {
                 let svc = self.services(&l.owner);
                 if let Err(e) = (l.f)(&event, &svc) {
                     eprintln!("[nuah] listener of plugin `{}` failed on `{}`: {e}", l.owner, event.kind);
                 }
-                more.extend(svc.take_pending());
+                pending.extend(svc.take_pending());
             }
-            self.publish(more, ts, depth + 1);
+            if pending.is_empty() {
+                continue;
+            }
+            let mut written = vec![];
+            let res = self.inner.ports.db.transaction(&mut || {
+                written.clear();
+                for p in &pending {
+                    written.push(self.inner.events.append(&p.kind, &p.plugin, &p.audience, p.data.clone(), ts)?);
+                }
+                Ok(())
+            });
+            match res {
+                Ok(()) => self.after_commit(written, ts, depth + 1),
+                Err(e) => eprintln!("[nuah] could not store events emitted by listeners: {e}"),
+            }
         }
     }
 
@@ -408,34 +464,47 @@ impl Core {
         query: HashMap<String, String>,
         body: Vec<u8>,
     ) -> Result<RouteResponse> {
-        let (entry, ident) = {
+        let entry = {
             let st = self.inner.state.read().unwrap();
-            let e = st
-                .routes
+            st.routes
                 .iter()
                 .find(|r| r.spec.method.eq_ignore_ascii_case(method) && r.spec.path == path)
                 .cloned()
-                .ok_or_else(|| LinkError::not_found("route"))?;
-            (e, self.authenticate(credential)?)
+                .ok_or_else(|| LinkError::not_found("route"))?
         };
+        let ident = self.authenticate(credential)?;
         if !self.inner.ports.policy.check(&ident, &entry.spec.permission) {
             return Err(LinkError::permission_denied(&entry.spec.permission));
         }
         let ctx = Ctx::new(&ident, self.inner.ports.ids.new_id(), None, self.inner.ports.clock.now_ms());
-        let svc = self.services(&entry.owner);
-        let res = (entry.handler)(&ctx.for_plugin(&entry.owner), RouteRequest { query, body }, &svc)?;
-        let pending = svc.take_pending();
-        self.publish(pending, ctx.now_ms, 0);
-        Ok(res)
+        let mut result: Option<RouteResponse> = None;
+        let mut events: Vec<Event> = vec![];
+        self.inner.ports.db.transaction(&mut || {
+            events.clear();
+            let svc = self.services(&entry.owner);
+            let res = (entry.handler)(&ctx.for_plugin(&entry.owner), RouteRequest { query: query.clone(), body: body.clone() }, &svc)?;
+            for p in svc.take_pending() {
+                events.push(self.inner.events.append(&p.kind, &p.plugin, &p.audience, p.data, ctx.now_ms)?);
+            }
+            result = Some(res);
+            Ok(())
+        })?;
+        self.after_commit(events, ctx.now_ms, 0);
+        Ok(result.expect("route ran"))
     }
 
     pub fn events_since(&self, subject: &str, after: u64, limit: usize) -> Result<Vec<Event>> {
         self.inner.events.since(subject, after, limit)
     }
+    /// The newest event the subject may see.
+    pub fn latest_seq_for(&self, subject: &str) -> u64 {
+        self.inner.events.latest_for(subject).unwrap_or(0)
+    }
     pub fn latest_seq(&self) -> u64 {
         self.inner.events.latest_seq()
     }
-    pub fn subscribe(&self) -> broadcast::Receiver<Event> {
+    /// A wake-up signal: something was committed. Read the log to find out what.
+    pub fn subscribe(&self) -> broadcast::Receiver<u64> {
         self.inner.events.subscribe()
     }
 
@@ -463,6 +532,14 @@ impl Core {
         let inner = &self.inner;
         let st = inner.state.read().unwrap();
         let identity = inner.ports.auth.authenticate(credential).ok();
+        // Before sign-in a face only learns how to sign in: no plugin list, no ops, no counters.
+        let Some(identity_ref) = identity.as_ref() else {
+            return json!({
+                "contract": CONTRACT_VERSION, "profile": inner.name, "identity": null,
+                "signin": inner.ports.auth.signin(),
+            });
+        };
+        let _ = identity_ref;
         let mut ops: Vec<&OpEntry> = st.ops.values().collect();
         ops.sort_by(|a, b| a.spec.name.cmp(&b.spec.name));
         let ops_json: Vec<Value> = ops
@@ -507,7 +584,7 @@ impl Core {
             "assets": assets,
             "signin": inner.ports.auth.signin(),
             "identity": identity.as_ref().map(|i| json!({"subject": i.subject, "display": i.display, "roles": i.roles})),
-            "latest_seq": inner.events.latest_seq(),
+            "latest_seq": identity.as_ref().map(|i| inner.events.latest_for(&i.subject).unwrap_or(0)).unwrap_or(0),
         })
     }
 }

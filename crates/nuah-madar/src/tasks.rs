@@ -121,6 +121,10 @@ pub fn valid_date(s: &str) -> bool {
     if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
         return false;
     }
+    // u32::parse would accept a leading `+`, so require plain digits everywhere else.
+    if !b.iter().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit()) {
+        return false;
+    }
     let (Ok(y), Ok(m), Ok(d)) = (s[0..4].parse::<u32>(), s[5..7].parse::<u32>(), s[8..10].parse::<u32>()) else {
         return false;
     };
@@ -521,5 +525,6 @@ mod tests {
         assert!(!valid_date("2026-1-01"));
         assert!(!valid_date("26-11-04"));
         assert!(!valid_date("2026-04-31"));
+        assert!(!valid_date("+026-+1-+1"));
     }
 }

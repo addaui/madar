@@ -27,7 +27,8 @@ fn type_matches(t: &str, v: &Value) -> bool {
         "object" => v.is_object(),
         "array" => v.is_array(),
         "number" => v.is_number(),
-        "integer" => v.as_i64().is_some() || v.as_u64().is_some() || v.as_f64().is_some_and(|f| f.fract() == 0.0),
+        // 7.0 is a float even though it is whole; handlers read integers with as_i64.
+        "integer" => v.as_i64().is_some() || v.as_u64().is_some(),
         _ => true,
     }
 }
@@ -145,6 +146,7 @@ mod tests {
         assert!(validate(&s, &json!({"p":10,"d":null})).is_ok());
         assert!(validate(&s, &json!({"p":11})).is_err());
         assert!(validate(&s, &json!({"p":1.5})).is_err());
+        assert!(validate(&s, &json!({"p":7.0})).is_err(), "7.0 is a float, not an integer");
         assert!(validate(&s, &json!({"d":3})).is_err());
     }
 }

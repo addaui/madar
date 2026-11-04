@@ -13,6 +13,8 @@ pub fn run_db_conformance(make: &dyn Fn() -> Arc<dyn Db>) {
     contains(&*make());
     batches(&*make());
     isolation(&*make());
+    put_new_and_transactions(&*make());
+    strictness(&*make());
 }
 
 fn ids(rows: &[Value]) -> Vec<String> {
@@ -124,4 +126,72 @@ fn isolation(db: &dyn Db) {
     assert_eq!(db.get("one", "same").unwrap().unwrap()["c"], "one");
     assert_eq!(db.get("two", "same").unwrap().unwrap()["c"], "two");
     assert_eq!(db.query(&Query::new("one")).unwrap().len(), 1, "collections do not leak into each other");
+}
+
+fn put_new_and_transactions(db: &dyn Db) {
+    assert!(db.put_new("t", "a", &json!({"id":"a","v":1})).unwrap(), "first insert succeeds");
+    assert!(!db.put_new("t", "a", &json!({"id":"a","v":2})).unwrap(), "second insert reports the id is taken");
+    assert_eq!(db.get("t", "a").unwrap().unwrap()["v"], 1, "and does not overwrite");
+
+    // commit
+    db.transaction(&mut || {
+        db.put("t", "x", &json!({"id":"x"}))?;
+        assert!(db.get("t", "x")?.is_some(), "a transaction reads its own writes");
+        Ok(())
+    })
+    .unwrap();
+    assert!(db.get("t", "x").unwrap().is_some());
+
+    // rollback on error, including deletes and put_new
+    let r = db.transaction(&mut || {
+        db.put("t", "y", &json!({"id":"y"}))?;
+        db.delete("t", "x")?;
+        db.put_new("t", "z", &json!({"id":"z"}))?;
+        Err(LinkError::internal("boom"))
+    });
+    assert_eq!(r.unwrap_err().message, "boom");
+    assert!(db.get("t", "y").unwrap().is_none(), "puts are rolled back");
+    assert!(db.get("t", "x").unwrap().is_some(), "deletes are rolled back");
+    assert!(db.get("t", "z").unwrap().is_none(), "inserts are rolled back");
+
+    // a nested transaction joins the outer one, and a batch inside it does too
+    let r = db.transaction(&mut || {
+        db.transaction(&mut || db.put("t", "n1", &json!({"id":"n1"})))?;
+        db.batch(&[WriteOp::Put { collection: "t".into(), id: "n2".into(), doc: json!({"id":"n2"}) }])?;
+        Err(LinkError::internal("late failure"))
+    });
+    assert!(r.is_err());
+    assert!(db.get("t", "n1").unwrap().is_none() && db.get("t", "n2").unwrap().is_none(), "nesting does not commit early");
+
+    // a panic inside a transaction rolls it back and leaves the db usable
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = db.transaction(&mut || {
+            db.put("t", "p", &json!({"id":"p"})).unwrap();
+            panic!("handler bug");
+        });
+    }));
+    assert!(caught.is_err());
+    assert!(db.get("t", "p").unwrap().is_none(), "a panic rolls back");
+    db.put("t", "after", &json!({"id":"after"})).unwrap();
+    assert!(db.get("t", "after").unwrap().is_some(), "the db still works after a panic");
+}
+
+fn strictness(db: &dyn Db) {
+    seed(db);
+    assert!(db.query(&Query::new("t").eq("nested", json!({"k":"x"}))).is_err(), "object filters are rejected");
+    assert!(db.query(&Query::new("t").eq("n", json!([1]))).is_err(), "array filters are rejected");
+    for bad in ["my-field", "tags.0", "a..b", "", "a b", "1x"] {
+        assert!(db.query(&Query::new("t").eq(bad, 1)).is_err(), "field path `{bad}` is rejected by every adapter");
+        assert!(db.query(&Query::new("t").order(bad, false)).is_err());
+    }
+    // integers beyond 2^53 stay distinct
+    db.put("big", "1", &json!({"id":"1","n":9007199254740993i64})).unwrap();
+    db.put("big", "2", &json!({"id":"2","n":9007199254740992i64})).unwrap();
+    let hit = db.query(&Query::new("big").eq("n", json!(9007199254740993i64))).unwrap();
+    assert_eq!(ids(&hit), ["1"], "large integers compare exactly");
+    // objects and arrays order like their JSON text (after "zzz", since `{` sorts after `z`), the same in every adapter
+    db.put("o", "a", &json!({"id":"a","v":{"y":2}})).unwrap();
+    db.put("o", "b", &json!({"id":"b","v":"zzz"})).unwrap();
+    db.put("o", "c", &json!({"id":"c","v":{"x":1}})).unwrap();
+    assert_eq!(ids(&db.query(&Query::new("o").order("v", false)).unwrap()), ["b", "c", "a"]);
 }

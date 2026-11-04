@@ -61,7 +61,7 @@ fn http_maps_typed_errors_to_status_codes() {
     let url = spawn_server(token_core());
     let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
     let post = |op: &str, token: Option<&str>, body: Value| {
-        let mut r = agent.post(&format!("{url}/link/call/{op}"));
+        let mut r = agent.post(&format!("{url}/link/call/{op}")).header("X-Nuah-Face", "test");
         if let Some(t) = token { r = r.header("Authorization", &format!("Bearer {t}")); }
         let mut resp = r.send_json(&body).unwrap();
         (resp.status().as_u16(), resp.body_mut().read_json::<Value>().unwrap())
@@ -75,7 +75,8 @@ fn http_maps_typed_errors_to_status_codes() {
     let (s, v) = post("projects.create", Some("t-alice"), json!({"name": "ok"}));
     assert_eq!((s, v["ok"].clone()), (200, json!(true)));
     // malformed JSON body
-    let mut resp = agent.post(&format!("{url}/link/call/projects.create")).header("Authorization", "Bearer t-alice").send("{not json").unwrap();
+    let mut resp = agent.post(&format!("{url}/link/call/projects.create")).header("Authorization", "Bearer t-alice")
+        .header("Content-Type", "application/json").header("X-Nuah-Face", "test").send("{not json").unwrap();
     assert_eq!(resp.status().as_u16(), 400);
     assert_eq!(resp.body_mut().read_json::<Value>().unwrap()["error"]["code"], "invalid_input");
 }
@@ -150,4 +151,26 @@ fn plugin_routes_are_served_with_auth() {
     assert!(r.headers().get("content-disposition").unwrap().to_str().unwrap().contains("madar-export.json"));
     assert_eq!(r.body_mut().read_json::<Value>().unwrap()["projects"][0]["name"], "E");
     assert_eq!(agent.get(&format!("{url}/x/nothing")).header("Authorization", "Bearer t-alice").call().unwrap().status().as_u16(), 404);
+}
+
+#[test]
+fn browser_facing_guards() {
+    let url = spawn_server(token_core());
+    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+    let status = |r: std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>| r.unwrap().status().as_u16();
+    let call = format!("{url}/link/call/projects.list");
+    // a cross-site form post: text/plain, no custom header
+    assert_eq!(status(agent.post(&call).header("Authorization", "Bearer t-alice").header("Content-Type", "text/plain").send("{}")), 415);
+    // JSON but without the face header (cannot be sent cross-site without a preflight)
+    assert_eq!(status(agent.post(&call).header("Authorization", "Bearer t-alice").header("Content-Type", "application/json").send("{}")), 400);
+    // another origin
+    assert_eq!(status(agent.post(&call).header("Authorization", "Bearer t-alice").header("Origin", "http://evil.example").header("Content-Type", "application/json").header("X-Nuah-Face", "x").send("{}")), 403);
+    // DNS rebinding: a host name we do not serve
+    assert_eq!(status(agent.get(&format!("{url}/healthz")).header("Host", "evil.example").call()), 421);
+    // security headers are on every response
+    let r = agent.get(&format!("{url}/healthz")).call().unwrap();
+    assert!(r.headers().get("content-security-policy").unwrap().to_str().unwrap().contains("frame-ancestors 'none'"));
+    assert_eq!(r.headers().get("x-content-type-options").unwrap(), "nosniff");
+    // the token is not accepted from the query string on ordinary routes
+    assert_eq!(status(agent.get(&format!("{url}/x/export/madar.json?token=t-alice")).call()), 401);
 }
