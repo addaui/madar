@@ -1,0 +1,153 @@
+use nuah_client::{Http, InProcess, Link};
+use nuah_kernel::*;
+use nuah_madar::*;
+use serde_json::{json, Value};
+use std::sync::mpsc;
+use std::time::Duration;
+
+/// Start a server on an ephemeral port in its own thread; returns the base URL.
+fn spawn_server(core: Core) -> String {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+        rt.block_on(async move {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            tx.send(format!("http://{}", listener.local_addr().unwrap())).unwrap();
+            axum::serve(listener, nuah_server::router(core, None)).await.unwrap();
+        });
+    });
+    rx.recv().unwrap()
+}
+
+fn token_core() -> Core {
+    let mut d = memory_for_tests();
+    d.enabled.retain(|e| e != "auth-local" && e != "policy-allow-all");
+    d.enabled.extend(["auth-token".to_string(), "policy-roles".to_string()]);
+    d.settings.insert("auth-token".into(), json!({"tokens": {
+        "t-alice": {"subject":"alice","display":"Alice","roles":["owner"]},
+        "t-view": {"subject":"alice","display":"Alice RO","roles":["viewer"]}}}));
+    start(d).unwrap()
+}
+
+/// One scenario, written once against the Link trait.
+fn scenario(link: &dyn Link) -> Value {
+    let p = link.call("projects.create", json!({"name": "Home"}), None).unwrap();
+    let t = link.call("tasks.create", json!({"project_id": p["id"], "title": "Fix tap", "priority": 8}), Some("k1")).unwrap();
+    let again = link.call("tasks.create", json!({"project_id": p["id"], "title": "Fix tap", "priority": 8}), Some("k1")).unwrap();
+    assert_eq!(t["id"], again["id"], "idempotent retry returns the first task");
+    link.call("tasks.update", json!({"id": t["id"], "status": "Done"}), None).unwrap();
+    let c = link.call("comments.add", json!({"task_id": t["id"], "text": "done!"}), None).unwrap();
+    let e = link.call("comments.add", json!({"task_id": t["id"], "text": "no", "parent_id": "nope"}), None).unwrap_err();
+    json!({
+        "tasks": link.call("tasks.list", json!({}), None).unwrap(),
+        "comment": c, "error": e,
+        "projects": link.call("projects.list", json!({}), None).unwrap(),
+        "audit": link.call("audit.list", json!({}), None).unwrap().as_array().unwrap().len(),
+    })
+}
+
+#[test]
+fn coupled_and_decoupled_faces_get_identical_answers() {
+    let coupled = InProcess::new(start(memory_for_tests()).unwrap(), None, "test");
+    let url = spawn_server(start(memory_for_tests()).unwrap());
+    let decoupled = Http::new(&url, None, "test");
+    let (a, b) = (scenario(&coupled), scenario(&decoupled));
+    assert_eq!(a, b, "same face code, same answers, whichever way it is connected");
+    assert_eq!(a["error"]["code"], "not_found");
+}
+
+#[test]
+fn http_maps_typed_errors_to_status_codes() {
+    let url = spawn_server(token_core());
+    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+    let post = |op: &str, token: Option<&str>, body: Value| {
+        let mut r = agent.post(&format!("{url}/link/call/{op}"));
+        if let Some(t) = token { r = r.header("Authorization", &format!("Bearer {t}")); }
+        let mut resp = r.send_json(&body).unwrap();
+        (resp.status().as_u16(), resp.body_mut().read_json::<Value>().unwrap())
+    };
+    assert_eq!(post("projects.list", None, json!({})).0, 401);
+    assert_eq!(post("projects.list", Some("bad"), json!({})).0, 401);
+    let (s, v) = post("projects.create", Some("t-view"), json!({"name": "x"}));
+    assert_eq!((s, v["error"]["details"]["missing"].as_str()), (403, Some("tasks.write")));
+    assert_eq!(post("nope.nope", Some("t-alice"), json!({})).0, 404);
+    assert_eq!(post("projects.create", Some("t-alice"), json!({"name": ""})).0, 400);
+    let (s, v) = post("projects.create", Some("t-alice"), json!({"name": "ok"}));
+    assert_eq!((s, v["ok"].clone()), (200, json!(true)));
+    // malformed JSON body
+    let mut resp = agent.post(&format!("{url}/link/call/projects.create")).header("Authorization", "Bearer t-alice").send("{not json").unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    assert_eq!(resp.body_mut().read_json::<Value>().unwrap()["error"]["code"], "invalid_input");
+}
+
+#[test]
+fn describe_over_http_carries_the_permission_map() {
+    let url = spawn_server(token_core());
+    let viewer = Http::new(&url, Some("t-view".into()), "web");
+    let d = viewer.describe().unwrap();
+    let allowed = |n: &str| d["ops"].as_array().unwrap().iter().find(|o| o["name"] == n).unwrap()["allowed"].clone();
+    assert_eq!((allowed("tasks.list"), allowed("tasks.create")), (json!(true), json!(false)));
+    assert_eq!(d["slots"][0]["id"], "export");
+    let anon = Http::new(&url, None, "web").describe().unwrap();
+    assert!(anon["identity"].is_null() && anon["signin"]["kind"] == "token", "an anonymous face learns how to sign in");
+}
+
+#[test]
+fn pulse_replays_then_streams_and_resumes_without_gaps() {
+    let url = spawn_server(token_core());
+    let link = Http::new(&url, Some("t-alice".into()), "test");
+    let p = link.call("projects.create", json!({"name": "P"}), None).unwrap(); // seq 1
+    link.call("tasks.create", json!({"project_id": p["id"], "title": "before watch"}), None).unwrap(); // seq 2
+
+    let (tx, rx) = mpsc::channel();
+    let watcher = Http::new(&url, Some("t-alice".into()), "test");
+    std::thread::spawn(move || {
+        let mut seen = 0;
+        watcher.watch(0, &mut |e| { tx.send((e.seq, e.kind)).unwrap(); seen += 1; seen < 4 }).unwrap();
+    });
+    // live events after the watcher connected
+    std::thread::sleep(Duration::from_millis(300));
+    link.call("tasks.create", json!({"project_id": p["id"], "title": "live 1"}), None).unwrap(); // 3
+    link.call("tasks.create", json!({"project_id": p["id"], "title": "live 2"}), None).unwrap(); // 4
+    let got: Vec<(u64, String)> = (0..4).map(|_| rx.recv_timeout(Duration::from_secs(5)).expect("event")).collect();
+    assert_eq!(got.iter().map(|g| g.0).collect::<Vec<_>>(), [1, 2, 3, 4], "replayed history then live events, in order");
+    assert_eq!(got[0].1, "project.created");
+
+    // a second face resumes from what it last saw
+    let (tx, rx) = mpsc::channel();
+    let resumer = Http::new(&url, Some("t-alice".into()), "test");
+    std::thread::spawn(move || {
+        let mut n = 0;
+        resumer.watch(2, &mut |e| { tx.send(e.seq).unwrap(); n += 1; n < 2 }).unwrap();
+    });
+    assert_eq!((0..2).map(|_| rx.recv_timeout(Duration::from_secs(5)).unwrap()).collect::<Vec<_>>(), [3, 4]);
+}
+
+#[test]
+fn pulse_events_are_private_to_their_owner() {
+    let mut d = memory_for_tests();
+    d.enabled.retain(|e| e != "auth-local" && e != "policy-allow-all");
+    d.enabled.extend(["auth-token".to_string(), "policy-roles".to_string()]);
+    d.settings.insert("auth-token".into(), json!({"tokens": {
+        "t-a": {"subject":"a","roles":["owner"]}, "t-b": {"subject":"b","roles":["owner"]}}}));
+    let url = spawn_server(start(d).unwrap());
+    let a = Http::new(&url, Some("t-a".into()), "test");
+    let b = Http::new(&url, Some("t-b".into()), "test");
+    a.call("projects.create", json!({"name": "secret"}), None).unwrap();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || { b.watch(0, &mut |e| { tx.send(e.kind).unwrap(); true }).ok(); });
+    assert!(rx.recv_timeout(Duration::from_millis(800)).is_err(), "B must not see A's events");
+}
+
+#[test]
+fn plugin_routes_are_served_with_auth() {
+    let url = spawn_server(token_core());
+    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+    assert_eq!(agent.get(&format!("{url}/x/export/madar.json")).call().unwrap().status().as_u16(), 401);
+    Http::new(&url, Some("t-alice".into()), "t").call("projects.create", json!({"name": "E"}), None).unwrap();
+    let mut r = agent.get(&format!("{url}/x/export/madar.json")).header("Authorization", "Bearer t-alice").call().unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    assert!(r.headers().get("content-disposition").unwrap().to_str().unwrap().contains("madar-export.json"));
+    assert_eq!(r.body_mut().read_json::<Value>().unwrap()["projects"][0]["name"], "E");
+    assert_eq!(agent.get(&format!("{url}/x/nothing")).header("Authorization", "Bearer t-alice").call().unwrap().status().as_u16(), 404);
+}
