@@ -174,3 +174,13 @@ fn browser_facing_guards() {
     // the token is not accepted from the query string on ordinary routes
     assert_eq!(status(agent.get(&format!("{url}/x/export/madar.json?token=t-alice")).call()), 401);
 }
+
+#[test]
+fn cross_site_requests_to_plugin_routes_are_refused() {
+    let url = spawn_server(token_core());
+    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+    let r = agent.get(&format!("{url}/x/export/madar.json")).header("Authorization", "Bearer t-alice").header("Sec-Fetch-Site", "cross-site").call().unwrap();
+    assert_eq!(r.status().as_u16(), 403);
+    let r = agent.get(&format!("{url}/x/export/madar.json")).header("Authorization", "Bearer t-alice").header("Sec-Fetch-Site", "same-origin").call().unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+}

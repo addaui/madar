@@ -41,16 +41,20 @@ impl SqliteDb {
                 body TEXT NOT NULL,
                 PRIMARY KEY (collection, id)
              ) WITHOUT ROWID;
-             CREATE INDEX IF NOT EXISTS idx_events_seq ON docs (json_extract(body, '$.seq')) WHERE collection = '_events';",
+             DROP INDEX IF EXISTS idx_events_seq;
+             CREATE INDEX IF NOT EXISTS idx_events_seq2 ON docs (collection, json_extract(body, '$.seq'));",
         )
         .map_err(db_err)?;
         Ok(SqliteDb { inner: ReentrantMutex::new(Inner { conn: RefCell::new(conn), depth: Cell::new(0) }) })
     }
 }
 
-fn path_param(field: &str) -> Result<Sql> {
+/// `json_extract(body, '$.a.b')` with the path written into the SQL. This is safe because
+/// `check_field_path` only lets letters, digits, `_` and `.` through, and it lets SQLite match
+/// an expression index (a bound parameter would hide the path from the planner).
+fn extract(field: &str) -> Result<String> {
     check_field_path(field)?;
-    Ok(Sql::Text(format!("$.{field}")))
+    Ok(format!("json_extract(body, '$.{field}')"))
 }
 
 fn to_sql(v: &Value) -> Sql {
@@ -123,30 +127,20 @@ impl Db for SqliteDb {
         let mut sql = String::from("SELECT body FROM docs WHERE collection = ?");
         let mut params: Vec<Sql> = vec![Sql::Text(q.collection.clone())];
         for f in &q.filters {
-            let path = path_param(&f.field)?;
+            let x = extract(&f.field)?;
             match (f.op, &f.value) {
-                (FilterOp::Eq, Value::Null) => {
-                    sql.push_str(" AND json_extract(body, ?) IS NULL");
-                    params.push(path);
-                }
-                (FilterOp::Ne, Value::Null) => {
-                    sql.push_str(" AND json_extract(body, ?) IS NOT NULL");
-                    params.push(path);
-                }
+                (FilterOp::Eq, Value::Null) => sql.push_str(&format!(" AND {x} IS NULL")),
+                (FilterOp::Ne, Value::Null) => sql.push_str(&format!(" AND {x} IS NOT NULL")),
                 (FilterOp::Eq, v) => {
-                    sql.push_str(" AND json_extract(body, ?) = ?");
-                    params.push(path);
+                    sql.push_str(&format!(" AND {x} = ?"));
                     params.push(to_sql(v));
                 }
                 (FilterOp::Ne, v) => {
-                    sql.push_str(" AND json_extract(body, ?) IS NOT ?");
-                    params.push(path);
+                    sql.push_str(&format!(" AND {x} IS NOT ?"));
                     params.push(to_sql(v));
                 }
                 (FilterOp::Contains, Value::String(s)) => {
-                    sql.push_str(" AND typeof(json_extract(body, ?)) = 'text' AND lower(json_extract(body, ?)) LIKE '%' || lower(?) || '%' ESCAPE '\\'");
-                    params.push(path.clone());
-                    params.push(path);
+                    sql.push_str(&format!(" AND typeof({x}) = 'text' AND lower({x}) LIKE '%' || lower(?) || '%' ESCAPE '\\'"));
                     params.push(Sql::Text(escape_like(s)));
                 }
                 (FilterOp::Contains, _) => sql.push_str(" AND 0"),
@@ -161,16 +155,14 @@ impl Db for SqliteDb {
                         FilterOp::Gt => ">",
                         _ => ">=",
                     };
-                    sql.push_str(&format!(" AND json_extract(body, ?) {cmp} ?"));
-                    params.push(path);
+                    sql.push_str(&format!(" AND {x} {cmp} ?"));
                     params.push(to_sql(v));
                 }
             }
         }
         match &q.order_by {
             Some((field, desc)) => {
-                sql.push_str(&format!(" ORDER BY json_extract(body, ?) {}, id ASC", if *desc { "DESC" } else { "ASC" }));
-                params.push(path_param(field)?);
+                sql.push_str(&format!(" ORDER BY {} {}, id ASC", extract(field)?, if *desc { "DESC" } else { "ASC" }));
             }
             None => sql.push_str(" ORDER BY id ASC"),
         }
@@ -211,27 +203,33 @@ impl Db for SqliteDb {
 
     fn transaction(&self, f: &mut dyn FnMut() -> Result<()>) -> Result<()> {
         let g = self.inner.lock();
-        if g.depth.get() > 0 {
-            return f(); // joins the outer transaction
-        }
-        g.conn.borrow().execute_batch("BEGIN IMMEDIATE").map_err(db_err)?;
-        g.depth.set(1);
+        let depth = g.depth.get();
+        // The outermost level is a real transaction; inner levels are savepoints, so an inner
+        // failure that the caller handles undoes only the inner work.
+        let (begin, commit, rollback) = if depth == 0 {
+            ("BEGIN IMMEDIATE".to_string(), "COMMIT".to_string(), "ROLLBACK".to_string())
+        } else {
+            let sp = format!("sp{depth}");
+            (format!("SAVEPOINT {sp}"), format!("RELEASE {sp}"), format!("ROLLBACK TO {sp}; RELEASE {sp}"))
+        };
+        g.conn.borrow().execute_batch(&begin).map_err(db_err)?;
+        g.depth.set(depth + 1);
         let result = catch_unwind(AssertUnwindSafe(|| f()));
-        g.depth.set(0);
+        g.depth.set(depth);
         match result {
-            Ok(Ok(())) => match g.conn.borrow().execute_batch("COMMIT") {
+            Ok(Ok(())) => match g.conn.borrow().execute_batch(&commit) {
                 Ok(()) => Ok(()),
                 Err(e) => {
-                    let _ = g.conn.borrow().execute_batch("ROLLBACK");
+                    let _ = g.conn.borrow().execute_batch(&rollback);
                     Err(db_err(e))
                 }
             },
             Ok(Err(e)) => {
-                let _ = g.conn.borrow().execute_batch("ROLLBACK");
+                let _ = g.conn.borrow().execute_batch(&rollback);
                 Err(e)
             }
             Err(panic) => {
-                let _ = g.conn.borrow().execute_batch("ROLLBACK");
+                let _ = g.conn.borrow().execute_batch(&rollback);
                 resume_unwind(panic)
             }
         }
@@ -250,5 +248,41 @@ impl Plugin for SqliteDbPlugin {
         let path = act.settings().get("path").and_then(|p| p.as_str()).unwrap_or(":memory:").to_string();
         act.provide_db(Arc::new(SqliteDb::open(&path)?));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn plan(db: &SqliteDb, q: &Query) -> String {
+        // same SQL shape as `query`, asked to explain itself
+        let g = db.inner.lock();
+        let conn = g.conn.borrow();
+        let mut sql = String::from("EXPLAIN QUERY PLAN SELECT body FROM docs WHERE collection = ?");
+        for f in &q.filters {
+            let x = extract(&f.field).unwrap();
+            sql.push_str(&format!(" AND {x} > ?"));
+        }
+        if let Some((f, d)) = &q.order_by {
+            sql.push_str(&format!(" ORDER BY {} {}", extract(f).unwrap(), if *d { "DESC" } else { "ASC" }));
+        }
+        sql.push_str(" LIMIT 1");
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let n = q.filters.len() + 1;
+        let params: Vec<Sql> = std::iter::once(Sql::Text(q.collection.clone())).chain((1..n).map(|_| Sql::Integer(0))).collect();
+        let rows: Vec<String> = stmt.query_map(params_from_iter(params), |r| r.get::<_, String>(3)).unwrap().map(|r| r.unwrap()).collect();
+        rows.join(" | ")
+    }
+
+    #[test]
+    fn the_event_queries_use_the_index_and_need_no_sorting() {
+        let db = SqliteDb::open(":memory:").unwrap();
+        db.put("_events", "1", &json!({"seq": 1, "audience": "a"})).unwrap();
+        let newest = plan(&db, &Query::new("_events").order("seq", true));
+        assert!(newest.contains("idx_events_seq2") && !newest.contains("TEMP B-TREE"), "max-seq lookup: {newest}");
+        let after = plan(&db, &Query::new("_events").filter("seq", FilterOp::Gt, json!(5)).order("seq", false));
+        assert!(after.contains("idx_events_seq2") && !after.contains("TEMP B-TREE"), "read-after-N: {after}");
     }
 }

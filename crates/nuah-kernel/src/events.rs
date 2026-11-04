@@ -31,7 +31,7 @@ pub struct Event {
 
 pub struct EventLog {
     db: Arc<dyn Db>,
-    wake: broadcast::Sender<u64>,
+    wake: broadcast::Sender<String>,
 }
 
 impl EventLog {
@@ -54,9 +54,9 @@ impl EventLog {
         Ok(event)
     }
 
-    /// Tell readers to look at the log. Call after the transaction committed.
-    pub fn wake(&self, latest: u64) {
-        let _ = self.wake.send(latest);
+    /// Tell readers that this audience has new events. Call after the transaction committed.
+    pub fn wake(&self, audience: &str) {
+        let _ = self.wake.send(audience.to_string());
     }
 
     /// Events for one subject after `after`, oldest first.
@@ -79,7 +79,7 @@ impl EventLog {
         self.max_seq().unwrap_or(0)
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<u64> {
+    pub fn subscribe(&self) -> broadcast::Receiver<String> {
         self.wake.subscribe()
     }
 }

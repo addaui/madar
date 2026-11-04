@@ -735,3 +735,169 @@ fn nested_calls_keep_the_callers_permissions_and_roll_back_together() {
     assert_eq!(call_as(&c, Some("t-alice"), "projects.list", json!({})).unwrap().as_array().unwrap().len(), projects);
     assert_eq!(c.latest_seq(), seq);
 }
+
+// ---------- round 2 review: identity, rollback, locks, queries, panics ----------
+
+fn plug(id: &'static str, extra: Value, ops: Vec<(OpSpec, fn(&Ctx, Value, &Services) -> Result<Value>)>) -> std::sync::Arc<dyn Plugin> {
+    struct P(&'static str, Value, Vec<(OpSpec, fn(&Ctx, Value, &Services) -> Result<Value>)>);
+    impl Plugin for P {
+        fn manifest(&self) -> Manifest {
+            let mut m = json!({"id": self.0, "version": "0.0.1", "contributes": {"ops": self.2.iter().map(|o| o.0.name.clone()).collect::<Vec<_>>()}});
+            for (k, v) in self.1.as_object().unwrap() { m[k] = v.clone(); }
+            Manifest::parse(&m.to_string())
+        }
+        fn activate(&self, a: &mut Activation) -> Result<()> {
+            for (spec, f) in &self.2 { let f = *f; a.op(spec.clone(), move |c, i, s| f(c, i, s)); }
+            Ok(())
+        }
+    }
+    std::sync::Arc::new(P(id, extra, ops))
+}
+
+fn with_plugins(plugins: Vec<std::sync::Arc<dyn Plugin>>) -> Core {
+    let mut d = server_dist();
+    for p in plugins { d.enabled.push(p.manifest().id); d.catalog.push(p); }
+    Core::start(d).unwrap()
+}
+
+#[test]
+fn a_plugin_cannot_forge_the_identity_it_calls_as() {
+    let evil = plug("evil", json!({"requires": {"plugins": ["tasks"]}}), vec![
+        (OpSpec::command("evil.forge", "prefs.write", "", json!({"type":"object"})), |ctx, _i, svc| {
+            let mut c = ctx.clone();
+            c.subject = "alice".into();
+            c.roles = vec!["owner".into()];
+            c.plugin = "export".into();
+            svc.call(&c, "projects.create", json!({"name": "forged"}))
+        }),
+        (OpSpec::command("evil.replay", "prefs.write", "", json!({"type":"object"})), |ctx, _i, svc| {
+            STASH.with(|s| s.borrow_mut().replace(ctx.clone()));
+            let _ = svc;
+            Ok(json!(null))
+        }),
+    ]);
+    thread_local! { static STASH: std::cell::RefCell<Option<Ctx>> = std::cell::RefCell::new(None); }
+    let c = with_plugins(vec![evil]);
+    // t-view is a viewer: it may run evil.forge (prefs.write) but not create projects
+    let e = call_as(&c, Some("t-view"), "evil.forge", json!({})).unwrap_err();
+    assert_eq!((e.code.as_str(), e.details.unwrap()["missing"].clone()), ("permission_denied", json!("tasks.write")), "the claimed owner role was ignored");
+    assert_eq!(call_as(&c, Some("t-alice"), "projects.list", json!({})).unwrap(), json!([]), "nothing was created for alice");
+}
+
+#[test]
+fn an_old_context_cannot_be_replayed_after_its_request_ended() {
+    thread_local! { static OLD: std::cell::RefCell<Option<Ctx>> = std::cell::RefCell::new(None); }
+    let p = plug("replayer", json!({"requires": {"plugins": ["tasks"]}}), vec![
+        (OpSpec::command("replayer.save", "tasks.write", "", json!({"type":"object"})), |ctx, _i, _s| { OLD.with(|o| *o.borrow_mut() = Some(ctx.clone())); Ok(json!(null)) }),
+        (OpSpec::command("replayer.use", "prefs.write", "", json!({"type":"object"})), |_ctx, _i, svc| {
+            let old = OLD.with(|o| o.borrow().clone()).unwrap();
+            svc.call(&old, "projects.create", json!({"name": "from the past"}))
+        }),
+    ]);
+    let c = with_plugins(vec![p]);
+    call_as(&c, Some("t-alice"), "replayer.save", json!({})).unwrap();
+    let e = call_as(&c, Some("t-alice"), "replayer.use", json!({})).unwrap_err();
+    assert!(e.message.contains("only possible while a request is being served") || e.code == "internal", "{e}");
+}
+
+#[test]
+fn a_failed_nested_call_is_undone_even_when_the_caller_carries_on() {
+    let inner = plug("inner", json!({"requires": {"ports": ["db"]}, "data": {"owns": ["inner_data"]}}), vec![
+        (OpSpec::command("inner.go", "tasks.write", "", json!({"type":"object"})), |_c, _i, svc| {
+            svc.db()?.put("inner_data", "half", &json!({"id": "half"}))?;
+            Err(LinkError::conflict("inner refuses"))
+        }),
+    ]);
+    let outer = plug("outer", json!({"requires": {"ports": ["db"], "plugins": ["inner"]}, "data": {"owns": ["outer_data"], "reads": ["inner_data"]}}), vec![
+        (OpSpec::command("outer.go", "tasks.write", "", json!({"type":"object"})), |ctx, _i, svc| {
+            let r = svc.call(ctx, "inner.go", json!({}));
+            assert!(r.is_err());
+            assert!(svc.db()?.get("inner_data", "half")?.is_none(), "already undone inside the outer call");
+            svc.db()?.put("outer_data", "ok", &json!({"id": "ok"}))?;
+            Ok(json!({"inner_failed": true}))
+        }),
+    ]);
+    let c = with_plugins(vec![inner, outer]);
+    call_as(&c, Some("t-alice"), "outer.go", json!({})).unwrap();
+    assert!(c.ports().db.get("outer_data", "ok").unwrap().is_some(), "the outer work committed");
+    assert!(c.ports().db.get("inner_data", "half").unwrap().is_none(), "the failed inner work did not");
+}
+
+#[test]
+fn queries_cannot_emit_events_or_run_commands() {
+    let q = plug("quirky", json!({"requires": {"plugins": ["tasks"], "capabilities": ["events"]}}), vec![
+        (OpSpec::query("quirky.emit", "tasks.read", "", json!({"type":"object"})), |ctx, _i, svc| { svc.emit("x.y", &ctx.subject, json!({}))?; Ok(json!(null)) }),
+        (OpSpec::query("quirky.write", "tasks.read", "", json!({"type":"object"})), |ctx, _i, svc| svc.call(ctx, "projects.create", json!({"name": "from a query"}))),
+        (OpSpec::query("quirky.read", "tasks.read", "", json!({"type":"object"})), |ctx, _i, svc| svc.call(ctx, "projects.list", json!({}))),
+    ]);
+    let c = with_plugins(vec![q]);
+    assert_eq!(call_as(&c, Some("t-alice"), "quirky.emit", json!({})).unwrap_err().code, "internal");
+    assert_eq!(call_as(&c, Some("t-alice"), "quirky.write", json!({})).unwrap_err().code, "conflict");
+    assert_eq!(call_as(&c, Some("t-alice"), "quirky.read", json!({})).unwrap(), json!([]), "a query may call a query");
+    assert_eq!(c.latest_seq(), 0);
+}
+
+#[test]
+fn panics_in_plugins_become_errors_and_do_not_undo_committed_work() {
+    let boom = plug("boom", json!({"requires": {"ports": ["db"]}, "data": {"owns": ["boom_data"]}}), vec![
+        (OpSpec::command("boom.handler", "tasks.write", "", json!({"type":"object"})), |_c, _i, svc| {
+            svc.db()?.put("boom_data", "x", &json!({"id": "x"}))?;
+            panic!("handler bug")
+        }),
+    ]);
+    struct Listener;
+    impl Plugin for Listener {
+        fn manifest(&self) -> Manifest { Manifest::parse(&json!({"id":"loud","version":"0.0.1","contributes":{"ops":[]}}).to_string()) }
+        fn activate(&self, a: &mut Activation) -> Result<()> { a.on_event("project.created", |_e, _s| panic!("listener bug")); Ok(()) }
+    }
+    let c = with_plugins(vec![boom, std::sync::Arc::new(Listener)]);
+    let e = call_as(&c, Some("t-alice"), "boom.handler", json!({})).unwrap_err();
+    assert_eq!(e.code, "internal");
+    assert!(c.ports().db.get("boom_data", "x").unwrap().is_none(), "a panicking handler is rolled back");
+    // the listener panics after the commit: the caller still sees success and the data stays
+    let p = call_as(&c, Some("t-alice"), "projects.create", json!({"name": "survives"})).unwrap();
+    assert_eq!(call_as(&c, Some("t-alice"), "projects.get", json!({"id": p["id"]})).unwrap()["name"], "survives");
+}
+
+#[test]
+fn describe_disable_and_commands_do_not_deadlock() {
+    let c = start(server_dist()).unwrap();
+    let p = call_as(&c, Some("t-alice"), "projects.create", json!({"name": "P"})).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut handles = vec![];
+    for t in 0..3 {
+        let (c, pid, tx) = (c.clone(), p["id"].clone(), tx.clone());
+        handles.push(std::thread::spawn(move || {
+            for i in 0..60 {
+                match t {
+                    0 => { let _ = call_as(&c, Some("t-alice"), "tasks.create", json!({"project_id": pid, "title": format!("t{i}")})); }
+                    1 => { c.describe(Some("t-alice"), None); }
+                    _ => { let _ = call_as(&c, Some("t-alice"), "tasks.list", json!({})); }
+                }
+            }
+            tx.send(()).unwrap();
+        }));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let _ = c.disable("audit"); // takes the state write lock while the others are busy
+    for _ in 0..3 { rx.recv_timeout(std::time::Duration::from_secs(20)).expect("a thread hung: deadlock"); }
+    for h in handles { h.join().unwrap(); }
+}
+
+#[test]
+fn two_plugins_cannot_own_one_collection_and_dependencies_ignore_inactive_adapters() {
+    let a = plug("own-a", json!({"data": {"owns": ["shared"]}}), vec![]);
+    let b = plug("own-b", json!({"data": {"owns": ["shared"]}}), vec![]);
+    let mut d = memory_for_tests();
+    for p in [a, b] { d.enabled.push(p.manifest().id); d.catalog.push(p); }
+    let problems = Core::start(d).err().unwrap();
+    assert!(problems.iter().any(|p| p.contains("`shared` is owned by both")), "{problems:?}");
+
+    let needy = plug("needs-sqlite", json!({"requires": {"plugins": ["adapter-sqlite"]}}), vec![]);
+    let mut d = memory_for_tests();
+    d.enabled.extend(["adapter-sqlite".to_string(), "needs-sqlite".to_string()]);
+    d.bindings.insert("db".into(), "adapter-memory".into());
+    d.catalog.push(needy);
+    let problems = Core::start(d).err().unwrap();
+    assert!(problems.iter().any(|p| p.contains("requires plugin `adapter-sqlite`, which is not enabled")), "an inactive adapter does not satisfy a dependency: {problems:?}");
+}

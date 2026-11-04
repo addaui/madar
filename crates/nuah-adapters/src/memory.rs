@@ -190,13 +190,12 @@ impl Db for MemoryDb {
     }
     fn transaction(&self, f: &mut dyn FnMut() -> Result<()>) -> Result<()> {
         let g = self.inner.lock();
-        if g.depth.get() > 0 {
-            return f(); // joins the outer transaction
-        }
+        // Every level keeps its own snapshot, so a failed inner call undoes only its own work
+        // even when the outer code catches the error and carries on.
         let snapshot = g.data.borrow().clone();
-        g.depth.set(1);
+        g.depth.set(g.depth.get() + 1);
         let result = catch_unwind(AssertUnwindSafe(|| f()));
-        g.depth.set(0);
+        g.depth.set(g.depth.get() - 1);
         match result {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => {

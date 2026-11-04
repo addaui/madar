@@ -54,8 +54,6 @@ pub struct Ctx {
     pub now_ms: i64,
     /// Plugin that owns the handler or hook currently running (for attribution).
     pub plugin: String,
-    /// How many plugin-to-plugin calls deep this is (0 for a call from a face).
-    pub depth: u8,
     scratch: Arc<Mutex<HashMap<String, Value>>>,
 }
 
@@ -69,18 +67,8 @@ impl Ctx {
             face,
             now_ms,
             plugin: String::new(),
-            depth: 0,
             scratch: Arc::new(Mutex::new(HashMap::new())),
         }
-    }
-    pub(crate) fn nested(&self) -> Ctx {
-        let mut c = self.clone();
-        c.depth += 1;
-        c.scratch = Arc::new(Mutex::new(HashMap::new()));
-        c
-    }
-    pub(crate) fn identity(&self) -> Identity {
-        Identity { subject: self.subject.clone(), display: self.display.clone(), roles: self.roles.clone() }
     }
     pub(crate) fn for_plugin(&self, plugin: &str) -> Ctx {
         let mut c = self.clone();
@@ -198,13 +186,16 @@ impl Services {
         });
         Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]), core }
     }
-    /// Call another plugin's operation through the contract, as the current caller: the same
-    /// permission check, input validation and hooks apply, and it joins the current transaction.
-    /// This is how a plugin uses another plugin's data without reaching into its collections.
-    /// The calling plugin must list the other plugin in `requires.plugins`.
+    /// Call another plugin's operation through the contract, as the user whose request is being
+    /// served: the same permission check, input validation and hooks apply, and the call joins the
+    /// current transaction (an inner failure undoes only the inner work). The caller is this
+    /// plugin, and the identity comes from the kernel's record of the live request, never from
+    /// the `ctx` value, so a plugin cannot act as someone else. The calling plugin must list the
+    /// other one in `requires.plugins`. Only available while a request is being served, and a
+    /// query operation can only call queries.
     pub fn call(&self, ctx: &Ctx, op: &str, input: Value) -> Result<Value> {
         self.need("call")?;
-        let (data, events) = self.core.call_nested(ctx, op, input)?;
+        let (data, events) = self.core.call_nested(&self.plugin, &ctx.request_id, op, input)?;
         self.pending.lock().unwrap().extend(events);
         Ok(data)
     }

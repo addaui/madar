@@ -70,14 +70,13 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
     tokio::task::spawn_blocking(f).await.map_err(|e| ApiError(LinkError::internal(format!("task failed: {e}"))))
 }
 
-async fn describe(State(app): State<App>, headers: HeaderMap, Query(q): Query<HashMap<String, String>>) -> Response {
+async fn describe(State(app): State<App>, headers: HeaderMap, Query(q): Query<HashMap<String, String>>) -> Result<Response, ApiError> {
     let token = bearer(&headers, None);
     let face = q.get("face").cloned();
-    (
-        [(header::CACHE_CONTROL, "no-store")],
-        Json(app.core.describe(token.as_deref(), face.as_deref())),
-    )
-        .into_response()
+    let core = app.core.clone();
+    // storage calls never run on the async worker threads
+    let body = blocking(move || core.describe(token.as_deref(), face.as_deref())).await?;
+    Ok(([(header::CACHE_CONTROL, "no-store")], Json(body)).into_response())
 }
 
 async fn call(State(app): State<App>, Path(op): Path<String>, headers: HeaderMap, body: Bytes) -> Result<Response, ApiError> {
@@ -127,13 +126,16 @@ async fn pulse(
     headers: HeaderMap,
     Query(q): Query<HashMap<String, String>>,
 ) -> Result<axum::response::sse::Sse<impl Stream<Item = Result<Sse, Infallible>>>, ApiError> {
-    let who = app.core.authenticate(bearer(&headers, q.get("token")).as_deref())?;
+    let who = app.core.authenticate(bearer(&headers, q.get("token")).as_deref())?; // no db involved
     // EventSource resends the last id it saw as Last-Event-ID when it reconnects, but keeps the
     // original URL, so the header can be newer than ?after. Take whichever is further along.
     let from_query: Option<u64> = q.get("after").and_then(|a| a.parse().ok());
     let from_header: Option<u64> = header_str(&headers, "last-event-id").and_then(|a| a.parse().ok());
     let after: u64 = match (from_query, from_header) {
-        (None, None) => app.core.latest_seq_for(&who.subject), // live only
+        (None, None) => {
+            let (core, subject) = (app.core.clone(), who.subject.clone());
+            blocking(move || core.latest_seq_for(&subject)).await? // live only
+        }
         (a, b) => a.unwrap_or(0).max(b.unwrap_or(0)),
     };
     let core = app.core.clone();
@@ -143,7 +145,7 @@ async fn pulse(
     // read starts from the last delivered number, events cannot be skipped or reordered.
     let stream = async_stream::stream! {
         let mut last = after;
-        yield Ok(Sse::default().event("ready").data(json!({"after": after, "latest_seq": core.latest_seq_for(&who.subject)}).to_string()));
+        yield Ok(Sse::default().event("ready").data(json!({"after": after}).to_string()));
         let mut tick = tokio::time::interval(Duration::from_secs(1));
         loop {
             loop {
@@ -160,9 +162,12 @@ async fn pulse(
                 if !full { break; }
             }
             tokio::select! {
-                r = wake.recv() => {
-                    if let Err(tokio::sync::broadcast::error::RecvError::Closed) = r { return }
-                }
+                r = wake.recv() => match r {
+                    // only wake up for commits that concern this subject
+                    Ok(audience) if audience != who.subject => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+                    _ => {}
+                },
                 _ = tick.tick() => {}
             }
         }
@@ -170,8 +175,10 @@ async fn pulse(
     Ok(axum::response::sse::Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
 }
 
-async fn health(State(app): State<App>) -> Json<Value> {
-    Json(json!({"ok": true, "latest_seq": app.core.latest_seq()}))
+async fn health(State(app): State<App>) -> Result<Json<Value>, ApiError> {
+    let core = app.core.clone();
+    let seq = blocking(move || core.latest_seq()).await?;
+    Ok(Json(json!({"ok": true, "latest_seq": seq})))
 }
 
 /// Hosts the server answers to. Anything else (DNS rebinding) gets 421.
@@ -205,6 +212,10 @@ async fn guard(State(hosts): State<Arc<Vec<String>>>, req: Request, next: Next) 
         if origin_host != host_header {
             return refuse(StatusCode::FORBIDDEN, "bad_origin", "Cross-origin requests are not allowed.");
         }
+    }
+    // Browsers label cross-site requests; a plugin route must not be reachable by an <img> or link from another site.
+    if req.uri().path().starts_with("/x/") && req.headers().get("sec-fetch-site").and_then(|v| v.to_str().ok()) == Some("cross-site") {
+        return refuse(StatusCode::FORBIDDEN, "bad_origin", "Cross-site requests are not allowed.");
     }
     if req.method() == Method::POST && req.uri().path().starts_with("/link/call/") {
         let json_body = req.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("application/json"));

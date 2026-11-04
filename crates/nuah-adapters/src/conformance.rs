@@ -163,6 +163,21 @@ fn put_new_and_transactions(db: &dyn Db) {
     assert!(r.is_err());
     assert!(db.get("t", "n1").unwrap().is_none() && db.get("t", "n2").unwrap().is_none(), "nesting does not commit early");
 
+    // an inner failure that the outer code handles undoes only the inner work
+    db.transaction(&mut || {
+        db.put("t", "outer_ok", &json!({"id":"outer_ok"}))?;
+        let inner = db.transaction(&mut || {
+            db.put("t", "inner_half", &json!({"id":"inner_half"}))?;
+            Err(LinkError::internal("inner failed"))
+        });
+        assert!(inner.is_err());
+        assert!(db.get("t", "inner_half")?.is_none(), "the inner write is already undone");
+        Ok(())
+    })
+    .unwrap();
+    assert!(db.get("t", "outer_ok").unwrap().is_some(), "the outer work survives");
+    assert!(db.get("t", "inner_half").unwrap().is_none(), "the failed inner work stays undone after commit");
+
     // a panic inside a transaction rolls it back and leaves the db usable
     let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _ = db.transaction(&mut || {
