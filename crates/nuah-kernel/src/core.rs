@@ -21,7 +21,6 @@ pub(crate) struct Inner {
     pub(crate) settings: BTreeMap<String, Value>,
     pub(crate) wake: watch::Sender<u64>,
     pub(crate) profile_name: String,
-    pub(crate) dist_name: String,
 }
 
 /// A running Core. Cheap to clone.
@@ -74,7 +73,7 @@ impl Core {
         let ids = take!("ids", Ids);
         let (wake, _) = watch::channel(0u64);
         let settings = plan.settings.clone();
-        let inner = Arc::new(Inner { db, auth, policy, clock, ids, plan, settings, wake, profile_name: dist.profile.name.clone(), dist_name: dist.name.clone() });
+        let inner = Arc::new(Inner { db, auth, policy, clock, ids, plan, settings, wake, profile_name: dist.profile.name.clone() });
         if let Err(e) = inner.prepare_storage() {
             return Err(vec![Problem { code: "storage".into(), plugins: vec![], message: e.message }]);
         }

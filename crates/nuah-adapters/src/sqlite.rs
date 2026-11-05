@@ -88,6 +88,10 @@ fn where_sql(collection: &str, conds: &[Cond]) -> Result<(String, Vec<Sql>)> {
                 sql += &format!(" AND ({})", parts.join(" OR "));
                 args.extend(items.into_iter().map(to_sql));
             }
+            Cmp::Has => {
+                sql += &format!(" AND json_type(body,'$.{f}')='array' AND EXISTS (SELECT 1 FROM json_each(body,'$.{f}') WHERE value IS ?)", f = c.field);
+                args.push(to_sql(&c.value));
+            }
             Cmp::Lt | Cmp::Lte | Cmp::Gt | Cmp::Gte => {
                 let op = match c.op { Cmp::Lt => "<", Cmp::Lte => "<=", Cmp::Gt => ">", _ => ">=" };
                 sql += &format!(" AND {p} {op} ?");

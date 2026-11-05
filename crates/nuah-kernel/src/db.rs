@@ -52,6 +52,8 @@ pub enum Cmp {
     Lte,
     Gt,
     Gte,
+    /// The field is an array containing the value.
+    Has,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -106,6 +108,10 @@ impl Query {
     }
     pub fn gte(mut self, field: &str, value: impl Into<Value>) -> Self {
         self.conds.push(Cond { field: field.into(), op: Cmp::Gte, value: value.into() });
+        self
+    }
+    pub fn has(mut self, field: &str, value: impl Into<Value>) -> Self {
+        self.conds.push(Cond { field: field.into(), op: Cmp::Has, value: value.into() });
         self
     }
     pub fn asc(mut self, field: &str) -> Self {
@@ -287,5 +293,6 @@ pub fn matches(body: &Value, c: &Cond) -> bool {
         Cmp::Lte => !got.is_null() && compare(got, &c.value).is_le(),
         Cmp::Gt => !got.is_null() && compare(got, &c.value).is_gt(),
         Cmp::Gte => !got.is_null() && compare(got, &c.value).is_ge(),
+        Cmp::Has => got.as_array().is_some_and(|a| a.iter().any(|v| compare(v, &c.value).is_eq())),
     }
 }

@@ -220,6 +220,9 @@ pub fn resolve(dist: &Distribution) -> (Vec<Problem>, Plan) {
         }
         for h in &m.hooks {
             own("hook handler", &h.handler, &mut ps);
+            for r in h.reasons.keys() {
+                own("reason code", r, &mut ps);
+            }
         }
     }
 

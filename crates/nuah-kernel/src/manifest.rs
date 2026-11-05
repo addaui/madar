@@ -173,6 +173,10 @@ pub struct HookDecl {
     pub order: i32,
     /// The name the code binds its handler under.
     pub handler: String,
+    /// Reason codes this hook may refuse with, under the hook plugin's namespaces. They are added to
+    /// the contract of every Operation the hook is attached to.
+    #[serde(default)]
+    pub reasons: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -277,6 +281,7 @@ impl Manifest {
                 }))
             })
             .collect();
-        json!({ "operations": ops, "events": self.events.keys().collect::<Vec<_>>() })
+        let hooks: Vec<Value> = self.hooks.iter().map(|h| json!({"stage": h.stage, "on": h.on, "reasons": h.reasons.keys().collect::<Vec<_>>()})).collect();
+        json!({ "operations": ops, "events": self.events.keys().collect::<Vec<_>>(), "hooks": hooks })
     }
 }

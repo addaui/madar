@@ -36,6 +36,12 @@ impl Core {
         let mut ops = Map::new();
         for (name, owner) in &inner.plan.ops {
             let d = &inner.manifest(owner).unwrap().operations[name];
+            let mut reasons = d.reasons.clone();
+            for h in inner.plan.hooks.iter().filter(|h| h.matches(name)) {
+                if let Some(hd) = inner.manifest(&h.plugin).and_then(|m| m.hooks.iter().find(|x| x.handler == h.handler)) {
+                    reasons.extend(hd.reasons.clone());
+                }
+            }
             let allowed = match (&d.permission, d.resource.is_some()) {
                 (Some(p), false) => inner.policy.allows(who, p, None, &inner.plan.table),
                 _ => true, // decided per resource
@@ -43,7 +49,7 @@ impl Core {
             ops.insert(name.clone(), json!({
                 "plugin": owner, "kind": d.kind, "description": d.description, "permission": d.permission,
                 "public": d.public, "resource": d.resource, "input": d.input, "output": d.output,
-                "reasons": d.reasons, "allowed": allowed,
+                "reasons": reasons, "allowed": allowed,
             }));
         }
         let mut events = Map::new();

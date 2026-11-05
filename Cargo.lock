@@ -274,6 +274,7 @@ dependencies = [
  "nuah-adapters",
  "nuah-kernel",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

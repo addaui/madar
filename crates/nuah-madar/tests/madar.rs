@@ -1,0 +1,530 @@
+use nuah_adapters::*;
+use nuah_kernel::*;
+use nuah_madar::*;
+use serde_json::{json, Value};
+use std::sync::Arc;
+
+struct App {
+    core: Core,
+    clock: Arc<FixedClock>,
+}
+
+fn app_on(db: &str) -> App {
+    let clock = FixedClock::at(1_700_000_000_000); // 2023-11-14
+    let mut p = profile_test(&[("quota", json!({"max_tasks": 50}))]);
+    if db == "sqlite" {
+        p.enabled.retain(|e| e != "db-memory");
+        p.enabled.push("db-sqlite".into());
+        p.settings.insert("db-sqlite".into(), json!({"path": ":memory:"}));
+    }
+    let dist = distribution_with(p, vec![Arc::new(TestClock(clock.clone())), Arc::new(TestIds)]);
+    let core = Core::start(&dist).unwrap_or_else(|p| panic!("{p:#?}"));
+    App { core, clock }
+}
+fn app() -> App {
+    app_on("memory")
+}
+
+fn who(name: &str) -> Identity {
+    Identity::new(name, name, &["member"])
+}
+fn viewer(name: &str) -> Identity {
+    Identity::new(name, name, &["viewer"])
+}
+
+impl App {
+    fn call(&self, who: &Identity, op: &str, input: Value) -> Result<Value> {
+        self.core.call_as(who, op, input, None).map(|r| r.output)
+    }
+    fn ok(&self, who: &Identity, op: &str, input: Value) -> Value {
+        self.call(who, op, input.clone()).unwrap_or_else(|e| panic!("{op} {input} failed: {e}"))
+    }
+    fn err(&self, who: &Identity, op: &str, input: Value) -> Error {
+        self.call(who, op, input).expect_err("expected a failure")
+    }
+    fn project(&self, who: &Identity, name: &str) -> String {
+        self.ok(who, "projects.create", json!({"name": name}))["id"].as_str().unwrap().to_string()
+    }
+    fn task(&self, who: &Identity, p: &str, title: &str) -> Value {
+        self.ok(who, "tasks.create", json!({"project": p, "title": title}))
+    }
+    fn titles(&self, who: &Identity, p: &str, status: &str) -> Vec<String> {
+        self.ok(who, "tasks.list", json!({"project": p, "status": status}))["tasks"].as_array().unwrap().iter().map(|t| t["title"].as_str().unwrap().to_string()).collect()
+    }
+    fn settle(&self) {
+        // listeners run after commit; drain until quiet (they may cause more events)
+        for _ in 0..5 {
+            if self.core.drain_listeners().unwrap() == 0 {
+                break;
+            }
+        }
+    }
+}
+
+#[test]
+fn a_new_project_has_columns_and_you_own_it() {
+    let a = app();
+    let al = who("alice");
+    let p = a.ok(&al, "projects.create", json!({"name": "Home"}));
+    assert_eq!(p["level"], "owner");
+    assert_eq!(p["statuses"].as_array().unwrap().len(), 3);
+    assert_eq!(p["can"], json!(["projects.read", "projects.write", "projects.manage"]));
+    assert_eq!(a.ok(&al, "projects.list", json!({}))["projects"].as_array().unwrap().len(), 1);
+    assert_eq!(a.err(&al, "projects.create", json!({"name": "x", "statuses": [{"id": "a", "name": "A"}]})).category, Category::Invalid, "at least two columns");
+    assert_eq!(a.err(&al, "projects.create", json!({"name": "x", "statuses": [{"id": "a", "name": "A"}, {"id": "a", "name": "B"}]})).category, Category::Invalid, "ids are unique");
+}
+
+#[test]
+fn access_is_answered_by_the_core_not_the_face() {
+    let a = app();
+    let (al, bo, ca, vi) = (who("alice"), who("bob"), who("carol"), viewer("vic"));
+    let p = a.project(&al, "Home");
+    let t = a.task(&al, &p, "Fix tap");
+    // a stranger cannot tell the project exists
+    assert_eq!(a.err(&bo, "tasks.list", json!({"project": p})).category, Category::NotFound);
+    assert_eq!(a.err(&bo, "projects.get", json!({"project": p})).category, Category::NotFound);
+    assert!(a.ok(&bo, "projects.list", json!({}))["projects"].as_array().unwrap().is_empty());
+    // viewer level: reads, cannot write; the result says so
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "viewer"}));
+    let got = a.ok(&bo, "tasks.get", json!({"project": p, "id": t["id"]}));
+    assert_eq!(got["can"], json!(["projects.read"]));
+    assert_eq!(a.err(&bo, "tasks.update", json!({"project": p, "id": t["id"], "title": "x"})).category, Category::Denied);
+    // editor level: writes, cannot manage
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "carol", "level": "editor"}));
+    a.ok(&ca, "tasks.update", json!({"project": p, "id": t["id"], "title": "Fix the tap"}));
+    assert_eq!(a.err(&ca, "projects.update", json!({"project": p, "name": "Mine"})).category, Category::Denied);
+    assert_eq!(a.err(&ca, "projects.share", json!({"project": p, "subject": "dave", "level": "viewer"})).category, Category::Denied);
+    // an instance-wide viewer Role cannot write even as an editor of the project
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "vic", "level": "editor"}));
+    assert_eq!(a.err(&vi, "tasks.update", json!({"project": p, "id": t["id"], "title": "y"})).category, Category::Denied);
+    assert!(a.call(&vi, "tasks.get", json!({"project": p, "id": t["id"]})).is_ok());
+    // a task id from another project is not found
+    let q = a.project(&al, "Work");
+    assert_eq!(a.err(&al, "tasks.get", json!({"project": q, "id": t["id"]})).category, Category::NotFound);
+}
+
+#[test]
+fn the_owner_cannot_be_removed_and_anyone_can_leave() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Home");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    assert_eq!(a.err(&al, "projects.unshare", json!({"project": p, "subject": "alice"})).reason.as_deref(), Some("projects.owner_fixed"));
+    assert_eq!(a.err(&al, "projects.share", json!({"project": p, "subject": "alice", "level": "viewer"})).reason.as_deref(), Some("projects.owner_fixed"));
+    assert_eq!(a.err(&al, "projects.leave", json!({"project": p})).reason.as_deref(), Some("projects.owner_fixed"));
+    a.ok(&bo, "projects.leave", json!({"project": p}));
+    assert_eq!(a.err(&bo, "tasks.list", json!({"project": p})).category, Category::NotFound);
+}
+
+#[test]
+fn tasks_have_a_board_order_and_moves_keep_it() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let t: Vec<Value> = ["a", "b", "c"].iter().map(|n| a.task(&al, &p, n)).collect();
+    assert_eq!(a.titles(&al, &p, "todo"), ["a", "b", "c"]);
+    // c to the top, then a after b in another column
+    a.ok(&al, "tasks.move", json!({"project": p, "id": t[2]["id"]}));
+    assert_eq!(a.titles(&al, &p, "todo"), ["c", "a", "b"]);
+    a.ok(&al, "tasks.move", json!({"project": p, "id": t[0]["id"], "status": "doing"}));
+    assert_eq!(a.titles(&al, &p, "doing"), ["a"]);
+    a.ok(&al, "tasks.move", json!({"project": p, "id": t[1]["id"], "status": "doing", "after": t[0]["id"]}));
+    assert_eq!(a.titles(&al, &p, "doing"), ["a", "b"]);
+    // many moves to the same spot squeeze the gap; the column is renumbered and order survives
+    for _ in 0..60 {
+        a.ok(&al, "tasks.move", json!({"project": p, "id": t[1]["id"], "status": "doing", "after": t[0]["id"]}));
+        a.ok(&al, "tasks.move", json!({"project": p, "id": t[2]["id"], "status": "doing", "after": t[0]["id"]}));
+    }
+    assert_eq!(a.titles(&al, &p, "doing"), ["a", "c", "b"]);
+    assert_eq!(a.err(&al, "tasks.move", json!({"project": p, "id": t[0]["id"], "status": "nope"})).reason.as_deref(), Some("tasks.bad_status"));
+    assert_eq!(a.err(&al, "tasks.move", json!({"project": p, "id": t[0]["id"], "after": "ghost"})).category, Category::NotFound);
+}
+
+#[test]
+fn finishing_sets_the_completion_time_and_reopening_clears_it() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let t = a.task(&al, &p, "x");
+    assert!(t["completed_at"].is_null());
+    let done = a.ok(&al, "tasks.update", json!({"project": p, "id": t["id"], "status": "done"}));
+    assert_eq!(done["completed_at"], 1_700_000_000_000i64);
+    let back = a.ok(&al, "tasks.move", json!({"project": p, "id": t["id"], "status": "todo"}));
+    assert!(back["completed_at"].is_null());
+    let again = a.ok(&al, "tasks.move", json!({"project": p, "id": t["id"], "status": "done"}));
+    assert!(!again["completed_at"].is_null());
+}
+
+#[test]
+fn editing_a_stale_copy_is_a_conflict_with_the_tasks_own_reason() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let t = a.task(&al, &p, "x");
+    let first = a.ok(&al, "tasks.update", json!({"project": p, "id": t["id"], "title": "y", "expected_rev": t["rev"]}));
+    assert!(first["rev"].as_u64() > t["rev"].as_u64());
+    let e = a.err(&al, "tasks.update", json!({"project": p, "id": t["id"], "title": "z", "expected_rev": t["rev"]}));
+    assert_eq!((e.category, e.reason.as_deref()), (Category::Conflict, Some("tasks.stale_revision")));
+}
+
+#[test]
+fn subtasks_are_one_level_and_go_with_their_parent() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let parent = a.task(&al, &p, "parent");
+    let sub = a.ok(&al, "tasks.create", json!({"project": p, "title": "sub", "parent": parent["id"]}));
+    assert_eq!(a.err(&al, "tasks.create", json!({"project": p, "title": "deep", "parent": sub["id"]})).reason.as_deref(), Some("tasks.bad_parent"));
+    assert_eq!(a.err(&al, "tasks.create", json!({"project": p, "title": "ghost", "parent": "nope"})).reason.as_deref(), Some("tasks.bad_parent"));
+    assert_eq!(a.titles(&al, &p, "todo"), ["parent", "sub"].iter().map(|s| s.to_string()).collect::<Vec<_>>().into_iter().filter(|_| true).collect::<Vec<_>>());
+    a.ok(&al, "discussion.add", json!({"project": p, "task": sub["id"], "body": "note on sub"}));
+    a.ok(&al, "tasks.remove", json!({"project": p, "id": parent["id"]}));
+    assert!(a.ok(&al, "tasks.list", json!({"project": p}))["tasks"].as_array().unwrap().is_empty());
+    a.settle();
+    // the comment on the removed subtask is cleaned up after the commit
+    let rec = a.ok(&al, "export.project", json!({"project": p}));
+    assert!(rec["comments"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn assignees_must_be_members_and_leaving_clears_the_assignment() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Home");
+    let e = a.err(&al, "tasks.create", json!({"project": p, "title": "x", "assignee": "bob"}));
+    assert_eq!(e.reason.as_deref(), Some("tasks.assignee_not_member"));
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let t = a.ok(&al, "tasks.create", json!({"project": p, "title": "x", "assignee": "bob"}));
+    assert_eq!(t["assignee"], "bob");
+    a.ok(&bo, "projects.leave", json!({"project": p}));
+    a.settle();
+    assert!(a.ok(&al, "tasks.get", json!({"project": p, "id": t["id"]}))["assignee"].is_null());
+}
+
+#[test]
+fn today_gathers_what_is_assigned_to_you_across_projects() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let (p, q) = (a.project(&al, "Home"), a.project(&bo, "Work"));
+    a.ok(&bo, "projects.share", json!({"project": q, "subject": "alice", "level": "editor"}));
+    a.ok(&al, "tasks.create", json!({"project": p, "title": "late", "assignee": "alice", "due": "2023-11-10"}));
+    a.ok(&al, "tasks.create", json!({"project": p, "title": "now", "assignee": "alice", "due": "2023-11-14", "priority": 9}));
+    a.ok(&bo, "tasks.create", json!({"project": q, "title": "soon", "assignee": "alice", "due": "2023-12-01"}));
+    a.ok(&bo, "tasks.create", json!({"project": q, "title": "someday", "assignee": "alice"}));
+    a.ok(&bo, "tasks.create", json!({"project": q, "title": "not mine", "assignee": "bob"}));
+    let done = a.ok(&al, "tasks.create", json!({"project": p, "title": "finished", "assignee": "alice", "status": "done"}));
+    let my = a.ok(&al, "tasks.my", json!({}));
+    assert_eq!(my["today"], "2023-11-14");
+    let rows: Vec<(String, String)> = my["tasks"].as_array().unwrap().iter().map(|t| (t["title"].as_str().unwrap().into(), t["bucket"].as_str().unwrap().into())).collect();
+    assert_eq!(rows, [("late", "overdue"), ("now", "today"), ("soon", "upcoming"), ("someday", "undated")].map(|(a, b)| (a.to_string(), b.to_string())));
+    assert!(my["tasks"].as_array().unwrap().iter().all(|t| t["id"] != done["id"]), "finished tasks are not on Today");
+    assert_eq!(my["tasks"][2]["project_name"], "Work");
+    assert!(my["tasks"][0]["can"].as_array().unwrap().contains(&json!("projects.write")));
+}
+
+#[test]
+fn labels_filter_and_removing_one_strips_it_from_tasks() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let l = a.ok(&al, "tasks.labels.create", json!({"project": p, "name": "urgent", "color": "red"}));
+    assert_eq!(a.err(&al, "tasks.labels.create", json!({"project": p, "name": "urgent"})).reason.as_deref(), Some("tasks.label_exists"));
+    let t = a.ok(&al, "tasks.create", json!({"project": p, "title": "tagged", "labels": [l["id"]]}));
+    a.task(&al, &p, "plain");
+    let q = a.project(&al, "Other");
+    assert_eq!(a.err(&al, "tasks.create", json!({"project": q, "title": "x", "labels": [l["id"]]})).reason.as_deref(), Some("tasks.unknown_label"));
+    let by = a.ok(&al, "tasks.list", json!({"project": p, "label": l["id"]}));
+    assert_eq!(by["tasks"].as_array().unwrap().len(), 1);
+    a.ok(&al, "tasks.labels.remove", json!({"project": p, "id": l["id"]}));
+    assert_eq!(a.ok(&al, "tasks.get", json!({"project": p, "id": t["id"]}))["labels"], json!([]));
+    assert!(a.ok(&al, "tasks.labels.list", json!({"project": p}))["labels"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn a_column_that_holds_tasks_cannot_be_removed() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    a.task(&al, &p, "x");
+    let cols = json!([{"id": "todo", "name": "Todo"}, {"id": "done", "name": "Done"}]);
+    // "doing" is empty, so it can go; "todo" is in use
+    a.ok(&al, "projects.update", json!({"project": p, "statuses": cols}));
+    let e = a.err(&al, "projects.update", json!({"project": p, "statuses": [{"id": "a", "name": "A"}, {"id": "done", "name": "Done"}]}));
+    assert_eq!(e.reason.as_deref(), Some("tasks.status_in_use"));
+    assert_eq!(e.params["status"], "todo");
+}
+
+#[test]
+fn the_quota_is_a_hook_the_task_plugin_knows_nothing_about() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    for n in 0..50 {
+        a.task(&al, &p, &format!("t{n}"));
+    }
+    let e = a.err(&al, "tasks.create", json!({"project": p, "title": "one too many"}));
+    assert_eq!(e.reason.as_deref(), Some("quota.exceeded"));
+    assert_eq!(e.params["max"], 50);
+    let q = a.project(&al, "Other");
+    a.task(&al, &q, "fine");
+}
+
+#[test]
+fn comments_replies_and_who_may_remove_them() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Home");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let t = a.task(&al, &p, "x");
+    let c = a.ok(&bo, "discussion.add", json!({"project": p, "task": t["id"], "body": "hello"}));
+    let r = a.ok(&al, "discussion.add", json!({"project": p, "task": t["id"], "body": "hi", "parent": c["id"]}));
+    assert_eq!(a.err(&al, "discussion.add", json!({"project": p, "task": t["id"], "body": "deep", "parent": r["id"]})).reason.as_deref(), Some("discussion.bad_parent"));
+    let list = a.ok(&bo, "discussion.list", json!({"project": p, "task": t["id"]}));
+    assert_eq!(list["comments"].as_array().unwrap().len(), 2);
+    assert_eq!(list["comments"][0]["can_remove"], true, "bob wrote it");
+    assert_eq!(list["comments"][1]["can_remove"], false, "bob did not write the reply, and is not the owner");
+    assert_eq!(a.err(&bo, "discussion.remove", json!({"project": p, "id": r["id"]})).reason.as_deref(), Some("discussion.not_yours"));
+    a.ok(&al, "discussion.remove", json!({"project": p, "id": c["id"]})); // the owner may; the reply goes too
+    assert!(a.ok(&al, "discussion.list", json!({"project": p, "task": t["id"]}))["comments"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn only_owners_read_the_audit_and_it_records_what_happened() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Home");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let t = a.task(&bo, &p, "x");
+    a.ok(&bo, "tasks.update", json!({"project": p, "id": t["id"], "priority": 8}));
+    a.settle();
+    assert_eq!(a.err(&bo, "audit.list", json!({"project": p})).category, Category::Denied);
+    let entries = a.ok(&al, "audit.list", json!({"project": p}));
+    let kinds: Vec<&str> = entries["entries"].as_array().unwrap().iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    for k in ["projects.created", "projects.shared", "tasks.created", "tasks.updated"] {
+        assert!(kinds.contains(&k), "{k} missing from {kinds:?}");
+    }
+    let upd = entries["entries"].as_array().unwrap().iter().find(|e| e["kind"] == "tasks.updated").unwrap();
+    assert_eq!(upd["actor"], "bob");
+    assert_eq!(upd["data"]["changes"]["priority"], json!([0, 8]));
+    // delivering twice records once
+    let n = kinds.len();
+    a.settle();
+    assert_eq!(a.ok(&al, "audit.list", json!({"project": p}))["entries"].as_array().unwrap().len(), n);
+}
+
+#[test]
+fn people_hear_about_assignments_and_finished_work() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Home");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let t = a.ok(&al, "tasks.create", json!({"project": p, "title": "Fix the tap", "assignee": "bob"}));
+    a.settle();
+    let inbox = a.ok(&bo, "inbox.list", json!({}));
+    assert_eq!(inbox["unread"], 1);
+    assert!(inbox["messages"][0]["text"].as_str().unwrap().contains("alice assigned you: Fix the tap"));
+    assert_eq!(inbox["messages"][0]["link"]["project"], p.as_str());
+    // assigning to yourself says nothing; finishing tells the creator
+    a.ok(&bo, "tasks.update", json!({"project": p, "id": t["id"], "status": "done"}));
+    a.settle();
+    assert_eq!(a.ok(&al, "inbox.list", json!({}))["messages"][0]["text"], "bob finished: Fix the tap");
+    assert!(a.ok(&bo, "inbox.list", json!({"unread": true}))["messages"].as_array().unwrap().len() == 1);
+    a.ok(&bo, "inbox.read", json!({}));
+    assert_eq!(a.ok(&bo, "inbox.list", json!({}))["unread"], 0);
+    assert_eq!(a.ok(&al, "inbox.list", json!({}))["messages"].as_array().unwrap().len(), 1, "inboxes are private");
+}
+
+#[test]
+fn live_changes_reach_members_and_stop_reaching_someone_who_left() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Home");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let (ca, cb) = (a.core.pulse_now().unwrap(), a.core.pulse_now().unwrap());
+    a.task(&al, &p, "one");
+    let kinds = |who: &Identity, c: &str| a.core.pulse(who, Some(c), 100).unwrap().events.iter().map(|e| e.kind.clone()).collect::<Vec<_>>();
+    assert_eq!(kinds(&bo, &cb), ["tasks.created"]);
+    assert_eq!(kinds(&al, &ca), ["tasks.created"]);
+    a.ok(&al, "projects.unshare", json!({"project": p, "subject": "bob"}));
+    let cb2 = a.core.pulse_now().unwrap();
+    a.task(&al, &p, "two");
+    assert!(kinds(&bo, &cb2).is_empty(), "bob left, so he hears nothing more from this project");
+    // but bob is told he was removed
+    assert_eq!(kinds(&bo, &cb).iter().filter(|k| *k == "projects.unshared").count(), 1);
+}
+
+#[test]
+fn export_holds_the_whole_project() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let t = a.task(&al, &p, "x");
+    a.ok(&al, "tasks.update", json!({"project": p, "id": t["id"], "archived": true}));
+    a.task(&al, &p, "y");
+    a.ok(&al, "tasks.labels.create", json!({"project": p, "name": "l"}));
+    a.ok(&al, "discussion.add", json!({"project": p, "task": t["id"], "body": "c"}));
+    let e = a.ok(&al, "export.project", json!({"project": p}));
+    assert_eq!(e["tasks"].as_array().unwrap().len(), 2, "archived tasks are included");
+    assert_eq!(e["labels"].as_array().unwrap().len(), 1);
+    assert_eq!(e["comments"].as_array().unwrap().len(), 1);
+    assert_eq!(a.err(&who("bob"), "export.project", json!({"project": p})).category, Category::NotFound);
+}
+
+#[test]
+fn archived_tasks_can_only_be_restored() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let t = a.task(&al, &p, "x");
+    a.ok(&al, "tasks.update", json!({"project": p, "id": t["id"], "archived": true}));
+    assert!(a.ok(&al, "tasks.list", json!({"project": p}))["tasks"].as_array().unwrap().is_empty());
+    assert_eq!(a.ok(&al, "tasks.list", json!({"project": p, "archived": true}))["tasks"].as_array().unwrap().len(), 1);
+    assert_eq!(a.err(&al, "tasks.update", json!({"project": p, "id": t["id"], "title": "y"})).reason.as_deref(), Some("tasks.archived"));
+    assert_eq!(a.err(&al, "tasks.move", json!({"project": p, "id": t["id"]})).reason.as_deref(), Some("tasks.archived"));
+    a.ok(&al, "tasks.update", json!({"project": p, "id": t["id"], "archived": false}));
+}
+
+#[test]
+fn deleting_a_project_removes_everything_in_it_after_the_commit() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Home");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let t = a.task(&al, &p, "x");
+    a.ok(&al, "discussion.add", json!({"project": p, "task": t["id"], "body": "c"}));
+    a.ok(&al, "tasks.labels.create", json!({"project": p, "name": "l"}));
+    a.settle();
+    let cb = a.core.pulse_now().unwrap();
+    a.ok(&al, "projects.delete", json!({"project": p}));
+    assert_eq!(a.err(&al, "tasks.list", json!({"project": p})).category, Category::NotFound);
+    assert_eq!(a.err(&bo, "tasks.list", json!({"project": p})).category, Category::NotFound);
+    assert!(a.ok(&bo, "projects.list", json!({}))["projects"].as_array().unwrap().is_empty());
+    let kinds: Vec<String> = a.core.pulse(&bo, Some(&cb), 50).unwrap().events.iter().map(|e| e.kind.clone()).collect();
+    assert_eq!(kinds, ["projects.deleted"], "members hear that it is gone");
+    a.settle();
+}
+
+#[test]
+fn a_retried_create_runs_once() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let one = a.core.call_as(&al, "tasks.create", json!({"project": p, "title": "once"}), Some("k")).unwrap();
+    let two = a.core.call_as(&al, "tasks.create", json!({"project": p, "title": "once"}), Some("k")).unwrap();
+    assert!(two.replayed);
+    assert_eq!(one.output["id"], two.output["id"]);
+    assert_eq!(a.titles(&al, &p, "todo"), ["once"]);
+}
+
+#[test]
+fn prefs_default_and_change_and_tell_only_their_owner() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    assert_eq!(a.ok(&al, "prefs.get", json!({}))["theme"], "paper");
+    let (ca, cb) = (a.core.pulse_now().unwrap(), a.core.pulse_now().unwrap());
+    a.ok(&al, "prefs.set", json!({"theme": "ink", "language": "ar"}));
+    assert_eq!(a.ok(&al, "prefs.get", json!({}))["language"], "ar");
+    assert_eq!(a.ok(&bo, "prefs.get", json!({}))["language"], "en");
+    assert_eq!(a.core.pulse(&al, Some(&ca), 10).unwrap().events.len(), 1);
+    assert!(a.core.pulse(&bo, Some(&cb), 10).unwrap().events.is_empty());
+}
+
+#[test]
+fn input_that_could_hurt_is_refused_before_any_plugin_sees_it() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    for bad in [json!({"project": p, "title": ""}), json!({"project": p, "title": "x", "priority": 11}), json!({"project": p, "title": "x", "due": "tomorrow"}), json!({"project": p, "title": "x", "nope": 1})] {
+        assert_eq!(a.err(&al, "tasks.create", bad).category, Category::Invalid);
+    }
+    assert_eq!(a.err(&al, "tasks.create", json!({"title": "no project"})).category, Category::Invalid);
+}
+
+#[test]
+fn memory_and_sqlite_tell_the_same_story() {
+    fn story(a: &App) -> Vec<Value> {
+        let (al, bo) = (who("alice"), who("bob"));
+        let mut out = vec![];
+        let p = a.project(&al, "Home");
+        a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+        let l = a.ok(&al, "tasks.labels.create", json!({"project": p, "name": "x"}));
+        for (i, n) in ["a", "b", "c", "d"].iter().enumerate() {
+            let t = a.ok(&if i % 2 == 0 { al.clone() } else { bo.clone() }, "tasks.create", json!({"project": p, "title": n, "priority": i, "assignee": "bob", "labels": [l["id"]]}));
+            out.push(t);
+        }
+        let first = out[0]["id"].clone();
+        a.ok(&bo, "tasks.move", json!({"project": p, "id": out[3]["id"], "after": first}));
+        a.ok(&al, "tasks.update", json!({"project": p, "id": first, "status": "done"}));
+        a.ok(&al, "discussion.add", json!({"project": p, "task": first, "body": "hi"}));
+        a.settle();
+        out.push(a.ok(&al, "tasks.list", json!({"project": p})));
+        out.push(a.ok(&bo, "tasks.my", json!({})));
+        out.push(a.ok(&bo, "inbox.list", json!({})));
+        out.push(a.ok(&al, "export.project", json!({"project": p})));
+        out.push(a.ok(&al, "audit.list", json!({"project": p})));
+        out
+    }
+    assert_eq!(story(&app_on("memory")), story(&app_on("sqlite")));
+}
+
+#[test]
+fn a_viewer_role_sees_what_they_may_do_in_describe() {
+    let a = app();
+    let d = a.core.describe(&viewer("vic"));
+    assert_eq!(d["operations"]["projects.create"]["allowed"], false);
+    assert_eq!(d["operations"]["prefs.get"]["allowed"], true);
+    assert_eq!(d["permissions"]["projects.read"]["held"], true);
+    let kinds: std::collections::BTreeMap<String, String> = d["plugins"].as_array().unwrap().iter().filter(|p| p["state"] == "active").map(|p| (p["id"].as_str().unwrap().to_string(), p["kind"].as_str().unwrap().to_string())).collect();
+    assert_eq!(kinds["notify-inbox"], "provider");
+    assert_eq!(kinds["theme-ink"], "theme");
+    assert_eq!(kinds["db-memory"], "adapter");
+    assert_eq!(kinds["tasks"], "feature");
+    assert_eq!(d["themes"].as_array().unwrap().len(), 2);
+    assert_eq!(d["extension_points"]["notify.channel"]["providers"], json!(["notify-inbox"]));
+}
+
+#[test]
+fn the_time_a_task_was_made_comes_from_the_clock_port() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    a.clock.advance(5000);
+    let t = a.task(&al, &p, "x");
+    assert_eq!(t["created_at"], 1_700_000_005_000i64);
+}
+
+#[test]
+fn sign_in_gives_an_expiring_session() {
+    let clock = FixedClock::at(1_700_000_000_000);
+    let hash = AuthPassword::hash_password("correct horse");
+    let mut p = profile_server(":memory:", json!([{"name": "alice", "password_hash": hash, "roles": ["member"]}]));
+    p.enabled.retain(|e| !["db-sqlite", "clock-system", "ids-random"].contains(&e.as_str()));
+    p.enabled.extend(["db-memory", "clock-fixed", "ids-sequential"].map(String::from));
+    p.settings.remove("db-sqlite");
+    p.settings.insert("auth-password".into(), json!({"session_hours": 1, "accounts": [{"name": "alice", "password_hash": hash, "roles": ["member"]}]}));
+    p.grants.insert("auth-password".into(), vec![]);
+    let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock.clone())), Arc::new(TestIds)])).unwrap_or_else(|p| panic!("{p:#?}"));
+    let call = |cred: Option<&str>, op: &str, input: Value| core.call(CallRequest { credential: cred.map(String::from), op: op.into(), input, key: None, contract: None });
+    assert_eq!(call(None, "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated, "no credential, no entry");
+    let bad = call(None, "auth.sign_in", json!({"name": "alice", "password": "wrong"})).unwrap_err();
+    assert_eq!((bad.category, bad.reason.as_deref()), (Category::Unauthenticated, Some("auth.bad_credentials")));
+    assert_eq!(call(None, "auth.sign_in", json!({"name": "nobody", "password": "x"})).unwrap_err().reason.as_deref(), Some("auth.bad_credentials"), "same answer for an unknown name");
+    let s = call(None, "auth.sign_in", json!({"name": "alice", "password": "correct horse"})).unwrap().output;
+    let token = s["token"].as_str().unwrap().to_string();
+    assert_eq!(call(Some(&token), "auth.who", json!({})).unwrap().output["subject"], "alice");
+    assert!(call(Some(&token), "projects.create", json!({"name": "Home"})).is_ok());
+    assert_eq!(call(Some("made-up"), "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated);
+    clock.advance(30 * 60 * 1000);
+    call(Some(&token), "auth.refresh", json!({"token": token})).unwrap();
+    clock.advance(45 * 60 * 1000);
+    assert!(call(Some(&token), "projects.list", json!({})).is_ok(), "refreshed, so still valid");
+    clock.advance(2 * 60 * 60 * 1000);
+    assert_eq!(call(Some(&token), "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated, "expired");
+    let s2 = call(None, "auth.sign_in", json!({"name": "alice", "password": "correct horse"})).unwrap().output;
+    let t2 = s2["token"].as_str().unwrap().to_string();
+    call(Some(&t2), "auth.sign_out", json!({"token": t2})).unwrap();
+    assert_eq!(call(Some(&t2), "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated, "signed out");
+    // the public description says how to sign in and nothing else
+    let public = core.describe_public();
+    assert!(public["operations"].as_object().unwrap().keys().all(|k| k == "auth.sign_in"));
+}

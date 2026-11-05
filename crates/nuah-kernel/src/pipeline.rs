@@ -227,10 +227,9 @@ impl Inner {
             schema::validate(&decl.output, &output).map_err(|e| Error::internal(format!("{op} returned the wrong shape: {}", e.message)))?;
         }
         let mut output = output;
-        if tx.depth == 0 {
-            if let Some(a) = &decl.affordances {
-                self.add_can(tx, a, &mut output)?;
-            }
+        // Nested calls get the can-list too: a plugin deciding what its caller may do reads it.
+        if let Some(a) = &decl.affordances {
+            self.add_can(tx, a, &mut output)?;
         }
         let _ = is_query;
         Ok(output)

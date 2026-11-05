@@ -67,6 +67,20 @@ fn queries(db: &dyn Db) {
         Ok(())
     })
     .unwrap();
+    db.write(&mut |w| {
+        put(w, "tg", "a", json!({"tags": ["x", "y"]}));
+        put(w, "tg", "b", json!({"tags": ["y"]}));
+        put(w, "tg", "c", json!({"tags": []}));
+        put(w, "tg", "d", json!({"tags": "y"}));
+        Ok(())
+    })
+    .unwrap();
+    db.read(&mut |r| {
+        assert_eq!(ids(&r.query("tg", &Query::new().has("tags", "y"))?), ["a", "b"]);
+        assert_eq!(ids(&r.query("tg", &Query::new().has("tags", "x"))?), ["a"]);
+        Ok(())
+    })
+    .unwrap();
     db.read(&mut |r| {
         let todo = r.query("q", &Query::new().eq("s", "todo"))?;
         assert_eq!(ids(&todo), ["d0", "d2", "d4"], "default order is by id; tombstones and other collections are invisible");
@@ -84,6 +98,7 @@ fn queries(db: &dyn Db) {
         let p3 = r.query("q", &Query::new().asc("p").limit(2).offset(4))?;
         assert_eq!((ids(&p3), p3.next), (vec!["d3".to_string()], None));
         assert_eq!(r.count("q", &[])?, 5);
+        assert!(r.query("q", &Query::new().has("tags", "a"))?.items.is_empty(), "a missing array contains nothing");
         assert_eq!(r.count("q", &[Cond { field: "s".into(), op: Cmp::Eq, value: json!("todo") }])?, 3);
         assert!(r.query("q", &Query::new().eq("a b", 1)).is_err(), "field paths are checked");
         assert!(r.query("q", &Query::new().eq("a'); drop table docs; --", 1)).is_err());
