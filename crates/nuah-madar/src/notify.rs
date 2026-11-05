@@ -1,4 +1,4 @@
-//! Notifications, as the example of a plugin-defined port.
+//! Notifications, as the example of an extension point.
 //!
 //! `notify` invents the port `notify.channel` (policy `many`: every channel gets every message) and
 //! turns "a task was completed" into a message. It knows no channel by name. `notify-inbox` and
@@ -16,7 +16,7 @@ pub struct NotifyPlugin;
 impl Plugin for NotifyPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"notify","version":"0.1.0", "description":"Sends notifications through whichever channel plugins are on.","kind":"domain","quality":"bronze",
+            &json!({"id":"notify","version":"0.1.0", "description":"Sends notifications through whichever channel plugins are on.","quality":"bronze",
                 "requires":{"extension_points":["notify.channel"]},
                 "defines":{"extension_points":[{"name":"notify.channel","policy":"many",
                     "doc":"Somewhere a message to a user can go. Every enabled channel receives every message.",
@@ -53,7 +53,7 @@ pub struct NotifyInboxPlugin;
 impl Plugin for NotifyInboxPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"notify-inbox","version":"0.1.0", "description":"Notification channel: keeps messages in a per-person inbox.","kind":"adapter","quality":"bronze",
+            &json!({"id":"notify-inbox","version":"0.1.0", "description":"Notification channel: keeps messages in a per-person inbox.","quality":"bronze",
                 "requires":{"ports":["db","ids","clock"]},"data":{"owns":["inbox"]},
                 "provides":[{"extension_point":"notify.channel","priority":10}],
                 "contributes":{"ops":["inbox.list","inbox.read"]}})
@@ -109,7 +109,7 @@ pub struct NotifyCountPlugin;
 impl Plugin for NotifyCountPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"notify-count","version":"0.1.0", "description":"Notification channel: keeps a count of unread messages per person.","kind":"adapter","quality":"bronze",
+            &json!({"id":"notify-count","version":"0.1.0", "description":"Notification channel: keeps a count of unread messages per person.","quality":"bronze",
                 "requires":{"ports":["db"]},"data":{"owns":["notify_counts"]},
                 "provides":[{"extension_point":"notify.channel","priority":20}],
                 "contributes":{"ops":["notify.count"]}})

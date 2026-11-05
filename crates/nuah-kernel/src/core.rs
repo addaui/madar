@@ -1137,7 +1137,7 @@ impl Core {
                 s
             }));
             events.extend(m.contributes.events.iter().map(|k| json!({"kind": k, "plugin": id, "schema": m.contributes.event_schemas.get(k)})));
-            plugins.push(json!({"id": id, "version": m.version, "kind": m.kind, "runtime": m.runtime, "quality": m.quality, "data": m.data, "requires": m.requires.plugins, "settings_schema": m.settings_schema}));
+            plugins.push(json!({"id": id, "version": m.version, "kind": m.kind(), "runtime": m.runtime, "quality": m.quality, "data": m.data, "requires": m.requires.plugins, "settings_schema": m.settings_schema}));
         }
         let ports: HashMap<&String, &String> = inner.bound.iter().collect();
         let mut extension_points: Vec<Value> = inner

@@ -257,7 +257,7 @@ pub struct SqliteDbPlugin;
 impl Plugin for SqliteDbPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            r#"{"id":"adapter-sqlite","version":"0.1.0", "description":"Stores data in a SQLite file.","kind":"adapter","implements":[{"port":"db"}],"quality":"reference","settings_schema":{"type":"object","properties":{"path":{"type":"string","minLength":1}}}}"#,
+            r#"{"id":"adapter-sqlite","version":"0.1.0", "description":"Stores data in a SQLite file.","implements":[{"port":"db"}],"quality":"reference","settings_schema":{"type":"object","properties":{"path":{"type":"string","minLength":1}}}}"#,
         )
     }
     fn activate(&self, act: &mut Activation) -> Result<()> {

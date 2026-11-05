@@ -1,5 +1,5 @@
-//! Plugins that add to, wrap, or decorate the task domain without the task plugin knowing about them:
-//! audit (wrap), quota (wrap with veto), prefs (add), export (add route + UI slot), themes (data only).
+//! Plugins that add to, or hook into, the task domain without the task plugin knowing about them:
+//! audit (after hook), quota (before hook that can refuse), prefs (add), export (add route + UI slot), themes (data only).
 
 use nuah_kernel::*;
 use serde_json::{json, Value};
@@ -15,7 +15,7 @@ pub struct AuditPlugin;
 impl Plugin for AuditPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"audit","version":"0.1.0", "description":"Records who changed what, with before and after values.","kind":"wrap","quality":"silver",
+            &json!({"id":"audit","version":"0.1.0", "description":"Records who changed what, with before and after values.","quality":"silver",
                 "requires":{"ports":["db","ids"]},"data":{"owns":["audit"],"reads":["*"]},"contributes":{"ops":["audit.list"]}})
             .to_string(),
         )
@@ -73,7 +73,7 @@ pub struct QuotaPlugin;
 impl Plugin for QuotaPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"quota","version":"0.1.0", "description":"Limits how many tasks one project may hold.","kind":"wrap","quality":"bronze",
+            &json!({"id":"quota","version":"0.1.0", "description":"Limits how many tasks one project may hold.","quality":"bronze",
                 "requires":{"ports":["db"],"plugins":["tasks"]},"data":{"reads":["tasks"]},"contributes":{"ops":[]},
                 "settings_schema":{"type":"object","properties":{"max_tasks":{"type":"integer","minimum":1}}}})
             .to_string(),
@@ -104,7 +104,7 @@ pub struct PrefsPlugin;
 impl Plugin for PrefsPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"prefs","version":"0.1.0", "description":"Per-person preferences such as the chosen theme.","kind":"domain","quality":"bronze",
+            &json!({"id":"prefs","version":"0.1.0", "description":"Per-person preferences such as the chosen theme.","quality":"bronze",
                 "requires":{"ports":["db"],"capabilities":["events"]},"data":{"owns":["prefs"]},
                 "contributes":{"ops":["prefs.get","prefs.set"],"events":["prefs.changed"]}})
             .to_string(),
@@ -150,7 +150,7 @@ pub struct ExportPlugin;
 impl Plugin for ExportPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"export","version":"0.1.0", "description":"Adds a button that downloads your data as JSON.","kind":"domain","quality":"bronze",
+            &json!({"id":"export","version":"0.1.0", "description":"Adds a button that downloads your data as JSON.","quality":"bronze",
                 "requires":{"plugins":["tasks"]},
                 "contributes":{"ops":[],"routes":["GET /x/export/madar.json"],
                     "slots":[{"slot":"toolbar","id":"export","label":"Export JSON","faces":["web"],
@@ -194,7 +194,7 @@ impl Plugin for ExportPlugin {
 
 pub fn theme_plugin(id: &str, name: &str, tokens: Value) -> DataPlugin {
     DataPlugin(Manifest::parse(
-        &json!({"id": format!("theme-{id}"), "version":"0.1.0","description": format!("Colour theme: {name}."),"kind":"theme","runtime":"data",
+        &json!({"id": format!("theme-{id}"), "version":"0.1.0","description": format!("Colour theme: {name}."),"runtime":"data",
             "contributes":{"assets":[{"kind":"theme","id":id,"name":name,"faces":["web"],"tokens":tokens}]}})
         .to_string(),
     ))

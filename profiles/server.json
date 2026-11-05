@@ -7,7 +7,7 @@
   "settings": {
     "adapter-sqlite": {"path": "data/server.db"},
     "auth-token": {"tokens": {
-      "demo-owner":  {"subject": "demo",  "display": "Demo",  "roles": ["owner"]},
+      "demo-admin":  {"subject": "demo",  "display": "Demo",  "roles": ["admin"]},
       "demo-viewer": {"subject": "demo",  "display": "Demo (read only)", "roles": ["viewer"]},
       "other-user":  {"subject": "other", "display": "Other", "roles": ["member"]}
     }},

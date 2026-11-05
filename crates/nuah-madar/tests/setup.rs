@@ -98,3 +98,13 @@ fn candidate_lists_and_cycles_name_their_plugins() {
     let p = nuah_kernel::setup::Problem::from_message("hook order constraints form a cycle among a, b", &ids);
     assert_eq!((p.code.as_str(), p.plugins), ("bad_order", vec!["a".to_string(), "b".to_string()]));
 }
+
+#[test]
+fn a_plugins_kind_is_derived_from_its_manifest() {
+    let info = catalog_info(&memory_for_tests());
+    let kind = |id: &str| info["plugins"].as_array().unwrap().iter().find(|p| p["id"] == id).unwrap()["kind"].as_str().unwrap().to_string();
+    assert_eq!(kind("adapter-sqlite"), "adapter");
+    assert_eq!(kind("notify-inbox"), "provider", "fills an extension point, so it is a provider, not an adapter");
+    assert_eq!(kind("theme-ink"), "theme");
+    assert_eq!((kind("tasks"), kind("audit"), kind("notify")), ("feature".into(), "feature".into(), "feature".into()));
+}

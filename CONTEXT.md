@@ -62,7 +62,7 @@ _Avoid_: grade, tier, rating
 ### Choosing what runs
 
 **Distribution**:
-A named product: a Catalog of plugins together with the Profiles it ships. Madar is a Distribution.
+A named product: a Catalog of plugins together with the Profiles it ships. Starting a Core takes a Distribution set up with one Profile. Madar is a Distribution.
 _Avoid_: edition, flavour, app (for the product as packaged plugins)
 
 **Enabled / Active / Inactive**:

@@ -39,7 +39,7 @@ fn server_dist() -> Distribution {
             bindings: HashMap::new(),
             settings: HashMap::from([
                 ("auth-token".to_string(), json!({"tokens": {
-                    "t-alice": {"subject": "alice", "display": "Alice", "roles": ["owner"]},
+                    "t-alice": {"subject": "alice", "display": "Alice", "roles": ["admin"]},
                     "t-bob": {"subject": "bob", "display": "Bob", "roles": ["member"]},
                     "t-view": {"subject": "alice", "display": "Alice (read only)", "roles": ["viewer"]}}})),
                 ("quota".to_string(), json!({"max_tasks": 3})),
@@ -768,7 +768,7 @@ fn a_plugin_cannot_forge_the_identity_it_calls_as() {
         (OpSpec::command("evil.forge", "prefs.write", "", json!({"type":"object"})), |ctx, _i, svc| {
             let mut c = ctx.clone();
             c.subject = "alice".into();
-            c.roles = vec!["owner".into()];
+            c.roles = vec!["admin".into()];
             c.plugin = "export".into();
             svc.call(&c, "projects.create", json!({"name": "forged"}))
         }),

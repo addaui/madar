@@ -215,7 +215,7 @@ pub struct MemoryDbPlugin;
 impl Plugin for MemoryDbPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            r#"{"id":"adapter-memory","version":"0.1.0", "description":"Stores data in memory. Gone when the program stops; for tests.","kind":"adapter","implements":[{"port":"db"}],"quality":"reference"}"#,
+            r#"{"id":"adapter-memory","version":"0.1.0", "description":"Stores data in memory. Gone when the program stops; for tests.","implements":[{"port":"db"}],"quality":"reference"}"#,
         )
     }
     fn activate(&self, act: &mut Activation) -> Result<()> {

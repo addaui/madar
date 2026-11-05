@@ -24,7 +24,7 @@ fn token_core() -> Core {
     d.enabled.retain(|e| e != "auth-local" && e != "policy-allow-all");
     d.enabled.extend(["auth-token".to_string(), "policy-roles".to_string()]);
     d.settings.insert("auth-token".into(), json!({"tokens": {
-        "t-alice": {"subject":"alice","display":"Alice","roles":["owner"]},
+        "t-alice": {"subject":"alice","display":"Alice","roles":["admin"]},
         "t-view": {"subject":"alice","display":"Alice RO","roles":["viewer"]}}}));
     start(d).unwrap()
 }
@@ -130,7 +130,7 @@ fn pulse_events_are_private_to_their_owner() {
     d.enabled.retain(|e| e != "auth-local" && e != "policy-allow-all");
     d.enabled.extend(["auth-token".to_string(), "policy-roles".to_string()]);
     d.settings.insert("auth-token".into(), json!({"tokens": {
-        "t-a": {"subject":"a","roles":["owner"]}, "t-b": {"subject":"b","roles":["owner"]}}}));
+        "t-a": {"subject":"a","roles":["admin"]}, "t-b": {"subject":"b","roles":["admin"]}}}));
     let url = spawn_server(start(d).unwrap());
     let a = Http::new(&url, Some("t-a".into()), "test");
     let b = Http::new(&url, Some("t-b".into()), "test");

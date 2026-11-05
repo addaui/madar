@@ -25,7 +25,7 @@ pub struct StdPlugin;
 impl Plugin for StdPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            r#"{"id":"std","version":"0.1.0", "description":"Real clock and random ids.","kind":"adapter","implements":[{"port":"clock"},{"port":"ids"}],"quality":"reference"}"#,
+            r#"{"id":"std","version":"0.1.0", "description":"Real clock and random ids.","implements":[{"port":"clock"},{"port":"ids"}],"quality":"reference"}"#,
         )
     }
     fn activate(&self, act: &mut Activation) -> Result<()> {
@@ -53,7 +53,7 @@ pub struct FixedPlugin;
 impl Plugin for FixedPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            r#"{"id":"std-fixed","version":"0.1.0", "description":"Fixed clock and predictable ids, for tests.","kind":"adapter","implements":[{"port":"clock"},{"port":"ids"}],"quality":"test"}"#,
+            r#"{"id":"std-fixed","version":"0.1.0", "description":"Fixed clock and predictable ids, for tests.","implements":[{"port":"clock"},{"port":"ids"}],"quality":"test"}"#,
         )
     }
     fn activate(&self, act: &mut Activation) -> Result<()> {

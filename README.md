@@ -35,9 +35,9 @@ target/debug/madar --db /tmp/madar.db add Home "Fix the tap" -p 8
 
 # Face 1 + face 2 against a hosted core
 target/debug/nuah-server --profile profiles/server.json --web faces/web
-#   open http://127.0.0.1:8787/  and sign in with token: demo-owner
-target/debug/madar --remote http://127.0.0.1:8787 --token demo-owner list
-target/debug/madar --remote http://127.0.0.1:8787 --token demo-owner watch
+#   open http://127.0.0.1:8787/  and sign in with token: demo-admin
+target/debug/madar --remote http://127.0.0.1:8787 --token demo-admin list
+target/debug/madar --remote http://127.0.0.1:8787 --token demo-admin watch
 ```
 
 The tokens in `profiles/server.json` are demo values. Do not expose that profile to a network.

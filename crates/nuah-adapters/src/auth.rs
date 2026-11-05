@@ -14,7 +14,7 @@ impl Auth for Local {
         "auth-local"
     }
     fn authenticate(&self, _credential: Option<&str>) -> Result<Identity> {
-        Ok(Identity { subject: "local-user".into(), display: self.display.clone(), roles: vec!["owner".into()] })
+        Ok(Identity { subject: "local-user".into(), display: self.display.clone(), roles: vec!["admin".into()] })
     }
     fn signin(&self) -> Value {
         json!({"kind": "none"})
@@ -24,7 +24,7 @@ impl Auth for Local {
 pub struct AuthLocalPlugin;
 impl Plugin for AuthLocalPlugin {
     fn manifest(&self) -> Manifest {
-        Manifest::parse(r#"{"id":"auth-local","version":"0.1.0", "description":"One local user, no sign-in.","kind":"adapter","implements":[{"port":"auth"}],"quality":"reference","settings_schema":{"type":"object","properties":{"display":{"type":"string","minLength":1}}}}"#)
+        Manifest::parse(r#"{"id":"auth-local","version":"0.1.0", "description":"One local user, no sign-in.","implements":[{"port":"auth"}],"quality":"reference","settings_schema":{"type":"object","properties":{"display":{"type":"string","minLength":1}}}}"#)
     }
     fn activate(&self, act: &mut Activation) -> Result<()> {
         let display = act.settings().get("display").and_then(|d| d.as_str()).unwrap_or("Me").to_string();
@@ -59,9 +59,9 @@ impl Auth for Token {
 pub struct AuthTokenPlugin;
 impl Plugin for AuthTokenPlugin {
     fn manifest(&self) -> Manifest {
-        Manifest::parse(r#"{"id":"auth-token","version":"0.1.0", "description":"Sign in with an access token.","kind":"adapter","implements":[{"port":"auth"}],"quality":"reference","settings_schema":{"type":"object","required":["tokens"],"properties":{"tokens":{"type":"object","additionalProperties":{"type":"object","required":["subject"],"properties":{"subject":{"type":"string","minLength":1}}}}}}}"#)
+        Manifest::parse(r#"{"id":"auth-token","version":"0.1.0", "description":"Sign in with an access token.","implements":[{"port":"auth"}],"quality":"reference","settings_schema":{"type":"object","required":["tokens"],"properties":{"tokens":{"type":"object","additionalProperties":{"type":"object","required":["subject"],"properties":{"subject":{"type":"string","minLength":1}}}}}}}"#)
     }
-    /// Settings: {"tokens": {"<token>": {"subject": "...", "display": "...", "roles": ["owner"]}}}
+    /// Settings: {"tokens": {"<token>": {"subject": "...", "display": "...", "roles": ["admin"]}}}
     fn activate(&self, act: &mut Activation) -> Result<()> {
         let Some(map) = act.settings().get("tokens").and_then(|t| t.as_object()) else {
             return Err(LinkError::internal("setting `tokens` is required"));

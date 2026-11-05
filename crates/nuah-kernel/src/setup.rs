@@ -78,7 +78,7 @@ pub fn catalog_info(dist: &Distribution) -> Value {
         .map(|p| {
             let m = p.manifest();
             json!({
-                "id": m.id, "version": m.version, "description": m.description, "kind": m.kind, "quality": m.quality,
+                "id": m.id, "version": m.version, "description": m.description, "kind": m.kind(), "quality": m.quality,
                 "runtime": m.runtime, "profiles": m.profiles,
                 "implements": m.implements.iter().map(|i| &i.port).collect::<Vec<_>>(),
                 "defines": m.defines.extension_points.iter().map(|d| json!({"name": d.name, "policy": d.policy})).collect::<Vec<_>>(),

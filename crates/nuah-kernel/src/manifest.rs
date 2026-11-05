@@ -11,9 +11,6 @@ pub struct Manifest {
     /// One line for people choosing plugins (the setup wizard shows it).
     #[serde(default)]
     pub description: String,
-    /// "adapter", "domain", "wrap", "theme", ...
-    #[serde(default)]
-    pub kind: String,
     /// "native" (T0) here. "data" means no code at all (themes). wasm/js/remote are not built yet.
     #[serde(default = "native")]
     pub runtime: String,
@@ -55,6 +52,23 @@ pub struct Order {
     /// Plugin ids whose hooks run after this plugin's.
     #[serde(default)]
     pub before: Vec<String>,
+}
+
+impl Manifest {
+    /// What kind of plugin this is, worked out from what it says it does: an adapter fills a Port, a
+    /// provider fills an extension point, a theme only carries data for faces, anything else is a
+    /// feature. Never declared, so it cannot disagree with the rest of the manifest.
+    pub fn kind(&self) -> &'static str {
+        if !self.implements.is_empty() {
+            "adapter"
+        } else if !self.provides.is_empty() {
+            "provider"
+        } else if self.runtime == "data" {
+            "theme"
+        } else {
+            "feature"
+        }
+    }
 }
 
 fn native() -> String {
