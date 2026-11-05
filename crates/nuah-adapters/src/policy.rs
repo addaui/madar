@@ -58,7 +58,7 @@ impl Policy for Roles {
 pub struct PolicyRolesPlugin;
 impl Plugin for PolicyRolesPlugin {
     fn manifest(&self) -> Manifest {
-        Manifest::parse(r#"{"id":"policy-roles","version":"0.1.0", "description":"Grants permissions by role (owner, member, viewer).","kind":"adapter","implements":[{"port":"policy"}],"quality":"reference"}"#)
+        Manifest::parse(r#"{"id":"policy-roles","version":"0.1.0", "description":"Grants permissions by role (owner, member, viewer).","kind":"adapter","implements":[{"port":"policy"}],"quality":"reference","settings_schema":{"type":"object","properties":{"roles":{"type":"object"}}}}"#)
     }
     /// Settings: {"roles": {"viewer": ["*.read"]}} replaces the defaults for the named roles.
     fn activate(&self, act: &mut Activation) -> Result<()> {

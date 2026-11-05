@@ -1,7 +1,7 @@
 //! A small JSON-Schema subset. The contract is checked by the kernel before any plugin code runs,
 //! so every handler can trust the shape of its input.
 //!
-//! Supported: type (string or list), enum, required, properties, additionalProperties:false,
+//! Supported: type (string or list), enum, required, properties, additionalProperties (false, or a schema for the other keys),
 //! minLength, maxLength, minimum, maximum, items, minItems, maxItems.
 
 use crate::error::{LinkError, Result};
@@ -67,6 +67,13 @@ fn check(schema: &Value, v: &Value, path: &str) -> Result<()> {
                         if !p.contains_key(key) {
                             return Err(LinkError::invalid(&join(path, key), "is not allowed"));
                         }
+                    }
+                }
+            }
+            if let Some(extra @ Value::Object(_)) = obj.get("additionalProperties") {
+                for (key, child) in map {
+                    if !props.is_some_and(|p| p.contains_key(key)) {
+                        check(extra, child, &join(path, key))?;
                     }
                 }
             }

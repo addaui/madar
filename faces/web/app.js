@@ -181,13 +181,17 @@ function renderSlot(name, host) {
 const project = () => state.projects.find((p) => p.id === state.projectId);
 // What you may do here depends on your role in THIS project, not only on the global operation list.
 const role = () => project()?.role || 'viewer';
-const canEdit = () => can('tasks.write') && role() !== 'viewer';
-const isOwner = () => role() === 'owner';
+const canEdit = () => can('tasks.update') && role() !== 'viewer';
+const canAdd = () => can('tasks.create') && role() !== 'viewer';
+const isOwner = () => role() === 'owner' && can('projects.share');
 const me = () => state.desc.identity.subject;
 const nameOf = (subject) => (subject === me() ? 'you' : subject);
 
+let memSeq = 0;
 async function loadMembers() {
-  state.members = state.projectId ? await call('projects.members', { id: state.projectId }).catch(() => []) : [];
+  const mine = ++memSeq, pid = state.projectId;
+  const list = pid ? await call('projects.members', { id: pid }).catch(() => []) : [];
+  if (mine === memSeq && pid === state.projectId) state.members = list;
 }
 
 async function loadProjects() {
@@ -247,7 +251,7 @@ function renderBoard() {
       h('p', {}, can('projects.create') ? 'Create one with "New project" to start adding tasks.' : 'Ask the owner to create a project.')));
     return;
   }
-  const writable = canEdit();
+  const writable = canAdd();
   const form = h('form', { class: 'addrow' },
     h('label', { class: 'sr', for: 'new-title' }, 'New task title'),
     h('input', { id: 'new-title', name: 'title', placeholder: `Add a task to ${p.name}`, maxlength: 200, required: true, disabled: !writable, autocomplete: 'off' }),
@@ -272,7 +276,7 @@ function renderBoard() {
     const col = h('section', { class: 'col', 'aria-label': status, role: 'listitem' },
       h('h3', {}, h('span', { class: status === last ? 'final' : '' }, status), h('span', {}, items.length)),
       items.map((t) => card(t, status === last)));
-    col.addEventListener('dragover', (e) => { if (writable && !state.archived) { e.preventDefault(); col.classList.add('over'); } });
+    col.addEventListener('dragover', (e) => { if (canEdit() && !state.archived) { e.preventDefault(); col.classList.add('over'); } });
     col.addEventListener('dragleave', (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove('over'); });
     col.addEventListener('drop', (e) => {
       e.preventDefault(); col.classList.remove('over');
@@ -342,8 +346,7 @@ async function moveTask(id, status, afterId = null) {
   renderBoard();
   try {
     const next = await call('tasks.move', { id, status, after_id: afterId });
-    const i = state.tasks.findIndex((x) => x.id === id);
-    if (i >= 0) state.tasks[i] = next; // authoritative, including the position the core chose
+    upsertTask(next); // keeps newer data that Pulse may have delivered first
   } catch (e) {
     const cur = state.tasks.find((x) => x.id === id);
     if (cur && cur.status === status) Object.assign(cur, before); // undo only our own guess, never newer data from Pulse
@@ -422,7 +425,7 @@ async function openDrawer(id) {
     notes,
     h('div', { class: 'actions' }, h('span', { class: 'hist' }, t.completed_at ? `completed ${new Date(t.completed_at).toLocaleString()}` : ''),
       h('button', { type: 'button', disabled: !w, onclick: () => patch('archived', !t.archived) }, t.archived ? 'Restore' : 'Archive'),
-      h('button', { class: 'danger', type: 'button', disabled: !w, onclick: () => act(async () => {
+      h('button', { class: 'danger', type: 'button', disabled: !w || !can('tasks.delete'), onclick: () => act(async () => {
         if (!confirm('Delete this task with its comments and follow-ups?')) return;
         await call('tasks.delete', { id }); removeTask(id); closeDrawer(); renderBoard();
       }) }, 'Delete task')));
@@ -454,7 +457,7 @@ async function renderNotes(id, host) {
     h('div', { class: 'note' },
       h('div', { class: 'who' }, `${c.author} · ${when(c.created_at)}`), c.text,
       writable ? reply(c) : null,
-      h('div', { class: 'inline' }, h('button', { class: 'danger', type: 'button', disabled: !can('comments.delete') || !(c.author === me() || isOwner()), onclick: () => act(async () => {
+      h('div', { class: 'inline' }, h('button', { class: 'danger', type: 'button', disabled: !can('comments.delete') || !(c.owner === me() || isOwner()) || role() === 'viewer', onclick: () => act(async () => {
         await call('comments.delete', { id: c.id }); renderNotes(id, host);
       }) }, 'Delete'))),
     ...cs.filter((r) => r.parent_id === c.id).map((r) => h('div', { class: 'note reply' }, h('div', { class: 'who' }, `${r.author} · ${when(r.created_at)}`), r.text)),
@@ -591,9 +594,10 @@ function onEvent(ev) {
       break;
     case 'project.created': case 'project.updated': case 'project.deleted': case 'project.shared': case 'project.unshared':
       act(async () => {
-        const before = state.projectId;
+        const before = state.projectId, roleBefore = role();
         await loadProjects();
-        if (state.projectId !== before) await loadTasks();
+        if (state.projectId !== before) { state.mine = false; state.archived = false; closeDrawer(); await loadTasks(); }
+        else if (role() !== roleBefore) closeDrawer(); // controls in an open drawer were for the old role
         await loadMembers();
         renderBoard();
         if (ev.kind === 'project.unshared' && d.subject === me() && d.project_id) toast('You no longer have access to a project');

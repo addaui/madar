@@ -88,6 +88,10 @@ async fn run_setup(args: Args) {
     };
     let app = nuah_server::setup::setup_router(setup, args.setup_face, nuah_server::default_hosts());
     let listener = tokio::net::TcpListener::bind(&args.listen).await.unwrap_or_else(|e| fatal(&format!("cannot listen on {}: {e}", args.listen)));
+    // The name `localhost` can be made to point anywhere; what matters is the address actually bound.
+    if !listener.local_addr().map(|a| a.ip().is_loopback()).unwrap_or(false) {
+        fatal("setup mode only runs on a loopback address");
+    }
     eprintln!("nuah-server: setup wizard on http://{}  (nothing is started; Ctrl-C to stop)", args.listen);
     axum::serve(listener, app).with_graceful_shutdown(async { let _ = tokio::signal::ctrl_c().await; }).await.unwrap_or_else(|e| fatal(&e.to_string()));
 }

@@ -763,8 +763,11 @@ impl Core {
 
         let arounds: Vec<&HookEntry> = hooks.iter().filter(|h| matches!(h.f, HookFn::Around(_))).collect();
         let used_cell = std::cell::RefCell::new(std::mem::take(&mut used));
-        let out = self.run_around(&arounds, ctx, spec, handler, owner, input.clone(), &used_cell)?;
+        let effective = std::cell::RefCell::new(input.clone());
+        let out = self.run_around(&arounds, ctx, spec, handler, owner, input.clone(), &used_cell, &effective)?;
         let mut used = used_cell.into_inner();
+        // After-hooks (audit) must see what the handler actually ran with, not what arrived.
+        let input = effective.into_inner();
 
         for h in &hooks {
             if let HookFn::After(f) = &h.f {
@@ -799,10 +802,11 @@ impl Core {
     /// by a link that fails is undone (a savepoint) and its pending events are dropped, so a hook
     /// that recovers from a failure sees a clean state.
     #[allow(clippy::too_many_arguments)]
-    fn run_around(&self, arounds: &[&HookEntry], ctx: &Ctx, spec: &OpSpec, handler: &OpHandler, owner: &str, input: Value, used: &std::cell::RefCell<Vec<Services>>) -> Result<Value> {
+    fn run_around(&self, arounds: &[&HookEntry], ctx: &Ctx, spec: &OpSpec, handler: &OpHandler, owner: &str, input: Value, used: &std::cell::RefCell<Vec<Services>>, effective: &std::cell::RefCell<Value>) -> Result<Value> {
         let read_only = spec.kind == OpKind::Query;
         let Some((h, rest)) = arounds.split_first() else {
             let svc = self.services_ro(owner, read_only);
+            *effective.borrow_mut() = input.clone();
             let out = guarded("a handler", || handler(&ctx.for_plugin(owner), input, &svc))?;
             used.borrow_mut().push(svc);
             return Ok(out);
@@ -815,7 +819,7 @@ impl Core {
                 schema::validate(&spec.input, &passed)?;
             }
             let mark = used.borrow().len();
-            let attempt = |this: &Self| this.run_around(rest, ctx, spec, handler, owner, passed.clone(), used);
+            let attempt = |this: &Self| this.run_around(rest, ctx, spec, handler, owner, passed.clone(), used, effective);
             let r = if read_only {
                 attempt(self)
             } else {
@@ -827,6 +831,7 @@ impl Core {
                     verdict
                 });
                 match (out, t) {
+                    (Some(Ok(_)), Err(e)) => Err(e), // the savepoint could not be released: the work is gone
                     (Some(r), _) => r,
                     (None, Err(e)) => Err(e),
                     (None, Ok(())) => Err(LinkError::internal("a transaction ended without running")),

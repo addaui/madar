@@ -21,7 +21,7 @@ async function post(path, body) {
   return { status: r.status, body: await r.json().catch(() => ({})) };
 }
 
-const st = { info: null, name: '', enabled: [], bindings: {}, settings: {}, bad: {}, problems: [], timer: 0, seq: 0 };
+const st = { info: null, name: '', enabled: [], bindings: {}, settings: {}, bad: {}, raw: {}, problems: [], timer: 0, seq: 0 };
 
 const draft = () => ({ name: st.name, enabled: st.enabled, bindings: st.bindings, settings: st.settings });
 const plugin = (id) => st.info.plugins.find((p) => p.id === id);
@@ -57,13 +57,16 @@ function render() {
   $('name').value = st.name;
   const byPlugin = {};
   for (const p of st.problems) for (const id of p.plugins) (byPlugin[id] ||= []).push(p);
-  $('save').disabled = st.problems.length > 0 || st.bad.json;
+  const anyBad = st.enabled.some((id) => st.bad[id]);
+  $('save').disabled = st.problems.length > 0 || anyBad;
   $('path').textContent = st.info.path + (st.info.file_exists ? '' : ' (new file)');
 
   $('problems').replaceChildren(h('h2', {}, 'Does it work?'), ...(st.problems.length
     ? st.problems.map((p) => h('div', { class: 'problem' }, h('code', {}, p.code), p.message))
     : [h('div', { class: 'ok' }, 'Everything resolves. You can save this profile.')]));
 
+  // Never rebuild the cards under someone who is typing settings: that would drop focus and text.
+  if (document.activeElement?.tagName === 'TEXTAREA') return;
   const ch = choices();
   const ports = Object.keys(ch);
   $('bindings').replaceChildren(...(ports.length ? [h('h2', {}, 'Where several plugins could do the job, pick one')] : []),
@@ -86,7 +89,13 @@ function card(p, problems) {
   const on = isOn(p.id);
   const box = h('input', { type: 'checkbox', checked: on, id: `en-${p.id}` });
   box.addEventListener('change', () => {
-    if (box.checked) st.enabled.push(p.id); else st.enabled = st.enabled.filter((x) => x !== p.id);
+    if (box.checked) { if (!st.enabled.includes(p.id)) st.enabled.push(p.id); }
+    else {
+      st.enabled = st.enabled.filter((x) => x !== p.id);
+      // A choice that points at a plugin that is now off would be an error with no control to fix it.
+      for (const [port, who] of Object.entries(st.bindings)) if (who === p.id) delete st.bindings[port];
+      delete st.bad[p.id]; delete st.raw[p.id];
+    }
     schedule();
   });
   const needs = [
@@ -97,10 +106,11 @@ function card(p, problems) {
   const hasSettings = p.settings_schema && Object.keys(p.settings_schema).length > 0 || st.settings[p.id] !== undefined;
   let box2 = null;
   if (on && hasSettings) {
-    const ta = h('textarea', { rows: 4, 'aria-label': `Settings of ${p.id}`, spellcheck: 'false' }, JSON.stringify(st.settings[p.id] ?? {}, null, 2));
+    const ta = h('textarea', { rows: 4, 'aria-label': `Settings of ${p.id}`, spellcheck: 'false' }, st.raw[p.id] ?? JSON.stringify(st.settings[p.id] ?? {}, null, 2));
     ta.addEventListener('input', () => {
-      try { st.settings[p.id] = JSON.parse(ta.value); delete st.bad.json; ta.removeAttribute('aria-invalid'); schedule(); }
-      catch { st.bad.json = true; ta.setAttribute('aria-invalid', 'true'); $('save').disabled = true; }
+      st.raw[p.id] = ta.value;
+      try { st.settings[p.id] = JSON.parse(ta.value); delete st.bad[p.id]; ta.removeAttribute('aria-invalid'); schedule(); }
+      catch { st.bad[p.id] = true; ta.setAttribute('aria-invalid', 'true'); $('save').disabled = true; }
     });
     box2 = [h('div', { class: 'needs' }, 'Settings (JSON)', p.settings_schema?.required ? ` — required: ${p.settings_schema.required.join(', ')}` : ''), ta];
   }
@@ -132,6 +142,7 @@ async function save() {
   st.name = body.profile.name; st.enabled = [...body.profile.enabled];
   st.bindings = { ...body.profile.bindings }; st.settings = structuredClone(body.profile.settings);
   st.problems = body.problems;
+  if (body.load_error) st.problems = [{ code: 'invalid_profile', plugins: [], message: `The existing file could not be read (${body.load_error}). Starting from the default; saving replaces it.` }, ...st.problems];
   $('name').addEventListener('input', (e) => { st.name = e.target.value; schedule(); });
   $('save').addEventListener('click', save);
   render();

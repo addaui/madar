@@ -33,6 +33,9 @@ impl Problem {
             ("binding for", "bad_binding"),
             ("chosen for only some", "bad_binding"),
             ("which is not enabled", "missing_dependency"),
+            ("must start with", "bad_name"),
+            ("unknown policy", "bad_name"),
+            ("has no methods", "bad_name"),
             ("but `", "version_mismatch"),
             ("settings of plugin", "bad_settings"),
             ("cycle", "bad_order"),
@@ -53,10 +56,10 @@ impl Problem {
         let mut plugins: Vec<String> = vec![];
         // Ids appear in backticks, or in a parenthesised candidate list: "(adapter-a, adapter-b)".
         let mut mentioned: Vec<&str> = msg.split('`').enumerate().filter(|(i, _)| i % 2 == 1).map(|(_, p)| p).collect();
-        for (i, part) in msg.split(|c| c == '(' || c == ')').enumerate() {
-            if i % 2 == 1 {
-                mentioned.extend(part.split(", "));
-            }
+        // Lists of ids: "(candidates: a, b)", "(a, b)" and "form a cycle among a, b".
+        let tails: Vec<&str> = msg.split(|c| c == '(' || c == ')').enumerate().filter(|(i, _)| i % 2 == 1).map(|(_, p)| p).chain(msg.split_once("among ").map(|(_, t)| t)).collect();
+        for part in tails {
+            mentioned.extend(part.trim_start_matches("candidates:").split(',').map(|x| x.trim()));
         }
         for part in mentioned {
             if known_plugins.contains(part) && !plugins.iter().any(|p| p == part) {

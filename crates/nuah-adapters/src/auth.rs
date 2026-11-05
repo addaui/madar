@@ -59,7 +59,7 @@ impl Auth for Token {
 pub struct AuthTokenPlugin;
 impl Plugin for AuthTokenPlugin {
     fn manifest(&self) -> Manifest {
-        Manifest::parse(r#"{"id":"auth-token","version":"0.1.0", "description":"Sign in with an access token.","kind":"adapter","implements":[{"port":"auth"}],"quality":"reference","settings_schema":{"type":"object","properties":{"tokens":{"type":"object"}}}}"#)
+        Manifest::parse(r#"{"id":"auth-token","version":"0.1.0", "description":"Sign in with an access token.","kind":"adapter","implements":[{"port":"auth"}],"quality":"reference","settings_schema":{"type":"object","required":["tokens"],"properties":{"tokens":{"type":"object","additionalProperties":{"type":"object","required":["subject"],"properties":{"subject":{"type":"string","minLength":1}}}}}}}"#)
     }
     /// Settings: {"tokens": {"<token>": {"subject": "...", "display": "...", "roles": ["owner"]}}}
     fn activate(&self, act: &mut Activation) -> Result<()> {

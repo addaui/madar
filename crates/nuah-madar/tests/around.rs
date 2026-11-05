@@ -114,3 +114,17 @@ fn a_panicking_around_hook_is_an_internal_error_that_rolls_back() {
     assert_eq!(call(&core, "projects.create", json!({"name": "x"})).unwrap_err().code, "internal");
     assert_eq!(call(&core, "projects.list", json!({})).unwrap(), json!([]), "the project made inside was rolled back");
 }
+
+#[test]
+fn after_hooks_see_the_input_the_handler_ran_with() {
+    let seen: Log = Default::default();
+    let s = seen.clone();
+    let p = t(json!({"id":"p","version":"1"}), move |a| {
+        let s = s.clone();
+        a.around("rename", "projects.create", 0, |_, _, mut input, _, next| { input["name"] = json!("renamed"); next.call(input) });
+        a.after("watch", "projects.create", 0, move |_, _, input, _, _| { s.lock().unwrap().push(input["name"].as_str().unwrap().to_string()); Ok(()) });
+    });
+    let core = start_with(vec![p], &["p"]);
+    call(&core, "projects.create", json!({"name": "original"})).unwrap();
+    assert_eq!(*seen.lock().unwrap(), ["renamed"]);
+}

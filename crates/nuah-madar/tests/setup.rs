@@ -77,3 +77,24 @@ fn profiles_are_read_strictly_and_round_trip() {
     assert!(!tasks["description"].as_str().unwrap().is_empty());
     assert!(info["plugins"].as_array().unwrap().iter().all(|p| !p["description"].as_str().unwrap_or("").is_empty()), "every catalog plugin says what it is");
 }
+
+#[test]
+fn settings_that_would_fail_activation_are_caught_by_the_check() {
+    let mut d = memory_for_tests();
+    d.enabled.retain(|e| e != "auth-local");
+    d.enabled.push("auth-token".into());
+    assert!(Core::check(&d).iter().any(|p| p.code == "bad_settings"), "tokens are required");
+    d.settings.insert("auth-token".into(), json!({"tokens": {"t": {"display": "x"}}}));
+    assert!(Core::check(&d).iter().any(|p| p.code == "bad_settings"), "each token needs a subject");
+    d.settings.insert("auth-token".into(), json!({"tokens": {"t": {"subject": "a"}}}));
+    assert!(Core::check(&d).is_empty());
+}
+
+#[test]
+fn candidate_lists_and_cycles_name_their_plugins() {
+    let ids: std::collections::HashSet<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+    let p = nuah_kernel::setup::Problem::from_message("port `db` is bound to `c`, which is not an enabled plugin implementing it (candidates: a, b)", &ids);
+    assert_eq!(p.plugins, ["c", "a", "b"]);
+    let p = nuah_kernel::setup::Problem::from_message("hook order constraints form a cycle among a, b", &ids);
+    assert_eq!((p.code.as_str(), p.plugins), ("bad_order", vec!["a".to_string(), "b".to_string()]));
+}

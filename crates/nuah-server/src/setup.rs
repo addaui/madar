@@ -41,8 +41,14 @@ fn current(s: &Setup) -> Result<(Distribution, bool), String> {
 
 async fn state(State(s): State<Setup>) -> Response {
     let r = tokio::task::spawn_blocking(move || {
-        let (dist, exists) = current(&s)?;
+        // A profile file that cannot be read must not lock the wizard out: show the error and start
+        // again from the default draft (saving then replaces the broken file).
+        let (dist, exists, load_error) = match current(&s) {
+            Ok((d, e)) => (d, e, Value::Null),
+            Err(m) => (s.starting_point.clone(), false, json!(m)),
+        };
         let mut info = catalog_info(&dist);
+        info["load_error"] = load_error;
         info["path"] = json!(s.path.display().to_string());
         info["file_exists"] = json!(exists);
         info["problems"] = json!(Core::check(&dist));
@@ -60,8 +66,10 @@ async fn check(State(s): State<Setup>, Json(draft): Json<Value>) -> Response {
     match distribution_from_json(s.catalog.clone(), &draft) {
         Err(m) => reply(StatusCode::UNPROCESSABLE_ENTITY, json!({"ok": false, "error": {"code": "invalid_profile", "message": m}})),
         Ok(dist) => {
-            let problems = tokio::task::spawn_blocking(move || Core::check(&dist)).await.unwrap_or_default();
-            reply(StatusCode::OK, json!({"ok": problems.is_empty(), "problems": problems}))
+            match tokio::task::spawn_blocking(move || Core::check(&dist)).await {
+                Ok(problems) => reply(StatusCode::OK, json!({"ok": problems.is_empty(), "problems": problems})),
+                Err(_) => reply(StatusCode::INTERNAL_SERVER_ERROR, json!({"ok": false, "error": {"code": "internal", "message": "the check failed"}})),
+            }
         }
     }
 }
@@ -77,9 +85,26 @@ async fn save(State(s): State<Setup>, Json(draft): Json<Value>) -> Response {
             return Err(problems);
         }
         // Write beside the target and rename, so a crash never leaves half a profile.
-        let tmp = s.path.with_extension("json.tmp");
+        // Profiles can hold access tokens: keep the permissions of the file being replaced, and make
+        // a new one private. The temp name is unique and never follows a pre-existing path.
         let text = serde_json::to_string_pretty(&profile_json(&dist)).unwrap_or_default() + "\n";
-        std::fs::write(&tmp, text).and_then(|_| std::fs::rename(&tmp, &s.path)).map_err(|e| {
+        let tmp = s.path.with_extension(format!("json.{}.tmp", uuid::Uuid::new_v4().simple()));
+        let write = || -> std::io::Result<()> {
+            use std::io::Write;
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+                opts.mode(std::fs::metadata(&s.path).map(|m| m.mode() & 0o777).unwrap_or(0o600));
+            }
+            let mut f = opts.open(&tmp)?;
+            f.write_all(text.as_bytes())?;
+            f.sync_all()?;
+            std::fs::rename(&tmp, &s.path)
+        };
+        write().map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
             vec![nuah_kernel::setup::Problem { code: "write_failed".into(), plugins: vec![], message: format!("cannot write {}: {e}", s.path.display()) }]
         })?;
         Ok(s.path.display().to_string())
