@@ -58,3 +58,37 @@ _Avoid_: right, privilege, scope
 **Capability**:
 Something a plugin is allowed to use, such as emitting events or calling other plugins. Granted to the plugin by the operator through its manifest.
 _Avoid_: permission (for what a plugin may use), privilege
+
+### Faces and the Link
+
+**Face**:
+Anything that talks to a Core through the Link: a web board, a command line, a generated console, an AI agent, another program. A Face is coupled when the Core runs inside its own process and decoupled when it reaches a Core over a network.
+_Avoid_: client, frontend, UI (for the thing as a whole)
+
+**Slot**:
+A named place in a Face where plugins can add something, such as a toolbar button.
+_Avoid_: widget area, mount point
+
+**Link**:
+Everything a Core offers its Faces: Operations, self-description, and Pulse, independent of how they travel.
+_Avoid_: API, protocol, contract (for the whole offer)
+
+**Projection**:
+One rendering of the Link over a particular transport: in-process calls, HTTP, MCP.
+_Avoid_: binding, transport (for the rendering), adapter (reserved for Ports)
+
+**Operation**:
+A named, schema-checked thing a Face can ask a Core to do or read. Every Operation is a Command or a Query.
+_Avoid_: endpoint, action, method, call (the act of invoking one)
+
+**Command**:
+An Operation that may change data. Safe to retry when given an idempotency key.
+_Avoid_: mutation, write
+
+**Query**:
+An Operation that only reads.
+_Avoid_: read, getter
+
+**Pulse**:
+The ordered stream of events a Face can follow, private to each person and resumable from any point. (Provisional: its relation to events is settled with the hooks-and-events terms.)
+_Avoid_: feed, notifications, websocket
