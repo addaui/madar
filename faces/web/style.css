@@ -82,6 +82,15 @@ main { padding: 16px; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 8px; z-index: 20; max-width: 90vw; }
 .toast.err { background: var(--danger); color: #fff; }
 
+.toolbar { display: flex; gap: 14px; align-items: center; margin-bottom: 10px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.toolbar .role { border: 1px solid var(--line); border-radius: 999px; padding: 0 9px; text-transform: capitalize; }
+.toolbar label { display: inline-flex; gap: 5px; align-items: center; }
+.chip.who { color: var(--accent); border-color: var(--accent); }
+.members { display: grid; gap: 6px; }
+.member { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; }
+.member .name { overflow-wrap: anywhere; }
+.member em { color: var(--muted); font-style: normal; }
+
 @media (max-width: 640px) {
   .board { grid-auto-flow: row; grid-auto-columns: auto; }
   .drawer { width: 100vw; }

@@ -11,6 +11,7 @@ const KINDS = ['task.created', 'task.updated', 'task.deleted', 'project.created'
 const state = {
   desc: null, token: sessionStorage.getItem(TOKEN_KEY) || '', projects: [], projectId: null,
   tasks: [], q: '', openId: null, lastSeq: 0, es: null, themeId: null,
+  members: [], mine: false, archived: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -178,6 +179,16 @@ function renderSlot(name, host) {
 // ---------- data ----------
 
 const project = () => state.projects.find((p) => p.id === state.projectId);
+// What you may do here depends on your role in THIS project, not only on the global operation list.
+const role = () => project()?.role || 'viewer';
+const canEdit = () => can('tasks.write') && role() !== 'viewer';
+const isOwner = () => role() === 'owner';
+const me = () => state.desc.identity.subject;
+const nameOf = (subject) => (subject === me() ? 'you' : subject);
+
+async function loadMembers() {
+  state.members = state.projectId ? await call('projects.members', { id: state.projectId }).catch(() => []) : [];
+}
 
 async function loadProjects() {
   state.projects = await call('projects.list');
@@ -193,7 +204,8 @@ async function loadTasks() {
   // Answers can arrive out of order (switch project A then B quickly); only the newest request counts.
   const mine = ++loadSeq;
   const tasks = state.projectId
-    ? await call('tasks.list', { project_id: state.projectId, limit: 500, ...(state.q ? { q: state.q } : {}) })
+    ? await call('tasks.list', { project_id: state.projectId, limit: 500, ...(state.q ? { q: state.q } : {}),
+        ...(state.mine ? { assignee: 'me' } : {}), ...(state.archived ? { archived: true } : {}) })
     : [];
   if (mine === loadSeq) state.tasks = tasks;
 }
@@ -207,6 +219,8 @@ function refreshProjectsSoon() {
 function upsertTask(t) {
   if (t.project_id !== state.projectId) return false;
   if (state.q && !t.title.toLowerCase().includes(state.q.toLowerCase())) return removeTask(t.id);
+  if (state.mine && t.assignee !== me()) return removeTask(t.id);
+  if ((t.archived === true) !== state.archived) return removeTask(t.id);
   const i = state.tasks.findIndex((x) => x.id === t.id);
   if (i >= 0) {
     const have = state.tasks[i];
@@ -233,7 +247,7 @@ function renderBoard() {
       h('p', {}, can('projects.create') ? 'Create one with "New project" to start adding tasks.' : 'Ask the owner to create a project.')));
     return;
   }
-  const writable = can('tasks.create');
+  const writable = canEdit();
   const form = h('form', { class: 'addrow' },
     h('label', { class: 'sr', for: 'new-title' }, 'New task title'),
     h('input', { id: 'new-title', name: 'title', placeholder: `Add a task to ${p.name}`, maxlength: 200, required: true, disabled: !writable, autocomplete: 'off' }),
@@ -254,48 +268,87 @@ function renderBoard() {
   const board = h('div', { class: 'board', role: 'list' });
   const last = p.statuses[p.statuses.length - 1];
   for (const status of p.statuses) {
-    const items = state.tasks.filter((t) => t.status === status);
+    const items = state.tasks.filter((t) => t.status === status).sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.created_at - b.created_at);
     const col = h('section', { class: 'col', 'aria-label': status, role: 'listitem' },
       h('h3', {}, h('span', { class: status === last ? 'final' : '' }, status), h('span', {}, items.length)),
       items.map((t) => card(t, status === last)));
-    col.addEventListener('dragover', (e) => { if (writable) { e.preventDefault(); col.classList.add('over'); } });
-    col.addEventListener('dragleave', () => col.classList.remove('over'));
+    col.addEventListener('dragover', (e) => { if (writable && !state.archived) { e.preventDefault(); col.classList.add('over'); } });
+    col.addEventListener('dragleave', (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove('over'); });
     col.addEventListener('drop', (e) => {
       e.preventDefault(); col.classList.remove('over');
       const id = e.dataTransfer.getData('text/plain');
-      if (id) moveTask(id, status);
+      if (!id || state.archived) return;
+      // Dropped below the card whose middle is above the pointer: that card is what we go after.
+      let after = null;
+      for (const el of col.querySelectorAll('.card')) {
+        const r = el.getBoundingClientRect();
+        if (e.clientY > r.top + r.height / 2) after = el.dataset.id;
+      }
+      if (after === id) after = prevInColumn(items, id);
+      moveTask(id, status, after);
     });
     board.append(col);
   }
-  main.append(form, board);
+  main.append(bar(p), form, board);
+}
+
+// The card above `id` in its column, so dropping a card on itself keeps its place.
+function prevInColumn(items, id) {
+  const i = items.findIndex((t) => t.id === id);
+  return i > 0 ? items[i - 1].id : null;
+}
+
+function bar(p) {
+  const mine = h('input', { type: 'checkbox', id: 'f-mine', checked: state.mine });
+  const arch = h('input', { type: 'checkbox', id: 'f-arch', checked: state.archived });
+  const reload = () => act(async () => { await loadTasks(); renderBoard(); });
+  mine.addEventListener('change', () => { state.mine = mine.checked; reload(); });
+  arch.addEventListener('change', () => { state.archived = arch.checked; reload(); });
+  const people = state.members.length;
+  return h('div', { class: 'toolbar' },
+    h('span', { class: 'role', title: 'Your role in this project' }, role()),
+    h('label', {}, mine, ' Assigned to me'),
+    h('label', {}, arch, ' Show archived'),
+    h('span', { class: 'spacer' }),
+    h('button', { type: 'button', onclick: () => openMembers() }, people > 1 ? `Members (${people})` : 'Share'));
 }
 
 function card(t, isDone) {
   const late = t.due && !t.completed_at && t.due < new Date().toISOString().slice(0, 10);
-  const el = h('div', { class: 'card' + (isDone ? ' done' : ''), role: 'button', tabindex: 0, draggable: can('tasks.update') ? 'true' : 'false', 'data-id': t.id },
+  const el = h('div', { class: 'card' + (isDone ? ' done' : ''), role: 'button', tabindex: 0, draggable: canEdit() && !state.archived ? 'true' : 'false', 'data-id': t.id },
     h('span', { class: 't' }, t.title),
     h('div', { class: 'meta' },
       t.priority > 0 ? h('span', { class: 'chip', 'data-band': t.band }, `${t.band} · ${t.priority}`) : null,
-      t.due ? h('span', { class: 'chip' + (late ? ' late' : '') }, `due ${t.due}`) : null));
+      t.due ? h('span', { class: 'chip' + (late ? ' late' : '') }, `due ${t.due}`) : null,
+      t.assignee ? h('span', { class: 'chip who', title: `Assigned to ${t.assignee}` }, `@${nameOf(t.assignee)}`) : null));
   el.addEventListener('click', () => openDrawer(t.id));
   el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrawer(t.id); } });
   el.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', t.id));
   return el;
 }
 
-async function moveTask(id, status) {
+async function moveTask(id, status, afterId = null) {
   const t = state.tasks.find((x) => x.id === id);
-  if (!t || t.status === status) return;
-  const was = t.status;
-  t.status = status; renderBoard(); // optimistic
+  if (!t) return;
+  const col = state.tasks.filter((x) => x.status === status && x.id !== id).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const prev = state.tasks.find((x) => x.id === afterId);
+  const before = { status: t.status, position: t.position };
+  if (before.status === status && (afterId ?? null) === prevInColumn(state.tasks.filter((x) => x.status === status).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)), id)) return; // nowhere new
+  // Optimistic guess: the real position comes back from the core.
+  const at = prev ? col.indexOf(prev) + 1 : 0;
+  const lo = at > 0 ? col[at - 1].position ?? 0 : null, hi = col[at]?.position ?? null;
+  t.status = status;
+  t.position = lo === null ? (hi === null ? 1 : hi - 1) : hi === null ? lo + 1 : (lo + hi) / 2;
+  renderBoard();
   try {
-    const next = await call('tasks.update', { id, status, expected_version: t.version });
-    upsertTask(next);
+    const next = await call('tasks.move', { id, status, after_id: afterId });
+    const i = state.tasks.findIndex((x) => x.id === id);
+    if (i >= 0) state.tasks[i] = next; // authoritative, including the position the core chose
   } catch (e) {
     const cur = state.tasks.find((x) => x.id === id);
-    if (cur && cur.status === status) cur.status = was; // undo only our own guess, never newer data from Pulse
+    if (cur && cur.status === status) Object.assign(cur, before); // undo only our own guess, never newer data from Pulse
     toast(e.message, true);
-    if (e.code === 'conflict') act(async () => { await loadTasks(); renderBoard(); });
+    act(async () => { await loadTasks(); renderBoard(); });
   }
   renderBoard();
   if (state.openId === id) openDrawer(id);
@@ -316,7 +369,7 @@ async function openDrawer(id) {
   const t = state.tasks.find((x) => x.id === id);
   const p = project();
   if (!t || !p) return closeDrawer();
-  const w = can('tasks.update');
+  const w = canEdit();
   const patch = (field, value) => act(async () => {
     try {
       const next = await call('tasks.update', { id, [field]: value, expected_version: t.version });
@@ -338,6 +391,12 @@ async function openDrawer(id) {
   const prio = h('input', { id: 'd-prio', type: 'number', min: 0, max: 10, value: t.priority, disabled: !w });
   prio.addEventListener('change', () => patch('priority', Number(prio.value)));
   const due = h('input', { id: 'd-due', type: 'date', value: t.due || '', disabled: !w });
+  const names = new Set(state.members.map((m) => m.subject));
+  if (t.assignee) names.add(t.assignee);
+  const assignee = h('select', { id: 'd-assignee', disabled: !w || t.archived },
+    h('option', { value: '' }, 'Nobody'),
+    [...names].map((n) => h('option', { value: n, selected: n === t.assignee }, nameOf(n))));
+  assignee.addEventListener('change', () => patch('assignee', assignee.value || null));
   due.addEventListener('change', () => patch('due', due.value || null));
   const desc = h('textarea', { id: 'd-desc', rows: 5, disabled: !w, 'aria-label': 'Description', maxlength: 20000 }, t.description || '');
   const saveDesc = h('button', { type: 'button', disabled: !w, onclick: () => patch('description', desc.value) }, 'Save description');
@@ -357,11 +416,12 @@ async function openDrawer(id) {
   const notes = h('div', { id: 'd-notes' });
   d.replaceChildren(
     h('div', { class: 'actions' }, h('h2', {}, 'Task'), h('button', { type: 'button', onclick: closeDrawer, 'aria-label': 'Close details' }, 'Close')),
-    field('Title', title), field('Status', status), field('Priority', prio), field('Due', due),
+    field('Title', title), field('Status', status), field('Assignee', assignee), field('Priority', prio), field('Due', due),
     ...attrs,
     h('section', {}, h('h4', {}, 'Description'), desc, h('div', { class: 'inline' }, saveDesc)),
     notes,
     h('div', { class: 'actions' }, h('span', { class: 'hist' }, t.completed_at ? `completed ${new Date(t.completed_at).toLocaleString()}` : ''),
+      h('button', { type: 'button', disabled: !w, onclick: () => patch('archived', !t.archived) }, t.archived ? 'Restore' : 'Archive'),
       h('button', { class: 'danger', type: 'button', disabled: !w, onclick: () => act(async () => {
         if (!confirm('Delete this task with its comments and follow-ups?')) return;
         await call('tasks.delete', { id }); removeTask(id); closeDrawer(); renderBoard();
@@ -379,7 +439,7 @@ async function renderNotes(id, host) {
   const focused = document.activeElement?.getAttribute?.('aria-label');
   const [fus, cs] = await Promise.all([call('followups.list', { task_id: id }), call('comments.list', { task_id: id })]);
   if (state.openId !== id) return;
-  const writable = can('comments.add');
+  const writable = can('comments.add') && role() !== 'viewer';
   const when = (ms) => new Date(ms).toLocaleString();
   const reply = (parent) => {
     const input = h('input', { 'aria-label': 'Reply', placeholder: 'Reply', maxlength: 10000 });
@@ -394,12 +454,12 @@ async function renderNotes(id, host) {
     h('div', { class: 'note' },
       h('div', { class: 'who' }, `${c.author} · ${when(c.created_at)}`), c.text,
       writable ? reply(c) : null,
-      h('div', { class: 'inline' }, h('button', { class: 'danger', type: 'button', disabled: !can('comments.delete'), onclick: () => act(async () => {
+      h('div', { class: 'inline' }, h('button', { class: 'danger', type: 'button', disabled: !can('comments.delete') || !(c.author === me() || isOwner()), onclick: () => act(async () => {
         await call('comments.delete', { id: c.id }); renderNotes(id, host);
       }) }, 'Delete'))),
     ...cs.filter((r) => r.parent_id === c.id).map((r) => h('div', { class: 'note reply' }, h('div', { class: 'who' }, `${r.author} · ${when(r.created_at)}`), r.text)),
   ]);
-  const fuInput = h('textarea', { rows: 2, 'aria-label': 'New follow-up', placeholder: 'What changed?', maxlength: 20000, disabled: !can('followups.add') });
+  const fuInput = h('textarea', { rows: 2, 'aria-label': 'New follow-up', placeholder: 'What changed?', maxlength: 20000, disabled: !can('followups.add') || role() === 'viewer' });
   const cInput = h('input', { 'aria-label': 'New comment', placeholder: 'Write a comment', maxlength: 10000, disabled: !writable });
   const history = h('details', {}, h('summary', {}, 'History'), h('div', { id: 'd-hist', class: 'hist' }, 'Loading…'));
   history.addEventListener('toggle', () => { if (history.open && can('audit.list')) act(async () => {
@@ -409,7 +469,7 @@ async function renderNotes(id, host) {
   if (!can('audit.list')) history.hidden = true;
   host.replaceChildren(
     h('section', {}, h('h4', {}, 'Follow-ups'), fus.map((f) => h('div', { class: 'note fu' }, h('div', { class: 'who' }, `${f.author} · ${when(f.created_at)}`), f.text)),
-      h('div', { class: 'inline' }, fuInput, h('button', { type: 'button', disabled: !can('followups.add'), onclick: () => act(async () => {
+      h('div', { class: 'inline' }, fuInput, h('button', { type: 'button', disabled: !can('followups.add') || role() === 'viewer', onclick: () => act(async () => {
         if (!fuInput.value.trim()) return;
         await call('followups.add', { task_id: id, text: fuInput.value }); renderNotes(id, host);
       }) }, 'Add'))),
@@ -426,7 +486,53 @@ async function renderNotes(id, host) {
   }
 }
 
+// ---------- members ----------
+
+async function openMembers() {
+  const p = project();
+  if (!p) return;
+  const d = $('drawer');
+  state.openId = null;
+  await loadMembers();
+  const owner = isOwner();
+  const rows = state.members.map((m) => {
+    const you = m.subject === me();
+    const roleCell = owner && m.role !== 'owner'
+      ? (() => {
+        const sel = h('select', { 'aria-label': `Role of ${m.subject}` }, ['editor', 'viewer'].map((r) => h('option', { value: r, selected: r === m.role }, r)));
+        sel.addEventListener('change', () => act(async () => { await call('projects.share', { id: p.id, subject: m.subject, role: sel.value }); openMembers(); }));
+        return sel;
+      })()
+      : h('span', { class: 'chip' }, m.role);
+    const removable = m.role !== 'owner' && (owner || you);
+    return h('div', { class: 'member' },
+      h('span', { class: 'name' }, m.subject, you ? h('em', {}, ' (you)') : null), roleCell,
+      removable ? h('button', { type: 'button', class: 'danger', onclick: () => act(async () => {
+        if (!confirm(you ? `Leave ${p.name}?` : `Remove ${m.subject} from ${p.name}? Their tasks become unassigned.`)) return;
+        await call('projects.unshare', { id: p.id, subject: m.subject });
+        if (you) { await loadProjects(); await loadTasks(); await loadMembers(); closeDrawer(); renderBoard(); } else openMembers();
+      }) }, you ? 'Leave' : 'Remove') : h('span'));
+  });
+  const who = h('input', { id: 'm-who', placeholder: 'Their sign-in name', maxlength: 200, autocomplete: 'off', 'aria-label': 'Person to add' });
+  const rl = h('select', { id: 'm-role', 'aria-label': 'Role' }, h('option', { value: 'editor' }, 'editor'), h('option', { value: 'viewer' }, 'viewer'));
+  const add = h('form', { class: 'inline' }, who, rl, h('button', { class: 'primary', type: 'submit' }, 'Share'));
+  add.addEventListener('submit', (e) => { e.preventDefault(); if (!who.value.trim()) return; act(async () => {
+    await call('projects.share', { id: p.id, subject: who.value.trim(), role: rl.value }); openMembers();
+  }); });
+  d.replaceChildren(
+    h('div', { class: 'actions' }, h('h2', {}, `People in ${p.name}`), h('button', { type: 'button', onclick: closeDrawer }, 'Close')),
+    h('p', { class: 'hist' }, owner ? 'Editors change tasks; viewers only read.' : `You are ${p.role === 'viewer' ? 'a viewer' : 'an editor'} here. Only the owner can add people.`),
+    h('div', { class: 'members' }, rows),
+    owner ? h('section', {}, h('h4', {}, 'Share with someone'), add) : null);
+  const was = d.hidden;
+  d.hidden = false;
+  if (was) state.opener = document.activeElement;
+  (owner ? who : d.querySelector('button'))?.focus();
+}
+
 // ---------- Pulse ----------
+
+
 
 function setLive(s) { const el = $('live'); el.dataset.state = s; el.title = el.textContent = s === 'live' ? 'Live updates on' : 'Reconnecting to live updates'; }
 
@@ -484,7 +590,14 @@ function onEvent(ev) {
       if (removeTask(d.id)) { if (state.openId === d.id) closeDrawer(); renderBoard(); }
       break;
     case 'project.created': case 'project.updated': case 'project.deleted': case 'project.shared': case 'project.unshared':
-      act(async () => { const before = state.projectId; await loadProjects(); if (state.projectId !== before) await loadTasks(); renderBoard(); });
+      act(async () => {
+        const before = state.projectId;
+        await loadProjects();
+        if (state.projectId !== before) await loadTasks();
+        await loadMembers();
+        renderBoard();
+        if (ev.kind === 'project.unshared' && d.subject === me() && d.project_id) toast('You no longer have access to a project');
+      });
       break;
     case 'comment.added': case 'comment.deleted': case 'followup.added': {
       const tid = d.comment?.task_id || d.followup?.task_id || d.task_id;
@@ -512,6 +625,7 @@ async function boot() {
   setupThemes(prefs);
   await loadProjects();
   await loadTasks();
+  await loadMembers();
   renderBoard();
   connectPulse();
 
@@ -523,9 +637,9 @@ async function boot() {
     if (raw === null) return;
     const statuses = raw.split(',').map((s) => s.trim()).filter(Boolean);
     const p = await call('projects.create', { name, ...(statuses.length ? { statuses } : {}) });
-    state.projectId = p.id; await loadProjects(); await loadTasks(); renderBoard();
+    state.projectId = p.id; await loadProjects(); await loadTasks(); await loadMembers(); renderBoard();
   });
-  $('project-select').onchange = (e) => act(async () => { state.projectId = e.target.value; closeDrawer(); await loadTasks(); renderBoard(); });
+  $('project-select').onchange = (e) => act(async () => { state.projectId = e.target.value; state.mine = false; state.archived = false; closeDrawer(); await loadTasks(); await loadMembers(); renderBoard(); });
   let t;
   $('search').oninput = (e) => { clearTimeout(t); t = setTimeout(() => act(async () => { state.q = e.target.value.trim(); await loadTasks(); renderBoard(); }), 250); };
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.openId) closeDrawer(); });
