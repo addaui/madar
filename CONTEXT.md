@@ -51,13 +51,29 @@ _Avoid_: config, preset, distribution (for a single set of choices)
 
 ### Who may do what
 
+**Subject**:
+The stable id of whoever acts: a person or an agent.
+_Avoid_: user, account, principal
+
+**Identity**:
+Who is making a request, as verified by the auth adapter: a Subject, a display name and Roles.
+_Avoid_: caller, user, session
+
+**Role**:
+A name an Identity carries, instance-wide. The policy turns Roles into Permissions.
+_Avoid_: group, level (per-project access is an Access level, a Madar term)
+
 **Permission**:
-Something a caller is allowed to do, such as writing tasks. Granted by the policy.
+Something a Subject is allowed to do, such as writing tasks. Granted by the policy.
 _Avoid_: right, privilege, scope
 
 **Capability**:
 Something a plugin is allowed to use, such as emitting events or calling other plugins. Granted to the plugin by the operator through its manifest.
 _Avoid_: permission (for what a plugin may use), privilege
+
+**Owner**:
+The plugin that owns something: a collection of data, an operation, an event kind. Only the owner may write its data or emit its events.
+_Avoid_: author, maintainer; (a person who owns a record or a project is a Madar term, not this)
 
 ### Faces and the Link
 
