@@ -106,5 +106,31 @@ An Operation that only reads.
 _Avoid_: read, getter
 
 **Pulse**:
-The ordered stream of events a Face can follow, private to each person and resumable from any point. (Provisional: its relation to events is settled with the hooks-and-events terms.)
+The Event log as one Subject sees it: ordered, gapless, private to that Subject, and resumable from any point. A Face follows Pulse.
 _Avoid_: feed, notifications, websocket
+
+### Extending behaviour and reacting to change
+
+**Hook**:
+Plugin code attached to an Operation. A before hook may change the input or refuse; an around hook wraps the Operation and may answer in its place; an after hook runs once it has succeeded. All of them run inside the Operation's transaction.
+_Avoid_: wrap, interceptor, middleware, filter
+
+**Event**:
+A record that something happened, with an Event kind and an Audience, written in order to the Event log in the same transaction as the work that caused it.
+_Avoid_: message, notification, signal
+
+**Event kind**:
+The name of a type of Event, such as task.created. Declared by exactly one plugin, its Owner.
+_Avoid_: event type, topic, channel
+
+**Audience**:
+The one Subject an Event is addressed to, and the only one who may see it.
+_Avoid_: recipient, subscriber, channel
+
+**Event log**:
+The stored, ordered sequence of all Events in a Core.
+_Avoid_: stream, journal, queue
+
+**Listener**:
+Plugin code that reacts to Events inside a Core after they are committed. It cannot refuse or undo the work that caused the Event. A Face never is one.
+_Avoid_: subscriber, handler, observer
