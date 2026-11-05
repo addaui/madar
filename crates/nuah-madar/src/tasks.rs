@@ -25,7 +25,7 @@ impl Plugin for TasksPlugin {
                 "id": "tasks", "version": "0.1.0", "kind": "domain", "quality": "silver",
                 "requires": {"ports": ["db", "ids"], "capabilities": ["events"]},
                 "data": {"owns": ["projects", "tasks", "comments", "followups"]},
-                "contributes": {"ops": OPS}
+                "contributes": {"ops": OPS, "events": ["project.created","project.updated","project.deleted","task.created","task.updated","task.deleted","comment.added","comment.deleted","followup.added"]}
             })
             .to_string(),
         )

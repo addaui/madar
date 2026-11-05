@@ -79,6 +79,29 @@ async fn describe(State(app): State<App>, headers: HeaderMap, Query(q): Query<Ha
     Ok(([(header::CACHE_CONTROL, "no-store")], Json(body)).into_response())
 }
 
+/// Documents generated from the contract (`?face=` is not used; they describe what the caller may do).
+async fn generated(app: App, headers: HeaderMap, make: fn(&Value) -> Response) -> Result<Response, ApiError> {
+    let token = bearer(&headers, None);
+    let core = app.core.clone();
+    let d = blocking(move || core.describe(token.as_deref(), None)).await?;
+    if d["identity"].is_null() {
+        return Err(LinkError::unauthenticated("sign in to read the contract").into());
+    }
+    Ok(make(&d))
+}
+async fn openapi_doc(State(app): State<App>, headers: HeaderMap) -> Result<Response, ApiError> {
+    generated(app, headers, |d| ([(header::CACHE_CONTROL, "no-store")], Json(nuah_kernel::contract::openapi(d))).into_response()).await
+}
+async fn tools_doc(State(app): State<App>, headers: HeaderMap) -> Result<Response, ApiError> {
+    generated(app, headers, |d| ([(header::CACHE_CONTROL, "no-store")], Json(nuah_kernel::contract::tool_definitions(d))).into_response()).await
+}
+async fn client_ts(State(app): State<App>, headers: HeaderMap) -> Result<Response, ApiError> {
+    generated(app, headers, |d| {
+        ([(header::CONTENT_TYPE, "text/typescript; charset=utf-8"), (header::CACHE_CONTROL, "no-store")], nuah_kernel::contract::typescript(d)).into_response()
+    })
+    .await
+}
+
 async fn call(State(app): State<App>, Path(op): Path<String>, headers: HeaderMap, body: Bytes) -> Result<Response, ApiError> {
     let input: Value = if body.is_empty() {
         json!({})
@@ -240,16 +263,27 @@ pub fn router(core: Core, web_dir: Option<PathBuf>) -> Router {
 }
 
 pub fn router_with_hosts(core: Core, web_dir: Option<PathBuf>, hosts: Vec<String>) -> Router {
+    router_full(core, web_dir, None, hosts)
+}
+
+/// `console_dir` hosts the generated console face at /faces/console.
+pub fn router_full(core: Core, web_dir: Option<PathBuf>, console_dir: Option<PathBuf>, hosts: Vec<String>) -> Router {
     let mut r = Router::new()
         .route("/healthz", get(health))
         .route("/link/describe", get(describe))
         .route("/link/call/{op}", post(call))
+        .route("/link/openapi.json", get(openapi_doc))
+        .route("/link/tools.json", get(tools_doc))
+        .route("/link/client.ts", get(client_ts))
         .route("/pulse", get(pulse))
         .route("/x/{*rest}", any(plugin_route));
     if let Some(dir) = web_dir {
         r = r
             .route("/", get(|| async { Redirect::temporary("/faces/web/") }))
             .nest_service("/faces/web", ServeDir::new(dir));
+    }
+    if let Some(dir) = console_dir {
+        r = r.nest_service("/faces/console", ServeDir::new(dir));
     }
     r.layer(middleware::from_fn_with_state(Arc::new(hosts), guard)).with_state(App { core })
 }

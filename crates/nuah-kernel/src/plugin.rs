@@ -169,6 +169,7 @@ pub struct Services {
     core: crate::core::Core,
     /// True while serving a query or a GET route: only read-only port methods may be called.
     read_only: bool,
+    events: HashSet<String>,
 }
 
 impl Services {
@@ -180,6 +181,7 @@ impl Services {
         data: &crate::manifest::Data,
         core: crate::core::Core,
         read_only: bool,
+        events: HashSet<String>,
     ) -> Self {
         let db: Arc<dyn Db> = Arc::new(GuardedDb {
             inner: ports.db.clone(),
@@ -187,7 +189,7 @@ impl Services {
             owns: data.owns.iter().cloned().collect(),
             reads: data.reads.iter().cloned().collect(),
         });
-        Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]), core, read_only }
+        Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]), core, read_only, events }
     }
     /// Call another plugin's operation through the contract, as the user whose request is being
     /// served: the same permission check, input validation and hooks apply, and the call joins the
@@ -238,6 +240,9 @@ impl Services {
     /// Queue an event. It is published only if the whole call succeeds.
     pub fn emit(&self, kind: &str, audience: &str, data: Value) -> Result<()> {
         self.need("events")?;
+        if !self.events.contains(kind) {
+            return Err(LinkError::internal(format!("plugin `{}` emitted `{kind}`, which its manifest does not declare in contributes.events", self.plugin)));
+        }
         self.pending.lock().unwrap().push(PendingEvent {
             kind: kind.to_string(),
             plugin: self.plugin.clone(),

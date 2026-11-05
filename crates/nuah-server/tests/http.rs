@@ -184,3 +184,54 @@ fn cross_site_requests_to_plugin_routes_are_refused() {
     let r = agent.get(&format!("{url}/x/export/madar.json")).header("Authorization", "Bearer t-alice").header("Sec-Fetch-Site", "same-origin").call().unwrap();
     assert_eq!(r.status().as_u16(), 200);
 }
+
+#[test]
+fn generated_documents_need_sign_in_and_cover_what_the_caller_may_do() {
+    let url = spawn_server(token_core());
+    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+    for path in ["/link/openapi.json", "/link/tools.json", "/link/client.ts"] {
+        let anon = agent.get(&format!("{url}{path}")).call().unwrap();
+        assert_eq!(anon.status().as_u16(), 401, "{path} without a token");
+    }
+    let get = |path: &str, token: &str| agent.get(&format!("{url}{path}")).header("Authorization", &format!("Bearer {token}")).call().unwrap();
+    let mut api = get("/link/openapi.json", "t-alice");
+    assert_eq!(api.status().as_u16(), 200);
+    let api: Value = api.body_mut().read_json().unwrap();
+    assert!(api["paths"]["/link/call/tasks.create"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["title"].is_object());
+    assert!(api["paths"]["/link/call/inbox.list"].is_object(), "operations of any installed plugin appear");
+    // a viewer's documents leave out what they cannot do
+    let mut viewer = get("/link/tools.json", "t-view");
+    let tools: Value = viewer.body_mut().read_json().unwrap();
+    let names: Vec<&str> = tools.as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"tasks_list") && !names.contains(&"tasks_create"), "{names:?}");
+    let mut ts = get("/link/client.ts", "t-alice");
+    let ts = ts.body_mut().read_to_string().unwrap();
+    assert!(ts.contains("tasksCreate(") && ts.contains("class NuahClient"));
+}
+
+#[test]
+fn undeclared_events_are_refused() {
+    struct Chatty;
+    impl Plugin for Chatty {
+        fn manifest(&self) -> Manifest {
+            Manifest::parse(&json!({"id":"chatty","version":"0.0.1","requires":{"capabilities":["events"]},"contributes":{"ops":["chatty.say"],"events":["chatty.said"]}}).to_string())
+        }
+        fn activate(&self, a: &mut Activation) -> Result<()> {
+            a.op(OpSpec::command("chatty.say", "x.write", "", json!({"type":"object","properties":{"kind":{"type":"string"}}})), |ctx, i, svc| {
+                svc.emit(i["kind"].as_str().unwrap_or("chatty.said"), &ctx.subject, json!({}))?;
+                Ok(json!(null))
+            });
+            Ok(())
+        }
+    }
+    let mut d = memory_for_tests();
+    d.catalog.push(std::sync::Arc::new(Chatty));
+    d.enabled.push("chatty".into());
+    let core = start(d).unwrap();
+    let call = |input: Value| core.call(CallRequest { op: "chatty.say".into(), input, ..Default::default() });
+    assert!(call(json!({})).is_ok());
+    let e = call(json!({"kind": "chatty.shouted"})).unwrap_err();
+    assert!(e.message.contains("does not declare"), "{e}");
+    let kinds: Vec<String> = core.describe(None, None)["events"].as_array().unwrap().iter().map(|e| e["kind"].as_str().unwrap().to_string()).collect();
+    assert!(kinds.contains(&"chatty.said".to_string()) && kinds.contains(&"task.created".to_string()));
+}

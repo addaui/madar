@@ -825,7 +825,7 @@ fn a_failed_nested_call_is_undone_even_when_the_caller_carries_on() {
 
 #[test]
 fn queries_cannot_emit_events_or_run_commands() {
-    let q = plug("quirky", json!({"requires": {"plugins": ["tasks"], "capabilities": ["events"]}}), vec![
+    let q = plug("quirky", json!({"requires": {"plugins": ["tasks"], "capabilities": ["events"]}, "contributes": {"ops": ["quirky.emit", "quirky.write", "quirky.read"], "events": ["x.y"]}}), vec![
         (OpSpec::query("quirky.emit", "tasks.read", "", json!({"type":"object"})), |ctx, _i, svc| { svc.emit("x.y", &ctx.subject, json!({}))?; Ok(json!(null)) }),
         (OpSpec::query("quirky.write", "tasks.read", "", json!({"type":"object"})), |ctx, _i, svc| svc.call(ctx, "projects.create", json!({"name": "from a query"}))),
         (OpSpec::query("quirky.read", "tasks.read", "", json!({"type":"object"})), |ctx, _i, svc| svc.call(ctx, "projects.list", json!({}))),

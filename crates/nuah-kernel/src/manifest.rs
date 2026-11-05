@@ -121,6 +121,10 @@ pub struct Contributes {
     /// UI slot items, rendered by faces from data. Shape: {slot, id, label, action, faces?}.
     #[serde(default)]
     pub slots: Vec<Value>,
+    /// Event kinds the plugin may emit. Emitting anything else is refused, so faces and agents can
+    /// learn the vocabulary of Pulse from `describe` instead of guessing.
+    #[serde(default)]
+    pub events: Vec<String>,
     /// Face-side assets such as themes. Faces pick the ones they understand.
     #[serde(default)]
     pub assets: Vec<Value>,

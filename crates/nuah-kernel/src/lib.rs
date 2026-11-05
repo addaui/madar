@@ -1,6 +1,7 @@
 //! nuah-kernel: scope-owned registrations, ports, hooks, events, and the call pipeline.
 //! Nothing here knows what a task is.
 
+pub mod contract;
 pub mod core;
 pub mod error;
 pub mod events;

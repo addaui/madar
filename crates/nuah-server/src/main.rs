@@ -16,6 +16,9 @@ struct Args {
     /// Directory of the web face to host at /faces/web.
     #[arg(long)]
     web: Option<PathBuf>,
+    /// Directory of the generated console face to host at /faces/console.
+    #[arg(long)]
+    console: Option<PathBuf>,
     /// Extra Host names to answer to (repeatable), for example a LAN address. Loopback names are always allowed.
     #[arg(long = "allow-host")]
     allow_host: Vec<String>,
@@ -40,7 +43,7 @@ async fn main() {
         }
     }
     hosts.extend(args.allow_host.iter().map(|h| h.to_lowercase()));
-    let app = nuah_server::router_with_hosts(core, args.web, hosts);
+    let app = nuah_server::router_full(core, args.web, args.console, hosts);
     let listener = tokio::net::TcpListener::bind(&args.listen).await.unwrap_or_else(|e| fatal(&format!("cannot listen on {}: {e}", args.listen)));
     eprintln!("nuah-server: profile `{profile_name}` listening on http://{}", args.listen);
     axum::serve(listener, app)

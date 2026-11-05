@@ -102,7 +102,7 @@ impl Plugin for PrefsPlugin {
         Manifest::parse(
             &json!({"id":"prefs","version":"0.1.0","kind":"domain","quality":"bronze",
                 "requires":{"ports":["db"],"capabilities":["events"]},"data":{"owns":["prefs"]},
-                "contributes":{"ops":["prefs.get","prefs.set"]}})
+                "contributes":{"ops":["prefs.get","prefs.set"],"events":["prefs.changed"]}})
             .to_string(),
         )
     }

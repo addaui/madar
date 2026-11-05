@@ -91,6 +91,21 @@ enum Cmd {
     },
     /// Print what the core says about itself
     Describe,
+    /// List every operation the core offers, whatever plugins are installed
+    Ops {
+        /// Only operations whose name contains this text
+        filter: Option<String>,
+    },
+    /// Show what one operation takes
+    Op { op: String },
+    /// Run any operation: `madar call tasks.list project_id=ab12`, or give the whole input as JSON
+    Call {
+        op: String,
+        /// key=value (typed from the schema), key:=<json>, or one JSON object
+        args: Vec<String>,
+    },
+    /// Show the extension points plugins have defined and who fills them
+    Points,
 }
 
 #[derive(Subcommand)]
@@ -136,6 +151,14 @@ fn main() {
             _ => 1,
         });
     }
+}
+
+fn find_op(describe: &Value, name: &str) -> R<Value> {
+    let ops = describe["ops"].as_array().cloned().unwrap_or_default();
+    ops.iter().find(|o| o["name"] == name).cloned().ok_or_else(|| {
+        let near: Vec<String> = ops.iter().map(|o| s(o, "name")).filter(|n| n.starts_with(name.split('.').next().unwrap_or(name))).collect();
+        LinkError::not_found(&format!("operation `{name}`{}", if near.is_empty() { String::new() } else { format!(" (did you mean {}?)", near.join(", ")) }))
+    })
 }
 
 fn default_db() -> PathBuf {
@@ -336,6 +359,45 @@ fn run(link: &dyn Link, cmd: Cmd) -> R<()> {
                 println!("#{} {} {}", e.seq, e.kind, what);
                 true
             })?;
+        }
+        Cmd::Ops { filter } => {
+            let d = link.describe()?;
+            for o in d["ops"].as_array().unwrap() {
+                if filter.as_deref().is_some_and(|f| !s(o, "name").contains(f)) {
+                    continue;
+                }
+                let allowed = match o.get("allowed") { Some(Value::Bool(false)) => "  (not allowed for you)", _ => "" };
+                println!("{:<20} {:<8} {}{}", s(o, "name"), s(o, "kind"), s(o, "doc"), allowed);
+            }
+        }
+        Cmd::Op { op } => {
+            let o = find_op(&link.describe()?, &op)?;
+            println!("{} ({}, needs {}, from plugin {})\n{}", s(&o, "name"), s(&o, "kind"), s(&o, "permission"), s(&o, "plugin"), s(&o, "doc"));
+            let lines = nuah_kernel::contract::describe_input(&o["input"]);
+            if lines.is_empty() {
+                println!("takes no input");
+            }
+            for l in lines {
+                println!("  {l}");
+            }
+        }
+        Cmd::Call { op, args } => {
+            let o = find_op(&link.describe()?, &op)?;
+            let input = nuah_kernel::contract::input_from_args(&o["input"], &args).map_err(|m| LinkError::new("invalid_input", m))?;
+            let k = key();
+            let out = link.call(&op, input, if s(&o, "kind") == "command" { Some(&k) } else { None })?;
+            println!("{}", serde_json::to_string_pretty(&out).unwrap());
+        }
+        Cmd::Points => {
+            let d = link.describe()?;
+            let points = d["extension_points"].as_array().cloned().unwrap_or_default();
+            if points.is_empty() {
+                println!("no plugin has defined an extension point");
+            }
+            for p in points {
+                let names: Vec<String> = p["providers"].as_array().unwrap().iter().map(|x| x.as_str().unwrap_or("").to_string()).collect();
+                println!("{}  [{}]  {}\n  filled by: {}", s(&p, "name"), s(&p, "policy"), s(&p, "doc"), if names.is_empty() { "nobody".into() } else { names.join(", ") });
+            }
         }
         Cmd::Describe => {
             let d = link.describe()?;

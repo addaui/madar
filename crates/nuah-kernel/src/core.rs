@@ -445,6 +445,7 @@ impl Core {
             &m.data,
             self.clone(),
             read_only,
+            m.contributes.events.iter().cloned().collect(),
         )
     }
 
@@ -895,6 +896,7 @@ impl Core {
             (Some(f), Some(list)) => list.iter().any(|x| x.as_str() == Some(f)),
             _ => true,
         };
+        let mut events: Vec<Value> = vec![];
         let mut slots: Vec<Value> = vec![];
         let mut assets: Vec<Value> = vec![];
         let mut plugins: Vec<Value> = vec![];
@@ -908,6 +910,7 @@ impl Core {
                 s["plugin"] = json!(id);
                 s
             }));
+            events.extend(m.contributes.events.iter().map(|k| json!({"kind": k, "plugin": id})));
             plugins.push(json!({"id": id, "version": m.version, "kind": m.kind, "runtime": m.runtime, "quality": m.quality, "data": m.data, "requires": m.requires.plugins}));
         }
         let ports: HashMap<&String, &String> = inner.bound.iter().collect();
@@ -932,6 +935,7 @@ impl Core {
             "profile": inner.name,
             "ports": ports,
             "extension_points": extension_points,
+            "events": events,
             "plugins": plugins,
             "inactive": st.inactive.iter().map(|(i, r)| json!({"id": i, "reason": r})).collect::<Vec<_>>(),
             "ops": ops_json,
