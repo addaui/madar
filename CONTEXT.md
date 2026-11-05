@@ -96,7 +96,7 @@ Something a Subject is allowed to do, such as writing tasks. Granted by the poli
 _Avoid_: right, privilege, scope
 
 **Capability**:
-Something a plugin is allowed to use, such as emitting events or calling other plugins. Granted to the plugin by the operator through its manifest.
+Something a plugin is allowed to use, such as emitting events or calling other plugins. Asked for in its Manifest and granted by the operator in the Profile.
 _Avoid_: permission (for what a plugin may use), privilege
 
 **Owner**:
@@ -110,7 +110,7 @@ Anything that talks to a Core through the Link: a web board, a command line, a g
 _Avoid_: client, frontend, UI (for the thing as a whole)
 
 **Slot**:
-A named place in a Face where plugins can add something, such as a toolbar button.
+A named place in a Face where plugins can add something, such as a toolbar button. The Face declares its Slots; an item in a Slot can only invoke an Operation.
 _Avoid_: widget area, mount point
 
 **Link**:
@@ -120,6 +120,10 @@ _Avoid_: API, protocol, contract (for the whole offer)
 **Projection**:
 One rendering of the Link over a particular transport: in-process calls, HTTP, MCP.
 _Avoid_: binding, transport (for the rendering), adapter (reserved for Ports)
+
+**Reason code**:
+A name under a plugin's namespace that says why an Operation failed, such as tasks.stale_version, within one of the kernel's fixed error categories.
+_Avoid_: error code, error type
 
 **Operation**:
 A named, schema-checked thing a Face can ask a Core to do or read. Every Operation is a Command or a Query.
@@ -134,17 +138,17 @@ An Operation that only reads.
 _Avoid_: read, getter
 
 **Pulse**:
-The Event log as one Subject sees it: ordered, gapless, private to that Subject, and resumable from any point. A Face follows Pulse.
+The Event log as one Subject sees it: ordered, private to that Subject, and resumable from a cursor of its own. A cursor older than the log keeps is answered with a reset (reload). A Face follows Pulse.
 _Avoid_: feed, notifications, websocket
 
 ### Extending behaviour and reacting to change
 
 **Hook**:
-Plugin code attached to an Operation. A before hook may change the input or refuse; an around hook wraps the Operation and may answer in its place; an after hook runs once it has succeeded. All of them run inside the Operation's transaction.
+Plugin code attached to an Operation. A before hook may change the input or refuse; an around hook wraps the Operation and may answer in its place; an after hook runs once it has succeeded. All of them run inside the Operation's transaction (a Query has none).
 _Avoid_: wrap, interceptor, middleware, filter
 
 **Event**:
-A record that something happened, with an Event kind and an Audience, written in order to the Event log in the same transaction as the work that caused it.
+A record that something happened, with an Event kind and an Audience, written to the Event log in the same transaction as the work that caused it. One record per change, however many people it concerns.
 _Avoid_: message, notification, signal
 
 **Event kind**:
@@ -152,15 +156,19 @@ The name of a type of Event, such as task.created. Declared by exactly one plugi
 _Avoid_: event type, topic, channel
 
 **Audience**:
-The one Subject an Event is addressed to, and the only one who may see it.
+Who an Event is addressed to: a Subject or a Scope. Only those it concerns may see it.
 _Avoid_: recipient, subscriber, channel
+
+**Scope**:
+A group of Subjects declared by a plugin, such as the members of a project, resolved when Pulse is read so that someone removed from the group stops receiving its Events.
+_Avoid_: room, channel, topic
 
 **Event log**:
 The stored, ordered sequence of all Events in a Core.
 _Avoid_: stream, journal, queue
 
 **Listener**:
-Plugin code that reacts to Events inside a Core after they are committed. It cannot refuse or undo the work that caused the Event. A Face never is one.
+Plugin code that reacts to Events inside a Core after they are committed. It keeps its own place in the Event log, runs at least once, and so must be safe to repeat. It cannot refuse or undo the work that caused the Event. A Face never is one.
 _Avoid_: subscriber, handler, observer
 
 ### Checking before running
