@@ -1,225 +1,206 @@
-//! In-memory db adapter. Used for tests and throwaway instances, and as the reference
-//! behavior that the SQLite adapter is compared against.
+//! The in-memory data Adapter: the reference for what the data Port means, and the fast test Adapter.
+//! A reader holds an immutable snapshot; a writer works on a private copy that replaces the state on commit.
 
 use nuah_kernel::*;
-use parking_lot::ReentrantMutex;
-use serde_json::Value;
-use std::cell::{Cell, RefCell};
-use std::cmp::Ordering;
+use parking_lot::Mutex;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
-type Data = BTreeMap<String, BTreeMap<String, Value>>;
-
-struct Inner {
-    data: RefCell<Data>,
-    depth: Cell<u32>,
+#[derive(Clone, Default)]
+struct State {
+    docs: BTreeMap<(String, String), Doc>,
+    changes: BTreeMap<u64, ChangeRecord>,
+    last_seq: u64,
 }
 
 pub struct MemoryDb {
-    // Re-entrant so a transaction can hold the lock while the calls inside it take it again.
-    inner: ReentrantMutex<Inner>,
-}
-
-impl Default for MemoryDb {
-    fn default() -> Self {
-        MemoryDb { inner: ReentrantMutex::new(Inner { data: RefCell::new(BTreeMap::new()), depth: Cell::new(0) }) }
-    }
+    state: Mutex<Arc<State>>,
+    writer: Mutex<()>,
 }
 
 impl MemoryDb {
     pub fn new() -> Self {
-        Self::default()
+        MemoryDb { state: Mutex::new(Arc::new(State::default())), writer: Mutex::new(()) }
+    }
+}
+impl Default for MemoryDb {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-fn field(doc: &Value, path: &str) -> Value {
-    let mut cur = doc;
-    for part in path.split('.') {
-        match cur.get(part) {
-            Some(v) => cur = v,
-            None => return Value::Null,
+fn check_fields(conds: &[Cond], order: &Option<(String, bool)>) -> Result<()> {
+    for c in conds {
+        if !valid_field(&c.field) {
+            return Err(Error::internal(format!("bad field path {}", c.field)));
         }
     }
-    // SQLite's json_extract returns objects and arrays as JSON text, so they behave like strings.
-    match cur {
-        Value::Object(_) | Value::Array(_) => Value::String(cur.to_string()),
-        other => other.clone(),
-    }
-}
-
-fn rank(v: &Value) -> u8 {
-    match v {
-        Value::Null => 0,
-        Value::Bool(_) | Value::Number(_) => 1,
-        _ => 2,
-    }
-}
-
-/// Same ordering SQLite uses for json_extract results: null < numbers (bools count as 0/1) < text.
-/// Integers compare exactly; only mixed int/float comparisons go through f64.
-fn compare(a: &Value, b: &Value) -> Ordering {
-    let (ra, rb) = (rank(a), rank(b));
-    if ra != rb {
-        return ra.cmp(&rb);
-    }
-    match (a, b) {
-        (Value::String(x), Value::String(y)) => x.as_bytes().cmp(y.as_bytes()),
-        _ if ra == 1 => match (int(a), int(b)) {
-            (Some(x), Some(y)) => x.cmp(&y),
-            _ => num(a).partial_cmp(&num(b)).unwrap_or(Ordering::Equal),
-        },
-        _ => Ordering::Equal,
-    }
-}
-
-fn int(v: &Value) -> Option<i128> {
-    match v {
-        Value::Bool(b) => Some(*b as i128),
-        Value::Number(n) => n.as_i64().map(|i| i as i128).or_else(|| n.as_u64().map(|u| u as i128)),
-        _ => None,
-    }
-}
-
-fn num(v: &Value) -> f64 {
-    match v {
-        Value::Bool(b) => *b as i32 as f64,
-        Value::Number(n) => n.as_f64().unwrap_or(0.0),
-        _ => 0.0,
-    }
-}
-
-fn matches(doc: &Value, f: &Filter) -> bool {
-    let actual = field(doc, &f.field);
-    match f.op {
-        FilterOp::Eq => compare(&actual, &f.value) == Ordering::Equal,
-        FilterOp::Ne => compare(&actual, &f.value) != Ordering::Equal,
-        FilterOp::Contains => match (actual.as_str(), f.value.as_str()) {
-            (Some(a), Some(n)) => a.to_ascii_lowercase().contains(&n.to_ascii_lowercase()),
-            _ => false,
-        },
-        op => {
-            if actual.is_null() || f.value.is_null() {
-                return false;
-            }
-            let o = compare(&actual, &f.value);
-            match op {
-                FilterOp::Lt => o == Ordering::Less,
-                FilterOp::Lte => o != Ordering::Greater,
-                FilterOp::Gt => o == Ordering::Greater,
-                FilterOp::Gte => o != Ordering::Less,
-                _ => unreachable!(),
-            }
+    if let Some((f, _)) = order {
+        if !valid_field(f) {
+            return Err(Error::internal(format!("bad field path {f}")));
         }
     }
+    Ok(())
 }
 
-pub(crate) fn require_object(doc: &Value) -> Result<()> {
-    if doc.is_object() {
+impl State {
+    fn live<'a>(&'a self, collection: &'a str) -> impl Iterator<Item = &'a Doc> + 'a {
+        self.docs
+            .range((collection.to_string(), String::new())..)
+            .take_while(move |((c, _), _)| c == collection)
+            .map(|(_, d)| d)
+            .filter(|d| !d.deleted)
+    }
+    fn do_get(&self, c: &str, id: &str) -> Option<Doc> {
+        self.docs.get(&(c.to_string(), id.to_string())).cloned()
+    }
+    fn do_query(&self, c: &str, q: &Query) -> Result<Page> {
+        check_fields(&q.conds, &q.order)?;
+        let mut hits: Vec<&Doc> = self.live(c).filter(|d| q.conds.iter().all(|k| matches(&d.body, k))).collect();
+        if let Some((f, desc)) = &q.order {
+            hits.sort_by(|a, b| {
+                let o = compare(field_of(&a.body, f).unwrap_or(&Value::Null), field_of(&b.body, f).unwrap_or(&Value::Null));
+                let o = if *desc { o.reverse() } else { o };
+                o.then_with(|| a.id.cmp(&b.id))
+            });
+        }
+        let total = hits.len();
+        let items: Vec<Doc> = hits.into_iter().skip(q.offset).take(q.limit).cloned().collect();
+        let next = if q.offset + items.len() < total { Some(q.offset + items.len()) } else { None };
+        Ok(Page { items, next })
+    }
+    fn do_count(&self, c: &str, conds: &[Cond]) -> Result<u64> {
+        check_fields(conds, &None)?;
+        Ok(self.live(c).filter(|d| conds.iter().all(|k| matches(&d.body, k))).count() as u64)
+    }
+}
+
+struct Reader(Arc<State>);
+
+impl DbRead for Reader {
+    fn get(&self, c: &str, id: &str) -> Result<Option<Doc>> {
+        Ok(self.0.do_get(c, id))
+    }
+    fn query(&self, c: &str, q: &Query) -> Result<Page> {
+        self.0.do_query(c, q)
+    }
+    fn count(&self, c: &str, conds: &[Cond]) -> Result<u64> {
+        self.0.do_count(c, conds)
+    }
+    fn changes_after(&self, after: u64, limit: usize) -> Result<Vec<ChangeRecord>> {
+        Ok(self.0.changes.range(after + 1..).take(limit).map(|(_, r)| r.clone()).collect())
+    }
+    fn oldest_change(&self) -> Result<u64> {
+        Ok(self.0.changes.keys().next().copied().unwrap_or(0))
+    }
+    fn latest_change(&self) -> Result<u64> {
+        Ok(self.0.last_seq)
+    }
+}
+
+struct Writer {
+    work: State,
+    stack: Vec<State>,
+}
+
+impl DbRead for Writer {
+    fn get(&self, c: &str, id: &str) -> Result<Option<Doc>> {
+        Ok(self.work.do_get(c, id))
+    }
+    fn query(&self, c: &str, q: &Query) -> Result<Page> {
+        self.work.do_query(c, q)
+    }
+    fn count(&self, c: &str, conds: &[Cond]) -> Result<u64> {
+        self.work.do_count(c, conds)
+    }
+    fn changes_after(&self, after: u64, limit: usize) -> Result<Vec<ChangeRecord>> {
+        Ok(self.work.changes.range(after + 1..).take(limit).map(|(_, r)| r.clone()).collect())
+    }
+    fn oldest_change(&self) -> Result<u64> {
+        Ok(self.work.changes.keys().next().copied().unwrap_or(0))
+    }
+    fn latest_change(&self) -> Result<u64> {
+        Ok(self.work.last_seq)
+    }
+}
+
+fn check_expect(existing: &Option<Doc>, expect: Expect) -> Result<()> {
+    let live = existing.as_ref().filter(|d| !d.deleted);
+    match expect {
+        Expect::Any => Ok(()),
+        Expect::Absent if live.is_some() => Err(Error::conflict("kernel.exists", "already exists")),
+        Expect::Absent => Ok(()),
+        Expect::Rev(n) => match live {
+            Some(d) if d.rev == n => Ok(()),
+            _ => Err(Error::conflict("kernel.stale_revision", "changed since it was read")),
+        },
+    }
+}
+
+impl DbWrite for Writer {
+    fn put(&mut self, c: &str, id: &str, owner: &str, body: Value, expect: Expect, now: Millis) -> Result<Doc> {
+        let prev = self.work.do_get(c, id);
+        check_expect(&prev, expect)?;
+        let doc = Doc { id: id.into(), collection: c.into(), rev: prev.map(|p| p.rev + 1).unwrap_or(1), changed_at: now, deleted: false, owner: owner.into(), body };
+        self.work.docs.insert((c.into(), id.into()), doc.clone());
+        Ok(doc)
+    }
+    fn delete(&mut self, c: &str, id: &str, expect: Expect, now: Millis) -> Result<Option<Doc>> {
+        let prev = self.work.do_get(c, id);
+        check_expect(&prev, expect)?;
+        match prev {
+            Some(p) if !p.deleted => {
+                let t = Doc { rev: p.rev + 1, changed_at: now, deleted: true, body: json!({}), ..p };
+                self.work.docs.insert((c.into(), id.into()), t.clone());
+                Ok(Some(t))
+            }
+            _ => Ok(None),
+        }
+    }
+    fn append_change(&mut self, mut rec: ChangeRecord) -> Result<u64> {
+        self.work.last_seq += 1;
+        rec.seq = self.work.last_seq;
+        self.work.changes.insert(rec.seq, rec);
+        Ok(self.work.last_seq)
+    }
+    fn prune_changes(&mut self, keep: usize) -> Result<()> {
+        while self.work.changes.len() > keep {
+            let first = *self.work.changes.keys().next().unwrap();
+            self.work.changes.remove(&first);
+        }
         Ok(())
-    } else {
-        Err(LinkError::new("db_error", "documents must be JSON objects"))
+    }
+    fn begin_nested(&mut self) -> Result<()> {
+        self.stack.push(self.work.clone());
+        Ok(())
+    }
+    fn end_nested(&mut self, keep: bool) -> Result<()> {
+        let saved = self.stack.pop().ok_or_else(|| Error::internal("no nested transaction open"))?;
+        if !keep {
+            self.work = saved;
+        }
+        Ok(())
     }
 }
 
 impl Db for MemoryDb {
-    fn id(&self) -> &str {
-        "adapter-memory"
+    fn name(&self) -> &str {
+        "memory"
     }
-    fn get(&self, collection: &str, id: &str) -> Result<Option<Value>> {
-        let g = self.inner.lock();
-        let d = g.data.borrow();
-        Ok(d.get(collection).and_then(|c| c.get(id)).cloned())
+    fn read(&self, f: &mut dyn FnMut(&dyn DbRead) -> Result<()>) -> Result<()> {
+        let snap = self.state.lock().clone();
+        f(&Reader(snap))
     }
-    fn put_new(&self, collection: &str, id: &str, doc: &Value) -> Result<bool> {
-        require_object(doc)?;
-        let g = self.inner.lock();
-        let mut d = g.data.borrow_mut();
-        let col = d.entry(collection.into()).or_default();
-        if col.contains_key(id) {
-            return Ok(false);
-        }
-        col.insert(id.into(), doc.clone());
-        Ok(true)
-    }
-    fn put(&self, collection: &str, id: &str, doc: &Value) -> Result<()> {
-        require_object(doc)?;
-        let g = self.inner.lock();
-        g.data.borrow_mut().entry(collection.into()).or_default().insert(id.into(), doc.clone());
+    fn write(&self, f: &mut dyn FnMut(&mut dyn DbWrite) -> Result<()>) -> Result<()> {
+        let _one_writer = self.writer.lock();
+        let base = self.state.lock().clone();
+        let mut w = Writer { work: (*base).clone(), stack: vec![] };
+        f(&mut w)?;
+        *self.state.lock() = Arc::new(w.work);
         Ok(())
     }
-    fn delete(&self, collection: &str, id: &str) -> Result<bool> {
-        let g = self.inner.lock();
-        let removed = g.data.borrow_mut().get_mut(collection).and_then(|c| c.remove(id)).is_some();
-        Ok(removed)
-    }
-    fn query(&self, q: &Query) -> Result<Vec<Value>> {
-        check_query(q)?;
-        let g = self.inner.lock();
-        let data = g.data.borrow();
-        let Some(col) = data.get(&q.collection) else { return Ok(vec![]) };
-        let mut rows: Vec<(&String, &Value)> =
-            col.iter().filter(|(_, d)| q.filters.iter().all(|f| matches(d, f))).collect();
-        if let Some((fld, desc)) = &q.order_by {
-            rows.sort_by(|a, b| {
-                let o = compare(&field(a.1, fld), &field(b.1, fld));
-                let o = if *desc { o.reverse() } else { o };
-                o.then_with(|| a.0.as_bytes().cmp(b.0.as_bytes()))
-            });
-        }
-        Ok(rows.into_iter().skip(q.offset).take(q.limit.unwrap_or(usize::MAX)).map(|(_, d)| d.clone()).collect())
-    }
-    fn batch(&self, ops: &[WriteOp]) -> Result<()> {
-        for op in ops {
-            if let WriteOp::Put { doc, .. } = op {
-                require_object(doc)?;
-            }
-        }
-        self.transaction(&mut || {
-            for op in ops {
-                match op {
-                    WriteOp::Put { collection, id, doc } => self.put(collection, id, doc)?,
-                    WriteOp::Delete { collection, id } => {
-                        self.delete(collection, id)?;
-                    }
-                }
-            }
-            Ok(())
-        })
-    }
-    fn transaction(&self, f: &mut dyn FnMut() -> Result<()>) -> Result<()> {
-        let g = self.inner.lock();
-        // Every level keeps its own snapshot, so a failed inner call undoes only its own work
-        // even when the outer code catches the error and carries on.
-        let snapshot = g.data.borrow().clone();
-        g.depth.set(g.depth.get() + 1);
-        let result = catch_unwind(AssertUnwindSafe(|| f()));
-        g.depth.set(g.depth.get() - 1);
-        match result {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => {
-                *g.data.borrow_mut() = snapshot;
-                Err(e)
-            }
-            Err(panic) => {
-                *g.data.borrow_mut() = snapshot;
-                resume_unwind(panic)
-            }
-        }
-    }
-}
-
-pub struct MemoryDbPlugin;
-
-impl Plugin for MemoryDbPlugin {
-    fn manifest(&self) -> Manifest {
-        Manifest::parse(
-            r#"{"id":"adapter-memory","version":"0.1.0", "description":"Stores data in memory. Gone when the program stops; for tests.","implements":[{"port":"db"}],"quality":"reference"}"#,
-        )
-    }
-    fn activate(&self, act: &mut Activation) -> Result<()> {
-        act.provide_db(Arc::new(MemoryDb::new()));
-        Ok(())
+    fn ensure_index(&self, _collection: &str, field: &str) -> Result<()> {
+        if valid_field(field) { Ok(()) } else { Err(Error::internal("bad field path")) }
     }
 }

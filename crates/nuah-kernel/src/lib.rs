@@ -1,31 +1,25 @@
-//! nuah-kernel: scope-owned registrations, ports, hooks, events, and the call pipeline.
-//! Nothing here knows what a task is.
+//! Nu'ah kernel v2: plugin-agnostic machinery. It knows nothing about any app.
+//!
+//! Documentation lives at <https://docs.addaui.com/nuah/>; start with the Architecture overview.
 
-pub mod contract;
 pub mod core;
+pub mod db;
+pub mod describe;
 pub mod error;
-pub mod events;
 pub mod manifest;
+pub mod pipeline;
 pub mod plugin;
 pub mod ports;
+pub mod pulse;
+pub mod resolver;
 pub mod schema;
-pub mod setup;
 
-pub use crate::core::{CallRequest, CallResponse, Core, Distribution, Profile, CONTRACT_VERSION};
-pub use error::{LinkError, Result};
-pub use events::Event;
-pub use manifest::Manifest;
-pub use plugin::*;
-pub use ports::*;
-
-/// A plugin with no code: it only contributes manifest data (for example a theme).
-pub struct DataPlugin(pub Manifest);
-
-impl Plugin for DataPlugin {
-    fn manifest(&self) -> Manifest {
-        self.0.clone()
-    }
-    fn activate(&self, _act: &mut Activation) -> Result<()> {
-        Ok(())
-    }
-}
+pub use crate::core::Core;
+pub use crate::db::*;
+pub use crate::error::{Category, Error, Result};
+pub use crate::manifest::*;
+pub use crate::pipeline::{CallRequest, CallResponse};
+pub use crate::pulse::{PulseBatch, PulseEvent};
+pub use crate::plugin::*;
+pub use crate::ports::*;
+pub use crate::resolver::*;

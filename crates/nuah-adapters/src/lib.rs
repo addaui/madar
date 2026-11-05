@@ -1,15 +1,17 @@
-//! First-party adapters for the kernel's ports. Each one is a plugin with a manifest,
-//! and each db adapter must pass `conformance::run_db_conformance`.
+//! Adapters for the kernel's Ports: memory and SQLite data, local and password sign-in, allow-all and
+//! role policy, system and fixed clock/ids. Also the data conformance suite every data Adapter passes.
 
 pub mod auth;
 pub mod conformance;
+pub mod db_plugins;
 pub mod memory;
 pub mod policy;
 pub mod sqlite;
 pub mod std_ports;
 
-pub use auth::{AuthLocalPlugin, AuthTokenPlugin};
-pub use memory::MemoryDbPlugin;
-pub use policy::{PolicyAllowPlugin, PolicyRolesPlugin};
-pub use sqlite::SqliteDbPlugin;
-pub use std_ports::{FixedPlugin, StdPlugin};
+pub use auth::{AuthLocal, AuthPassword};
+pub use db_plugins::{AdapterMemory, AdapterSqlite};
+pub use memory::MemoryDb;
+pub use policy::{PolicyAllowAll, PolicyRoles};
+pub use sqlite::SqliteDb;
+pub use std_ports::*;

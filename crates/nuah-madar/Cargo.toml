@@ -6,7 +6,6 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-nuah-adapters = { version = "0.0.1", path = "../nuah-adapters" }
-nuah-kernel = { version = "0.0.1", path = "../nuah-kernel" }
-serde = { version = "1.0.229", features = ["derive"] }
+nuah-kernel = { path = "../nuah-kernel" }
+nuah-adapters = { path = "../nuah-adapters" }
 serde_json = "1.0.154"

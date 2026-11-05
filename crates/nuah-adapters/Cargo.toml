@@ -6,8 +6,11 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-nuah-kernel = { version = "0.0.1", path = "../nuah-kernel" }
+argon2 = "0.5"
+nuah-kernel = { path = "../nuah-kernel" }
 parking_lot = "0.13.0"
+rand_core = { version = "0.6.4", features = ["getrandom"] }
 rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde_json = "1.0.154"
-uuid = { version = "1.29.0", features = ["v4", "v7"] }
+sha2 = "0.10"
+uuid = { version = "1.29.0", features = ["v4"] }

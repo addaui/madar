@@ -1,316 +1,246 @@
-//! SQLite db adapter. One table of JSON documents; fields are read with json_extract.
-//! Field paths and values are always bound as parameters, never spliced into SQL.
-//!
-//! Transactions use BEGIN IMMEDIATE on a single shared connection that sits behind a re-entrant
-//! lock, so they are serialized in this process and, through SQLite's file lock, across processes.
+//! The SQLite data Adapter. One connection behind a lock: writers are serialized, a reader sees one
+//! snapshot. Other mechanisms (a pool, WAL readers) can replace this without the kernel noticing.
 
-use crate::memory::require_object;
 use nuah_kernel::*;
-use parking_lot::ReentrantMutex;
-use rusqlite::{params_from_iter, types::Value as Sql, Connection, OptionalExtension};
+use parking_lot::Mutex;
+use rusqlite::{params, params_from_iter, types::Value as Sql, Connection, OptionalExtension};
 use serde_json::Value;
-use std::cell::{Cell, RefCell};
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
-use std::sync::Arc;
-
-struct Inner {
-    conn: RefCell<Connection>,
-    depth: Cell<u32>,
-}
 
 pub struct SqliteDb {
-    inner: ReentrantMutex<Inner>,
+    conn: Mutex<Connection>,
 }
 
-fn db_err(e: rusqlite::Error) -> LinkError {
-    LinkError::new("db_error", e.to_string())
+fn db_err(e: rusqlite::Error) -> Error {
+    Error::internal(format!("sqlite: {e}"))
+}
+fn json_err(e: serde_json::Error) -> Error {
+    Error::internal(format!("stored json: {e}"))
 }
 
 impl SqliteDb {
-    /// `path` may be ":memory:".
     pub fn open(path: &str) -> Result<Self> {
         let conn = if path == ":memory:" { Connection::open_in_memory() } else { Connection::open(path) }.map_err(db_err)?;
         if path != ":memory:" {
-            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;").map_err(db_err)?;
+            conn.pragma_update(None, "journal_mode", "WAL").map_err(db_err)?;
         }
         conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(db_err)?;
         conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS docs (
-                collection TEXT NOT NULL,
-                id TEXT NOT NULL,
-                body TEXT NOT NULL,
-                PRIMARY KEY (collection, id)
-             ) WITHOUT ROWID;
-             DROP INDEX IF EXISTS idx_events_seq;
-             CREATE INDEX IF NOT EXISTS idx_events_seq2 ON docs (collection, json_extract(body, '$.seq'));",
+            "CREATE TABLE IF NOT EXISTS docs (collection TEXT NOT NULL, id TEXT NOT NULL, rev INTEGER NOT NULL, changed_at INTEGER NOT NULL,
+               deleted INTEGER NOT NULL, owner TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (collection, id)) WITHOUT ROWID;
+             CREATE TABLE IF NOT EXISTS changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, record TEXT NOT NULL);",
         )
         .map_err(db_err)?;
-        Ok(SqliteDb { inner: ReentrantMutex::new(Inner { conn: RefCell::new(conn), depth: Cell::new(0) }) })
+        Ok(SqliteDb { conn: Mutex::new(conn) })
     }
 }
 
-/// `json_extract(body, '$.a.b')` with the path written into the SQL. This is safe because
-/// `check_field_path` only lets letters, digits, `_` and `.` through, and it lets SQLite match
-/// an expression index (a bound parameter would hide the path from the planner).
-fn extract(field: &str) -> Result<String> {
-    check_field_path(field)?;
-    Ok(format!("json_extract(body, '$.{field}')"))
+fn plain_name(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 80 && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | ':'))
 }
 
 fn to_sql(v: &Value) -> Sql {
     match v {
         Value::Null => Sql::Null,
         Value::Bool(b) => Sql::Integer(*b as i64),
-        Value::Number(n) => match n.as_i64() {
-            Some(i) => Sql::Integer(i),
-            None => Sql::Real(n.as_f64().unwrap_or(0.0)),
-        },
+        Value::Number(n) => n.as_i64().map(Sql::Integer).unwrap_or_else(|| Sql::Real(n.as_f64().unwrap_or(0.0))),
         Value::String(s) => Sql::Text(s.clone()),
         other => Sql::Text(other.to_string()),
     }
 }
 
-fn escape_like(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+fn path(field: &str) -> Result<String> {
+    if valid_field(field) { Ok(format!("json_extract(body,'$.{field}')")) } else { Err(Error::internal(format!("bad field path {field}"))) }
+}
+
+/// WHERE fragments (all literals are validated names; values are bound).
+fn where_sql(collection: &str, conds: &[Cond]) -> Result<(String, Vec<Sql>)> {
+    if !plain_name(collection) {
+        return Err(Error::internal("bad collection name"));
+    }
+    let mut sql = format!("collection='{collection}' AND deleted=0");
+    let mut args = vec![];
+    for c in conds {
+        let p = path(&c.field)?;
+        match c.op {
+            Cmp::Eq => {
+                sql += &format!(" AND {p} IS ?");
+                args.push(to_sql(&c.value));
+            }
+            Cmp::Ne => {
+                sql += &format!(" AND {p} IS NOT ?");
+                args.push(to_sql(&c.value));
+            }
+            Cmp::In => {
+                let list = c.value.as_array().cloned().unwrap_or_default();
+                let has_null = list.iter().any(|v| v.is_null());
+                let items: Vec<&Value> = list.iter().filter(|v| !v.is_null()).collect();
+                let marks = vec!["?"; items.len()].join(",");
+                let mut parts = vec![];
+                if !items.is_empty() {
+                    parts.push(format!("{p} IN ({marks})"));
+                }
+                if has_null {
+                    parts.push(format!("{p} IS NULL"));
+                }
+                if parts.is_empty() {
+                    parts.push("0".into());
+                }
+                sql += &format!(" AND ({})", parts.join(" OR "));
+                args.extend(items.into_iter().map(to_sql));
+            }
+            Cmp::Lt | Cmp::Lte | Cmp::Gt | Cmp::Gte => {
+                let op = match c.op { Cmp::Lt => "<", Cmp::Lte => "<=", Cmp::Gt => ">", _ => ">=" };
+                sql += &format!(" AND {p} {op} ?");
+                args.push(to_sql(&c.value));
+            }
+        }
+    }
+    Ok((sql, args))
+}
+
+fn row_doc(r: &rusqlite::Row) -> rusqlite::Result<(Doc, String)> {
+    let body: String = r.get(6)?;
+    Ok((
+        Doc { collection: r.get(0)?, id: r.get(1)?, rev: r.get::<_, i64>(2)? as u64, changed_at: r.get(3)?, deleted: r.get::<_, i64>(4)? != 0, owner: r.get(5)?, body: Value::Null },
+        body,
+    ))
+}
+
+fn finish(rows: Vec<(Doc, String)>) -> Result<Vec<Doc>> {
+    rows.into_iter().map(|(mut d, b)| { d.body = serde_json::from_str(&b).map_err(json_err)?; Ok(d) }).collect()
+}
+
+struct Conn<'a> {
+    c: &'a Connection,
+    nested: u32,
+}
+
+impl DbRead for Conn<'_> {
+    fn get(&self, collection: &str, id: &str) -> Result<Option<Doc>> {
+        let row = self.c.query_row("SELECT collection,id,rev,changed_at,deleted,owner,body FROM docs WHERE collection=?1 AND id=?2", params![collection, id], row_doc).optional().map_err(db_err)?;
+        Ok(match row { Some(r) => finish(vec![r])?.pop(), None => None })
+    }
+    fn query(&self, collection: &str, q: &Query) -> Result<Page> {
+        let (w, mut args) = where_sql(collection, &q.conds)?;
+        let order = match &q.order {
+            Some((f, desc)) => format!(" ORDER BY {} {}, id", path(f)?, if *desc { "DESC" } else { "ASC" }),
+            None => " ORDER BY id".into(),
+        };
+        // ask for one more than the limit to know whether there is a next page
+        let sql = format!("SELECT collection,id,rev,changed_at,deleted,owner,body FROM docs WHERE {w}{order} LIMIT ? OFFSET ?");
+        args.push(Sql::Integer(q.limit as i64 + 1));
+        args.push(Sql::Integer(q.offset as i64));
+        let mut st = self.c.prepare_cached(&sql).map_err(db_err)?;
+        let rows = st.query_map(params_from_iter(args), row_doc).map_err(db_err)?.collect::<std::result::Result<Vec<_>, _>>().map_err(db_err)?;
+        let mut items = finish(rows)?;
+        let next = if items.len() > q.limit { items.truncate(q.limit); Some(q.offset + q.limit) } else { None };
+        Ok(Page { items, next })
+    }
+    fn count(&self, collection: &str, conds: &[Cond]) -> Result<u64> {
+        let (w, args) = where_sql(collection, conds)?;
+        let n: i64 = self.c.query_row(&format!("SELECT COUNT(*) FROM docs WHERE {w}"), params_from_iter(args), |r| r.get(0)).map_err(db_err)?;
+        Ok(n as u64)
+    }
+    fn changes_after(&self, after: u64, limit: usize) -> Result<Vec<ChangeRecord>> {
+        let mut st = self.c.prepare_cached("SELECT seq, record FROM changes WHERE seq>?1 ORDER BY seq LIMIT ?2").map_err(db_err)?;
+        let rows = st.query_map(params![after as i64, limit as i64], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(db_err)?.collect::<std::result::Result<Vec<_>, _>>().map_err(db_err)?;
+        rows.into_iter().map(|(seq, rec)| { let mut r: ChangeRecord = serde_json::from_str(&rec).map_err(json_err)?; r.seq = seq as u64; Ok(r) }).collect()
+    }
+    fn oldest_change(&self) -> Result<u64> {
+        let n: Option<i64> = self.c.query_row("SELECT MIN(seq) FROM changes", [], |r| r.get(0)).map_err(db_err)?;
+        Ok(n.unwrap_or(0) as u64)
+    }
+    fn latest_change(&self) -> Result<u64> {
+        let n: Option<i64> = self.c.query_row("SELECT seq FROM sqlite_sequence WHERE name='changes'", [], |r| r.get(0)).optional().map_err(db_err)?;
+        Ok(n.unwrap_or(0) as u64)
+    }
+}
+
+fn check_expect(existing: &Option<Doc>, expect: Expect) -> Result<()> {
+    let live = existing.as_ref().filter(|d| !d.deleted);
+    match expect {
+        Expect::Any => Ok(()),
+        Expect::Absent if live.is_some() => Err(Error::conflict("kernel.exists", "already exists")),
+        Expect::Absent => Ok(()),
+        Expect::Rev(n) => match live {
+            Some(d) if d.rev == n => Ok(()),
+            _ => Err(Error::conflict("kernel.stale_revision", "changed since it was read")),
+        },
+    }
+}
+
+impl DbWrite for Conn<'_> {
+    fn put(&mut self, collection: &str, id: &str, owner: &str, body: Value, expect: Expect, now: Millis) -> Result<Doc> {
+        let prev = self.get(collection, id)?;
+        check_expect(&prev, expect)?;
+        let rev = prev.map(|p| p.rev + 1).unwrap_or(1);
+        self.c.execute("INSERT OR REPLACE INTO docs (collection,id,rev,changed_at,deleted,owner,body) VALUES (?1,?2,?3,?4,0,?5,?6)", params![collection, id, rev as i64, now, owner, body.to_string()]).map_err(db_err)?;
+        Ok(Doc { id: id.into(), collection: collection.into(), rev, changed_at: now, deleted: false, owner: owner.into(), body })
+    }
+    fn delete(&mut self, collection: &str, id: &str, expect: Expect, now: Millis) -> Result<Option<Doc>> {
+        let prev = self.get(collection, id)?;
+        check_expect(&prev, expect)?;
+        match prev {
+            Some(p) if !p.deleted => {
+                self.c.execute("UPDATE docs SET rev=?3, changed_at=?4, deleted=1, body='{}' WHERE collection=?1 AND id=?2", params![collection, id, (p.rev + 1) as i64, now]).map_err(db_err)?;
+                Ok(Some(Doc { rev: p.rev + 1, changed_at: now, deleted: true, body: serde_json::json!({}), ..p }))
+            }
+            _ => Ok(None),
+        }
+    }
+    fn append_change(&mut self, rec: ChangeRecord) -> Result<u64> {
+        self.c.execute("INSERT INTO changes (record) VALUES (?1)", params![serde_json::to_string(&rec).map_err(json_err)?]).map_err(db_err)?;
+        Ok(self.c.last_insert_rowid() as u64)
+    }
+    fn prune_changes(&mut self, keep: usize) -> Result<()> {
+        let latest = self.latest_change()? as i64;
+        self.c.execute("DELETE FROM changes WHERE seq <= ?1", params![latest - keep as i64]).map_err(db_err)?;
+        Ok(())
+    }
+    fn begin_nested(&mut self) -> Result<()> {
+        self.nested += 1;
+        self.c.execute_batch(&format!("SAVEPOINT n{}", self.nested)).map_err(db_err)
+    }
+    fn end_nested(&mut self, keep: bool) -> Result<()> {
+        if self.nested == 0 {
+            return Err(Error::internal("no nested transaction open"));
+        }
+        let n = self.nested;
+        self.nested -= 1;
+        let sql = if keep { format!("RELEASE n{n}") } else { format!("ROLLBACK TO n{n}; RELEASE n{n}") };
+        self.c.execute_batch(&sql).map_err(db_err)
+    }
 }
 
 impl Db for SqliteDb {
-    fn id(&self) -> &str {
-        "adapter-sqlite"
+    fn name(&self) -> &str {
+        "sqlite"
     }
-
-    fn get(&self, collection: &str, id: &str) -> Result<Option<Value>> {
-        let g = self.inner.lock();
-        let conn = g.conn.borrow();
-        let body: Option<String> = conn
-            .query_row("SELECT body FROM docs WHERE collection = ?1 AND id = ?2", [collection, id], |r| r.get(0))
-            .optional()
-            .map_err(db_err)?;
-        Ok(body.and_then(|b| serde_json::from_str(&b).ok()))
+    fn read(&self, f: &mut dyn FnMut(&dyn DbRead) -> Result<()>) -> Result<()> {
+        let guard = self.conn.lock();
+        guard.execute_batch("BEGIN").map_err(db_err)?;
+        let r = f(&Conn { c: &guard, nested: 0 });
+        let _ = guard.execute_batch("ROLLBACK");
+        r
     }
-
-    fn put_new(&self, collection: &str, id: &str, doc: &Value) -> Result<bool> {
-        require_object(doc)?;
-        let g = self.inner.lock();
-        let conn = g.conn.borrow();
-        let n = conn
-            .execute(
-                "INSERT INTO docs (collection, id, body) VALUES (?1, ?2, ?3) ON CONFLICT (collection, id) DO NOTHING",
-                [collection, id, &doc.to_string()],
-            )
-            .map_err(db_err)?;
-        Ok(n > 0)
-    }
-
-    fn put(&self, collection: &str, id: &str, doc: &Value) -> Result<()> {
-        require_object(doc)?;
-        let g = self.inner.lock();
-        let conn = g.conn.borrow();
-        conn.execute(
-            "INSERT INTO docs (collection, id, body) VALUES (?1, ?2, ?3)
-             ON CONFLICT (collection, id) DO UPDATE SET body = excluded.body",
-            [collection, id, &doc.to_string()],
-        )
-        .map_err(db_err)?;
-        Ok(())
-    }
-
-    fn ensure_index(&self, collection: &str, field: &str) -> Result<()> {
-        let plain = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-        if !plain(collection) {
-            return Err(LinkError::new("db_error", format!("invalid collection name `{collection}`")));
-        }
-        let expr = extract(field)?;
-        // '_' and '.' are escaped so that no two (collection, field) pairs share a name
-        let name = format!("idx_c_{}_{collection}_{}", collection.len(), field.replace('_', "_u").replace('.', "_d"));
-        let g = self.inner.lock();
-        let conn = g.conn.borrow();
-        conn.execute_batch(&format!(
-            "CREATE INDEX IF NOT EXISTS {name} ON docs (collection, {expr})"
-        ))
-        .map_err(db_err)
-    }
-
-    fn delete(&self, collection: &str, id: &str) -> Result<bool> {
-        let g = self.inner.lock();
-        let conn = g.conn.borrow();
-        let n = conn.execute("DELETE FROM docs WHERE collection = ?1 AND id = ?2", [collection, id]).map_err(db_err)?;
-        Ok(n > 0)
-    }
-
-    fn query(&self, q: &Query) -> Result<Vec<Value>> {
-        check_query(q)?;
-        let mut sql = String::from("SELECT body FROM docs WHERE collection = ?");
-        let mut params: Vec<Sql> = vec![Sql::Text(q.collection.clone())];
-        for f in &q.filters {
-            let x = extract(&f.field)?;
-            match (f.op, &f.value) {
-                (FilterOp::Eq, Value::Null) => sql.push_str(&format!(" AND {x} IS NULL")),
-                (FilterOp::Ne, Value::Null) => sql.push_str(&format!(" AND {x} IS NOT NULL")),
-                (FilterOp::Eq, v) => {
-                    sql.push_str(&format!(" AND {x} = ?"));
-                    params.push(to_sql(v));
-                }
-                (FilterOp::Ne, v) => {
-                    sql.push_str(&format!(" AND {x} IS NOT ?"));
-                    params.push(to_sql(v));
-                }
-                (FilterOp::Contains, Value::String(s)) => {
-                    sql.push_str(&format!(" AND typeof({x}) = 'text' AND lower({x}) LIKE '%' || lower(?) || '%' ESCAPE '\\'"));
-                    params.push(Sql::Text(escape_like(s)));
-                }
-                (FilterOp::Contains, _) => sql.push_str(" AND 0"),
-                (op, v) => {
-                    if v.is_null() {
-                        sql.push_str(" AND 0");
-                        continue;
-                    }
-                    let cmp = match op {
-                        FilterOp::Lt => "<",
-                        FilterOp::Lte => "<=",
-                        FilterOp::Gt => ">",
-                        _ => ">=",
-                    };
-                    sql.push_str(&format!(" AND {x} {cmp} ?"));
-                    params.push(to_sql(v));
-                }
-            }
-        }
-        match &q.order_by {
-            Some((field, desc)) => {
-                sql.push_str(&format!(" ORDER BY {} {}, id ASC", extract(field)?, if *desc { "DESC" } else { "ASC" }));
-            }
-            None => sql.push_str(" ORDER BY id ASC"),
-        }
-        sql.push_str(" LIMIT ? OFFSET ?");
-        params.push(Sql::Integer(q.limit.map(|l| l as i64).unwrap_or(-1)));
-        params.push(Sql::Integer(q.offset as i64));
-
-        let g = self.inner.lock();
-        let conn = g.conn.borrow();
-        let mut stmt = conn.prepare_cached(&sql).map_err(db_err)?;
-        let rows = stmt.query_map(params_from_iter(params), |r| r.get::<_, String>(0)).map_err(db_err)?;
-        let mut out = vec![];
-        for row in rows {
-            let body = row.map_err(db_err)?;
-            out.push(serde_json::from_str(&body).map_err(|e| LinkError::new("db_error", e.to_string()))?);
-        }
-        Ok(out)
-    }
-
-    fn batch(&self, ops: &[WriteOp]) -> Result<()> {
-        for op in ops {
-            if let WriteOp::Put { doc, .. } = op {
-                require_object(doc)?;
-            }
-        }
-        self.transaction(&mut || {
-            for op in ops {
-                match op {
-                    WriteOp::Put { collection, id, doc } => self.put(collection, id, doc)?,
-                    WriteOp::Delete { collection, id } => {
-                        self.delete(collection, id)?;
-                    }
-                }
-            }
-            Ok(())
-        })
-    }
-
-    fn transaction(&self, f: &mut dyn FnMut() -> Result<()>) -> Result<()> {
-        let g = self.inner.lock();
-        let depth = g.depth.get();
-        // The outermost level is a real transaction; inner levels are savepoints, so an inner
-        // failure that the caller handles undoes only the inner work.
-        let (begin, commit, rollback) = if depth == 0 {
-            ("BEGIN IMMEDIATE".to_string(), "COMMIT".to_string(), "ROLLBACK".to_string())
-        } else {
-            let sp = format!("sp{depth}");
-            (format!("SAVEPOINT {sp}"), format!("RELEASE {sp}"), format!("ROLLBACK TO {sp}; RELEASE {sp}"))
-        };
-        g.conn.borrow().execute_batch(&begin).map_err(db_err)?;
-        g.depth.set(depth + 1);
-        let result = catch_unwind(AssertUnwindSafe(|| f()));
-        g.depth.set(depth);
-        match result {
-            Ok(Ok(())) => match g.conn.borrow().execute_batch(&commit) {
-                Ok(()) => Ok(()),
-                Err(e) => {
-                    let _ = g.conn.borrow().execute_batch(&rollback);
-                    Err(db_err(e))
-                }
-            },
-            Ok(Err(e)) => {
-                let _ = g.conn.borrow().execute_batch(&rollback);
+    fn write(&self, f: &mut dyn FnMut(&mut dyn DbWrite) -> Result<()>) -> Result<()> {
+        let guard = self.conn.lock();
+        guard.execute_batch("BEGIN IMMEDIATE").map_err(db_err)?;
+        let mut c = Conn { c: &guard, nested: 0 };
+        match f(&mut c) {
+            Ok(()) => guard.execute_batch("COMMIT").map_err(db_err),
+            Err(e) => {
+                let _ = guard.execute_batch("ROLLBACK");
                 Err(e)
             }
-            Err(panic) => {
-                let _ = g.conn.borrow().execute_batch(&rollback);
-                resume_unwind(panic)
-            }
         }
     }
-}
-
-pub struct SqliteDbPlugin;
-
-impl Plugin for SqliteDbPlugin {
-    fn manifest(&self) -> Manifest {
-        Manifest::parse(
-            r#"{"id":"adapter-sqlite","version":"0.1.0", "description":"Stores data in a SQLite file.","implements":[{"port":"db"}],"quality":"reference","settings_schema":{"type":"object","properties":{"path":{"type":"string","minLength":1}}}}"#,
-        )
-    }
-    fn activate(&self, act: &mut Activation) -> Result<()> {
-        let path = act.settings().get("path").and_then(|p| p.as_str()).unwrap_or(":memory:").to_string();
-        act.provide_db(Arc::new(SqliteDb::open(&path)?));
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn plan(db: &SqliteDb, q: &Query) -> String {
-        // same SQL shape as `query`, asked to explain itself
-        let g = db.inner.lock();
-        let conn = g.conn.borrow();
-        let mut sql = String::from("EXPLAIN QUERY PLAN SELECT body FROM docs WHERE collection = ?");
-        for f in &q.filters {
-            let x = extract(&f.field).unwrap();
-            sql.push_str(&format!(" AND {x} > ?"));
+    fn ensure_index(&self, collection: &str, field: &str) -> Result<()> {
+        if !plain_name(collection) || !valid_field(field) {
+            return Err(Error::internal("bad index name"));
         }
-        if let Some((f, d)) = &q.order_by {
-            sql.push_str(&format!(" ORDER BY {} {}", extract(f).unwrap(), if *d { "DESC" } else { "ASC" }));
-        }
-        sql.push_str(" LIMIT 1");
-        let mut stmt = conn.prepare(&sql).unwrap();
-        let n = q.filters.len() + 1;
-        let params: Vec<Sql> = std::iter::once(Sql::Text(q.collection.clone())).chain((1..n).map(|_| Sql::Integer(0))).collect();
-        let rows: Vec<String> = stmt.query_map(params_from_iter(params), |r| r.get::<_, String>(3)).unwrap().map(|r| r.unwrap()).collect();
-        rows.join(" | ")
-    }
-
-    #[test]
-    fn the_event_queries_use_the_index_and_need_no_sorting() {
-        let db = SqliteDb::open(":memory:").unwrap();
-        db.put("_events", "1", &json!({"seq": 1, "audience": "a"})).unwrap();
-        let newest = plan(&db, &Query::new("_events").order("seq", true));
-        assert!(newest.contains("idx_events_seq2") && !newest.contains("TEMP B-TREE"), "max-seq lookup: {newest}");
-        let after = plan(&db, &Query::new("_events").filter("seq", FilterOp::Gt, json!(5)).order("seq", false));
-        assert!(after.contains("idx_events_seq2") && !after.contains("TEMP B-TREE"), "read-after-N: {after}");
-    }
-
-    #[test]
-    fn an_index_requested_by_a_plugin_is_used_and_rejects_bad_names() {
-        let db = SqliteDb::open(":memory:").unwrap();
-        let q = Query::new("tasks").filter("project_id", FilterOp::Gt, json!(0));
-        assert!(!plan(&db, &q).contains("idx_c_"), "no index yet");
-        db.ensure_index("tasks", "project_id").unwrap();
-        db.ensure_index("tasks", "project_id").unwrap(); // twice is fine
-        assert!(plan(&db, &q).contains("idx_c_5_tasks_project_uid"), "{}", plan(&db, &q));
-        assert!(db.ensure_index("tasks; drop table docs", "x").is_err());
-        assert!(db.ensure_index("tasks", "a b").is_err());
+        let name = format!("ix_{}_{}", collection.replace(['.', '-', ':'], "_"), field.replace('.', "_"));
+        let sql = format!("CREATE INDEX IF NOT EXISTS {name} ON docs (json_extract(body,'$.{field}')) WHERE collection='{collection}'");
+        self.conn.lock().execute_batch(&sql).map_err(db_err)
     }
 }

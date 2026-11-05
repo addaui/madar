@@ -1,0 +1,30 @@
+//! Data Adapters as plugins.
+
+use crate::{memory::MemoryDb, sqlite::SqliteDb};
+use nuah_kernel::*;
+use serde_json::{json, Value};
+use std::sync::Arc;
+
+pub struct AdapterMemory;
+impl Plugin for AdapterMemory {
+    fn manifest(&self) -> Manifest {
+        serde_json::from_value(json!({"id":"db-memory","version":"0.2.0","name":"Memory database","description":"Keeps data in memory; gone when the Core stops","fills":"db"})).unwrap()
+    }
+    fn fill(&self, _s: &Value) -> Result<Option<PortImpl>> {
+        Ok(Some(PortImpl::Db(Arc::new(MemoryDb::new()))))
+    }
+}
+
+pub struct AdapterSqlite;
+impl Plugin for AdapterSqlite {
+    fn manifest(&self) -> Manifest {
+        serde_json::from_value(json!({
+            "id":"db-sqlite","version":"0.2.0","name":"SQLite database","description":"Keeps data in one SQLite file","fills":"db",
+            "settings_schema":{"type":"object","properties":{"path":{"type":"string","minLength":1}},"additionalProperties":false}
+        })).unwrap()
+    }
+    fn fill(&self, s: &Value) -> Result<Option<PortImpl>> {
+        let path = s.get("path").and_then(|p| p.as_str()).unwrap_or(":memory:");
+        Ok(Some(PortImpl::Db(Arc::new(SqliteDb::open(path)?))))
+    }
+}

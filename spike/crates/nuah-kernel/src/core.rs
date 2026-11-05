@@ -1,0 +1,1217 @@
+//! The kernel: resolves a distribution, activates plugins, and runs every call through one pipeline.
+//!
+//! call(): authenticate -> find op -> policy -> contract check -> idempotency -> before hooks
+//!         -> handler -> after hooks -> publish events -> remember result
+
+use crate::error::{LinkError, Result};
+use crate::events::{Event, EventLog};
+use crate::manifest::{ExtensionPointDef, Manifest};
+use crate::plugin::*;
+use crate::ports::*;
+use crate::schema;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::{Arc, Mutex, RwLock};
+use tokio::sync::broadcast;
+
+pub const CONTRACT_VERSION: &str = "0.1";
+
+/// One set of choices: which plugins are on, which adapter fills each port, and the settings of
+/// each plugin. It holds no plugins.
+#[derive(Clone)]
+pub struct Profile {
+    pub name: String,
+    pub enabled: Vec<String>,
+    pub bindings: HashMap<String, String>,
+    pub settings: HashMap<String, Value>,
+}
+
+/// A catalog of plugins together with the Profile chosen to start it with. Starting a Core takes
+/// one. The profile's fields read straight through (`d.enabled` is `d.profile.enabled`).
+#[derive(Clone)]
+pub struct Distribution {
+    pub catalog: Vec<Arc<dyn Plugin>>,
+    pub profile: Profile,
+}
+
+impl std::ops::Deref for Distribution {
+    type Target = Profile;
+    fn deref(&self) -> &Profile {
+        &self.profile
+    }
+}
+impl std::ops::DerefMut for Distribution {
+    fn deref_mut(&mut self) -> &mut Profile {
+        &mut self.profile
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CallRequest {
+    pub credential: Option<String>,
+    pub op: String,
+    pub input: Value,
+    pub idempotency_key: Option<String>,
+    pub face: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CallResponse {
+    pub data: Value,
+    /// True when the answer was remembered from an earlier call with the same idempotency key.
+    pub replayed: bool,
+}
+
+#[derive(Default)]
+struct State {
+    ops: HashMap<String, OpEntry>,
+    hooks: Vec<HookEntry>,
+    listeners: Vec<ListenerEntry>,
+    routes: Vec<RouteEntry>,
+    port_impls: Vec<PortImplEntry>,
+    active: Vec<String>,
+    inactive: Vec<(String, String)>,
+}
+
+struct Inner {
+    name: String,
+    ports: Arc<Ports>,
+    events: EventLog,
+    manifests: HashMap<String, Manifest>,
+    settings: HashMap<String, Value>,
+    /// port name -> adapter plugin id (core ports and `single` extension points)
+    bound: HashMap<String, String>,
+    /// Plugin-defined ports of the plugins that were active at start.
+    extension_points: HashMap<String, ExtensionPointDef>,
+    state: RwLock<State>,
+    /// Live requests by id. The kernel, not the plugin, is the source of truth for who a request
+    /// belongs to when a plugin calls another plugin.
+    requests: Mutex<HashMap<String, RequestInfo>>,
+}
+
+struct RequestInfo {
+    ident: Identity,
+    face: Option<String>,
+    kind: OpKind,
+    depth: u8,
+}
+
+struct RequestGuard<'a> {
+    map: &'a Mutex<HashMap<String, RequestInfo>>,
+    id: String,
+}
+impl Drop for RequestGuard<'_> {
+    fn drop(&mut self) {
+        self.map.lock().unwrap().remove(&self.id);
+    }
+}
+
+/// Run plugin code so that a panic becomes an ordinary error: the transaction rolls back and the
+/// caller gets an `internal` error instead of a crashed thread.
+fn guarded<T>(what: &str, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(r) => r,
+        Err(p) => {
+            let msg = p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default();
+            eprintln!("[nuah] {what} panicked: {msg}");
+            Err(LinkError::internal(format!("{what} panicked")))
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Core {
+    inner: Arc<Inner>,
+}
+
+struct PipelineOut {
+    data: Value,
+    /// Events already written to the log (top-level calls).
+    events: Vec<Event>,
+    /// Events handed back unwritten (nested calls); the outer call writes them.
+    pending: Vec<PendingEvent>,
+    replayed: bool,
+}
+
+impl Core {
+    /// Resolve and start. Returns every problem found, not just the first, so an operator
+    /// (or the setup wizard) can fix them in one go.
+    pub fn start(dist: Distribution) -> std::result::Result<Core, Vec<String>> {
+        Self::start_with(dist, false).map(|c| c.expect("a real start returns a core"))
+    }
+
+    /// Everything the resolver can say about a distribution without starting anything: no adapter
+    /// is opened, no data is touched. Empty means the profile resolves. (Problems that only show
+    /// when plugins run, such as a database that is too new, are not found here.)
+    pub fn check(dist: &Distribution) -> Vec<crate::setup::Problem> {
+        let ids: HashSet<String> = dist.catalog.iter().map(|p| p.manifest().id).collect();
+        match Self::start_with(dist.clone(), true) {
+            Err(list) => list.iter().map(|m| crate::setup::Problem::from_message(m, &ids)).collect(),
+            Ok(_) => vec![],
+        }
+    }
+
+    fn start_with(dist: Distribution, dry_run: bool) -> std::result::Result<Option<Core>, Vec<String>> {
+        let mut problems: Vec<String> = vec![];
+        {
+            let mut seen = HashSet::new();
+            for p in &dist.catalog {
+                let id = p.manifest().id;
+                if !seen.insert(id.clone()) {
+                    problems.push(format!("two plugins in the catalog share the id `{id}`"));
+                }
+            }
+        }
+        let catalog: HashMap<String, Arc<dyn Plugin>> =
+            dist.catalog.iter().map(|p| (p.manifest().id, p.clone())).collect();
+        let manifests: HashMap<String, Manifest> = catalog.iter().map(|(k, p)| (k.clone(), p.manifest())).collect();
+
+        // 1. which plugins are on for this profile
+        let mut active: Vec<String> = vec![];
+        let mut inactive: Vec<(String, String)> = vec![];
+        let mut seen = HashSet::new();
+        for id in &dist.enabled {
+            if !seen.insert(id.clone()) {
+                problems.push(format!("plugin `{id}` is listed twice"));
+                continue;
+            }
+            match manifests.get(id) {
+                None => problems.push(format!("plugin `{id}` is enabled but is not in the catalog")),
+                Some(m) if !m.profiles.is_empty() && !m.profiles.contains(&dist.name) => {
+                    inactive.push((id.clone(), format!("not available in profile `{}`", dist.name)))
+                }
+                Some(m) => {
+                    if m.runtime != "native" && m.runtime != "data" {
+                        problems.push(format!("plugin `{id}` needs runtime `{}`, which this kernel does not have", m.runtime));
+                    } else {
+                        active.push(id.clone())
+                    }
+                }
+            }
+        }
+
+        // 2. every port needs exactly one adapter
+        let mut bound: HashMap<String, String> = HashMap::new();
+        for port in PORT_NAMES {
+            let impls: Vec<&String> = active
+                .iter()
+                .filter(|id| manifests[*id].implements.iter().any(|i| i.port == port))
+                .collect();
+            match dist.bindings.get(port) {
+                Some(b) if impls.iter().any(|i| *i == b) => {
+                    bound.insert(port.to_string(), b.clone());
+                }
+                Some(b) => problems.push(format!(
+                    "port `{port}` is bound to `{b}`, which is not an enabled plugin implementing it (candidates: {})",
+                    join(&impls)
+                )),
+                None => match impls.len() {
+                    1 => {
+                        bound.insert(port.to_string(), impls[0].clone());
+                    }
+                    0 => problems.push(format!("port `{port}` has no adapter: enable a plugin that implements it")),
+                    _ => problems.push(format!("port `{port}` is ambiguous ({}): bind one in the distribution", join(&impls))),
+                },
+            }
+        }
+        for id in &active {
+            for i in &manifests[id].implements {
+                if !PORT_NAMES.contains(&i.port.as_str()) {
+                    problems.push(format!("plugin `{id}` implements unknown port `{}`", i.port));
+                }
+            }
+            for cap in manifests[id].requires.capabilities.iter() {
+                if cap != "events" {
+                    problems.push(format!("plugin `{id}` requires unknown capability `{cap}`"));
+                }
+            }
+        }
+        // an adapter plugin must be chosen for all of its ports or none
+        let mut still_active = vec![];
+        for id in &active {
+            let impls = &manifests[id].implements;
+            if impls.is_empty() {
+                still_active.push(id.clone());
+                continue;
+            }
+            let chosen: Vec<bool> = impls.iter().map(|i| bound.get(&i.port) == Some(id)).collect();
+            if chosen.iter().all(|c| *c) {
+                still_active.push(id.clone());
+            } else if chosen.iter().any(|c| *c) {
+                problems.push(format!("adapter `{id}` implements several ports and is chosen for only some of them"));
+            } else {
+                let ports: Vec<&str> = impls.iter().map(|i| i.port.as_str()).collect();
+                inactive.push((id.clone(), format!("not bound for port {}", ports.join(", "))));
+            }
+        }
+        let active = still_active;
+        // 2b. extension points: who defines them, who fills them, which provider is bound
+        let mut extension_points: HashMap<String, ExtensionPointDef> = HashMap::new();
+        for id in &active {
+            for d in &manifests[id].defines.extension_points {
+                if !d.name.starts_with(&format!("{id}.")) {
+                    problems.push(format!("plugin `{id}` defines extension point `{}`; its name must start with `{id}.`", d.name));
+                }
+                if !["single", "first", "many"].contains(&d.policy.as_str()) {
+                    problems.push(format!("port `{}` has unknown policy `{}` (use single, first or many)", d.name, d.policy));
+                }
+                if d.methods.is_empty() {
+                    problems.push(format!("port `{}` has no methods", d.name));
+                }
+                if extension_points.insert(d.name.clone(), d.clone()).is_some() {
+                    problems.push(format!("port `{}` is defined twice", d.name));
+                }
+            }
+        }
+        for id in &active {
+            for need in manifests[id].requires.ports.iter() {
+                if !PORT_NAMES.contains(&need.as_str()) {
+                    problems.push(format!("plugin `{id}` requires unknown port `{need}`"));
+                }
+            }
+            for need in manifests[id].requires.extension_points.iter() {
+                if !extension_points.contains_key(need) {
+                    problems.push(format!("plugin `{id}` requires unknown extension point `{need}`"));
+                }
+            }
+            for p in &manifests[id].provides {
+                if !extension_points.contains_key(&p.extension_point) {
+                    problems.push(format!("plugin `{id}` provides extension point `{}`, which no enabled plugin defines", p.extension_point));
+                }
+            }
+        }
+        for (name, def) in &extension_points {
+            let providers: Vec<&String> =
+                active.iter().filter(|id| manifests[*id].provides.iter().any(|p| &p.extension_point == name)).collect();
+            let required = active.iter().any(|id| manifests[id].requires.extension_points.contains(name));
+            match def.policy.as_str() {
+                "single" => match dist.bindings.get(name) {
+                    Some(b) if providers.iter().any(|p| *p == b) => {
+                        bound.insert(name.clone(), b.clone());
+                    }
+                    Some(b) => problems.push(format!("port `{name}` is bound to `{b}`, which does not provide it (candidates: {})", join(&providers))),
+                    None => match providers.len() {
+                        1 => {
+                            bound.insert(name.clone(), providers[0].clone());
+                        }
+                        0 if required => problems.push(format!("port `{name}` has no provider: enable a plugin that provides it")),
+                        0 => {}
+                        _ => problems.push(format!("port `{name}` is ambiguous ({}): bind one in the distribution", join(&providers))),
+                    },
+                },
+                "first" if providers.is_empty() && required => {
+                    problems.push(format!("port `{name}` has no provider: enable a plugin that provides it"))
+                }
+                _ => {}
+            }
+        }
+        for id in &active {
+            for dep in manifests[id].requires.plugins.iter() {
+                let (dep_id, want) = match dep.split_once('@') { Some((a, b)) => (a, Some(b)), None => (dep.as_str(), None) };
+                match manifests.get(dep_id).filter(|_| active.iter().any(|a| a == dep_id)) {
+                    None => problems.push(format!("plugin `{id}` requires plugin `{dep_id}`, which is not enabled")),
+                    Some(m) => {
+                        if want.is_some_and(|w| !(m.version == w || m.version.starts_with(&format!("{w}.")))) {
+                            problems.push(format!("plugin `{id}` requires `{dep}`, but `{dep_id}` is version {}", m.version));
+                        }
+                    }
+                }
+            }
+        }
+        {
+            // Names end up in generated code (TypeScript method names, tool names), so they are restricted.
+            let valid = |n: &str| {
+                let parts: Vec<&str> = n.split('.').collect();
+                parts.len() >= 2 && parts.iter().all(|p| p.chars().next().is_some_and(|c| c.is_ascii_lowercase()) && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'))
+            };
+            let mut camels: HashMap<String, String> = HashMap::new();
+            let mut tools: HashMap<String, String> = HashMap::new();
+            for id in &active {
+                for op in &manifests[id].contributes.ops {
+                    if !valid(op) {
+                        problems.push(format!("plugin `{id}` declares op `{op}`; names are lowercase words joined by dots, for example `tasks.create`"));
+                        continue;
+                    }
+                    if let Some(other) = camels.insert(crate::contract::camel(op), op.clone()).filter(|o| o != op) {
+                        problems.push(format!("ops `{other}` and `{op}` would get the same method name in generated clients"));
+                    }
+                    if let Some(other) = tools.insert(op.replace('.', "_"), op.clone()).filter(|o| o != op) {
+                        problems.push(format!("ops `{other}` and `{op}` would get the same agent tool name"));
+                    }
+                }
+            }
+            let mut kinds: HashMap<&str, &str> = HashMap::new();
+            for id in &active {
+                for k in &manifests[id].contributes.events {
+                    if !valid(k) {
+                        problems.push(format!("plugin `{id}` declares event `{k}`; names are lowercase words joined by dots"));
+                    }
+                    if let Some(first) = kinds.insert(k.as_str(), id.as_str()) {
+                        problems.push(format!("event `{k}` is declared by both `{first}` and `{id}`; only one plugin may emit a kind"));
+                    }
+                }
+            }
+            for key in dist.bindings.keys() {
+                if !PORT_NAMES.contains(&key.as_str()) && !extension_points.get(key).is_some_and(|d| d.policy == "single") {
+                    problems.push(format!("binding for `{key}`: no such port, or it is not a `single` port"));
+                }
+            }
+        }
+        {
+            let mut owners: HashMap<&str, &str> = HashMap::new();
+            for id in &active {
+                for c in &manifests[id].data.owns {
+                    if let Some(first) = owners.insert(c.as_str(), id.as_str()) {
+                        problems.push(format!("collection `{c}` is owned by both `{first}` and `{id}`"));
+                    }
+                }
+            }
+        }
+        for id in &active {
+            let m = &manifests[id];
+            if !m.settings_schema.is_null() {
+                if let Err(e) = schema::validate(&m.settings_schema, dist.settings.get(id).unwrap_or(&json!({}))) {
+                    problems.push(format!("settings of plugin `{id}`: {}", e.message));
+                }
+            }
+            for ix in &m.data.indexes {
+                if !m.data.owns.contains(&ix.collection) {
+                    problems.push(format!("plugin `{id}` asks for an index on `{}.{}` but does not own that collection", ix.collection, ix.field));
+                }
+                if let Err(e) = check_field_path(&ix.field) {
+                    problems.push(format!("plugin `{id}`: {}", e.message));
+                }
+            }
+            for k in m.contributes.event_schemas.keys() {
+                if !m.contributes.events.contains(k) {
+                    problems.push(format!("plugin `{id}` has a schema for event `{k}` but does not declare the event"));
+                }
+            }
+            for other in m.order.after.iter().chain(m.order.before.iter()) {
+                if !manifests.contains_key(other) {
+                    problems.push(format!("plugin `{id}` orders itself against unknown plugin `{other}`"));
+                }
+            }
+        }
+        let ranks = match plugin_ranks(&active, &manifests) {
+            Ok(r) => r,
+            Err(e) => {
+                problems.push(e);
+                HashMap::new()
+            }
+        };
+        if !problems.is_empty() {
+            return Err(problems);
+        }
+        if dry_run {
+            return Ok(None);
+        }
+
+        // 3. activate adapters first, then everything else
+        let (adapters, others): (Vec<&String>, Vec<&String>) =
+            active.iter().partition(|id| !manifests[*id].implements.is_empty());
+        let mut slots = PortSlots::default();
+        let mut collected: Vec<(String, Activation)> = vec![];
+        for id in adapters {
+            let mut act = Activation::new(id, dist.settings.get(id).cloned().unwrap_or(Value::Null));
+            if let Err(e) = catalog[id].activate(&mut act) {
+                problems.push(format!("adapter `{id}` failed to start: {e}"));
+                continue;
+            }
+            let p = std::mem::take(&mut act.ports);
+            let bound_here = |port: &str| bound.get(port).map(|b| b == id).unwrap_or(false);
+            macro_rules! take {
+                ($port:literal, $field:ident) => {
+                    if p.$field.is_some() {
+                        if bound_here($port) {
+                            slots.$field = p.$field;
+                        } else {
+                            problems.push(format!("adapter `{id}` provided port `{}` but is not bound to it", $port));
+                        }
+                    }
+                };
+            }
+            take!("db", db);
+            take!("auth", auth);
+            take!("policy", policy);
+            take!("clock", clock);
+            take!("ids", ids);
+            collected.push((id.clone(), act));
+        }
+        for (name, missing) in [
+            ("db", slots.db.is_none()),
+            ("auth", slots.auth.is_none()),
+            ("policy", slots.policy.is_none()),
+            ("clock", slots.clock.is_none()),
+            ("ids", slots.ids.is_none()),
+        ] {
+            if missing {
+                problems.push(format!("the adapter bound to port `{name}` did not provide it"));
+            }
+        }
+        if !problems.is_empty() {
+            return Err(problems);
+        }
+        let ports = Arc::new(Ports {
+            db: slots.db.unwrap(),
+            auth: slots.auth.unwrap(),
+            policy: slots.policy.unwrap(),
+            clock: slots.clock.unwrap(),
+            ids: slots.ids.unwrap(),
+        });
+        let events = match EventLog::open(ports.db.clone()) {
+            Ok(e) => e,
+            Err(e) => return Err(vec![format!("cannot open the event log: {e}")]),
+        };
+        for id in others {
+            let mut act = Activation::new(id, dist.settings.get(id).cloned().unwrap_or(Value::Null));
+            if let Err(e) = catalog[id].activate(&mut act) {
+                problems.push(format!("plugin `{id}` failed to start: {e}"));
+                continue;
+            }
+            collected.push((id.clone(), act));
+        }
+
+        // 4. the plugin must do what its manifest says
+        let mut state = State { active: active.clone(), inactive, ..Default::default() };
+        for (id, act) in collected {
+            let m = &manifests[&id];
+            let declared: BTreeSet<&String> = m.contributes.ops.iter().collect();
+            let registered: BTreeSet<&String> = act.ops.iter().map(|o| &o.spec.name).collect();
+            for extra in registered.difference(&declared) {
+                problems.push(format!("plugin `{id}` registered op `{extra}` but its manifest does not declare it"));
+            }
+            for missing in declared.difference(&registered) {
+                problems.push(format!("plugin `{id}` declares op `{missing}` but did not register it"));
+            }
+            let declared_routes: BTreeSet<String> = m.contributes.routes.iter().map(|r| r.to_uppercase()).collect();
+            let registered_routes: BTreeSet<String> =
+                act.routes.iter().map(|r| format!("{} {}", r.spec.method, r.spec.path).to_uppercase()).collect();
+            for extra in registered_routes.difference(&declared_routes) {
+                problems.push(format!("plugin `{id}` registered route `{extra}` but its manifest does not declare it"));
+            }
+            for missing in declared_routes.difference(&registered_routes) {
+                problems.push(format!("plugin `{id}` declares route `{missing}` but did not register it"));
+            }
+            for r in &act.routes {
+                let key = format!("{} {}", r.spec.method, r.spec.path).to_uppercase();
+                if state.routes.iter().any(|e| format!("{} {}", e.spec.method, e.spec.path).to_uppercase() == key) {
+                    problems.push(format!("route `{key}` is defined by more than one plugin"));
+                }
+            }
+            for op in act.ops {
+                if let Some(existing) = state.ops.get(&op.spec.name) {
+                    problems.push(format!("op `{}` is defined by both `{}` and `{id}`", op.spec.name, existing.owner));
+                } else {
+                    state.ops.insert(op.spec.name.clone(), op);
+                }
+            }
+            let want: BTreeSet<(String, String)> = m
+                .provides
+                .iter()
+                .filter_map(|p| extension_points.get(&p.extension_point).map(|d| d.methods.keys().map(|k| (p.extension_point.clone(), k.clone())).collect::<Vec<_>>()))
+                .flatten()
+                .collect();
+            let have: BTreeSet<(String, String)> = act.port_impls.iter().map(|i| (i.port.clone(), i.method.clone())).collect();
+            for (p, mth) in have.difference(&want) {
+                problems.push(format!("plugin `{id}` fills `{p}.{mth}` but its manifest does not provide that port method"));
+            }
+            for (p, mth) in want.difference(&have) {
+                problems.push(format!("plugin `{id}` provides `{p}` but did not fill method `{mth}`"));
+            }
+            for mut i in act.port_impls {
+                i.priority = m.provides.iter().find(|p| p.extension_point == i.port).map(|p| p.priority).unwrap_or(0);
+                state.port_impls.push(i);
+            }
+            state.hooks.extend(act.hooks.into_iter().map(|mut h| { h.rank = ranks.get(&h.owner).copied().unwrap_or(0); h }));
+            state.listeners.extend(act.listeners);
+            state.routes.extend(act.routes);
+        }
+        if !problems.is_empty() {
+            return Err(problems);
+        }
+
+        let core = Core {
+            inner: Arc::new(Inner {
+                name: dist.profile.name.clone(),
+                ports,
+                events,
+                manifests,
+                settings: dist.profile.settings.clone(),
+                bound,
+                extension_points,
+                state: RwLock::new(state),
+                requests: Mutex::new(HashMap::new()),
+            }),
+        };
+        // 5. storage: indexes, then versioned migrations, before anything is served
+        let db = &core.inner.ports.db;
+        for id in &active {
+            let m = &core.inner.manifests[id];
+            for ix in &m.data.indexes {
+                if let Err(e) = db.ensure_index(&ix.collection, &ix.field) {
+                    problems.push(format!("index on `{}.{}` for plugin `{id}`: {e}", ix.collection, ix.field));
+                }
+            }
+            let stored = match db.get("_meta", &format!("data_version:{id}")) {
+                Ok(d) => d.and_then(|d| d["version"].as_u64()).unwrap_or(0) as u32,
+                Err(e) => {
+                    problems.push(format!("cannot read the data version of `{id}`: {e}"));
+                    continue;
+                }
+            };
+            if m.data.version == 0 && stored == 0 {
+                continue;
+            }
+            if stored > m.data.version {
+                problems.push(format!("the database holds data of `{id}` at version {stored}, newer than this plugin's {}; refusing to start", m.data.version));
+                continue;
+            }
+            if stored == m.data.version {
+                continue;
+            }
+            let svc = core.services(id);
+            let mut result = Ok(());
+            let tx = db.transaction(&mut || {
+                guarded("a migration", || catalog[id].migrate(stored, &svc))?;
+                if !svc.take_pending().is_empty() {
+                    return Err(LinkError::internal("a migration cannot emit events"));
+                }
+                db.put("_meta", &format!("data_version:{id}"), &json!({"id": format!("data_version:{id}"), "version": m.data.version}))
+            });
+            if let Err(e) = tx {
+                result = Err(e);
+            }
+            if let Err(e) = result {
+                problems.push(format!("migration of `{id}` from version {stored} to {} failed: {e}", m.data.version));
+            }
+        }
+        if !problems.is_empty() {
+            return Err(problems);
+        }
+        Ok(Some(core))
+    }
+
+    fn services(&self, plugin: &str) -> Services {
+        self.services_ro(plugin, false)
+    }
+
+    fn services_ro(&self, plugin: &str, read_only: bool) -> Services {
+        let m = &self.inner.manifests[plugin];
+        Services::new(
+            plugin,
+            Arc::new(m.allowed_capabilities()),
+            self.inner.ports.clone(),
+            self.inner.settings.get(plugin).cloned().unwrap_or(Value::Null),
+            &m.data,
+            self.clone(),
+            read_only,
+            m.contributes.events.iter().cloned().collect(),
+            m.contributes.event_schemas.clone(),
+        )
+    }
+
+    /// Call a method of a extension point on behalf of `caller` (see `Services::extension_call`).
+    pub(crate) fn extension_call(&self, caller: &str, read_only: bool, port: &str, method: &str, input: Value) -> Result<(Value, Vec<PendingEvent>)> {
+        thread_local!(static DEPTH: std::cell::Cell<u8> = const { std::cell::Cell::new(0) });
+        let def = self.inner.extension_points.get(port).ok_or_else(|| LinkError::not_found(&format!("port `{port}`")))?;
+        let m = def.methods.get(method).ok_or_else(|| LinkError::not_found(&format!("method `{method}` of port `{port}`")))?;
+        if read_only && !m.readonly {
+            return Err(LinkError::conflict(format!("`{port}.{method}` changes data and cannot be called while reading")));
+        }
+        schema::validate(&m.input, &input)?;
+        if DEPTH.with(|d| d.get()) >= 5 {
+            return Err(LinkError::internal("port calls are nested too deeply"));
+        }
+        let mut impls: Vec<PortImplEntry> = {
+            let st = self.inner.state.read().unwrap();
+            st.port_impls.iter().filter(|i| i.port == port && i.method == method).cloned().collect()
+        };
+        impls.sort_by(|a, b| (a.priority, &a.owner).cmp(&(b.priority, &b.owner)));
+        if def.policy == "single" {
+            let bound = self.inner.bound.get(port);
+            impls.retain(|i| Some(&i.owner) == bound);
+            if impls.is_empty() {
+                return Err(LinkError::new("unavailable", format!("port `{port}` has no provider")));
+            }
+        }
+        let run = |i: &PortImplEntry| -> (Result<Value>, Vec<PendingEvent>) {
+            let svc = self.services_ro(&i.owner, read_only);
+            let mut out: Option<Result<Value>> = None;
+            DEPTH.with(|d| d.set(d.get() + 1));
+            let tx = self.inner.ports.db.transaction(&mut || {
+                let r = guarded("a port provider", || (i.handler)(input.clone(), &svc)).and_then(|v| {
+                    if !m.output.is_null() && !v.is_null() {
+                        schema::validate(&m.output, &v).map_err(|e| LinkError::internal(format!("provider `{}` of `{port}.{method}` returned data that breaks the port's output schema: {}", i.owner, e.message)))?;
+                    }
+                    Ok(v)
+                });
+                // In a `first` chain, null means "not mine": undo whatever the provider did.
+                let verdict = match &r {
+                    Ok(v) if v.is_null() && def.policy == "first" => Err(LinkError::new("_declined", "")),
+                    other => other.as_ref().map(|_| ()).map_err(|e| e.clone()),
+                };
+                out = Some(r);
+                verdict
+            });
+            DEPTH.with(|d| d.set(d.get() - 1));
+            match (out, tx) {
+                (Some(Ok(v)), Ok(())) => (Ok(v), svc.take_pending()),
+                (Some(Ok(_)), Err(e)) if e.code == "_declined" => (Ok(Value::Null), vec![]),
+                (Some(Err(e)), _) | (_, Err(e)) => (Err(e), vec![]),
+                (None, Ok(())) => (Err(LinkError::internal("provider did not run")), vec![]),
+            }
+        };
+        let _ = caller;
+        match def.policy.as_str() {
+            "first" => {
+                for i in &impls {
+                    let (r, ev) = run(i);
+                    match r {
+                        Ok(v) if !v.is_null() => return Ok((v, ev)),
+                        Ok(_) => {}
+                        Err(e) => eprintln!("[nuah] provider `{}` of `{port}` failed: {e}", i.owner),
+                    }
+                }
+                Ok((Value::Null, vec![]))
+            }
+            "many" => {
+                let (mut list, mut events) = (vec![], vec![]);
+                for i in &impls {
+                    let (r, ev) = run(i);
+                    match r {
+                        Ok(v) => {
+                            list.push(json!({"plugin": i.owner, "ok": true, "data": v}));
+                            events.extend(ev);
+                        }
+                        Err(e) => list.push(json!({"plugin": i.owner, "ok": false, "error": {"code": e.code, "message": e.message}})),
+                    }
+                }
+                Ok((json!(list), events))
+            }
+            _ => {
+                let (r, ev) = run(&impls[0]);
+                Ok((r?, ev))
+            }
+        }
+    }
+
+    pub fn ports(&self) -> &Ports {
+        &self.inner.ports
+    }
+
+    pub fn authenticate(&self, credential: Option<&str>) -> Result<Identity> {
+        self.inner.ports.auth.authenticate(credential)
+    }
+
+    pub fn call(&self, req: CallRequest) -> Result<CallResponse> {
+        let inner = &self.inner;
+        let ident = inner.ports.auth.authenticate(req.credential.as_deref())?;
+        let (spec, handler, owner) = {
+            let st = inner.state.read().unwrap();
+            match st.ops.get(&req.op) {
+                Some(e) => (e.spec.clone(), e.handler.clone(), e.owner.clone()),
+                None => return Err(LinkError::new("unknown_op", format!("no operation `{}`", req.op))),
+            }
+        };
+        if !inner.ports.policy.check(&ident, &spec.permission) {
+            return Err(LinkError::permission_denied(&spec.permission));
+        }
+        schema::validate(&spec.input, &req.input)?;
+        let ctx = Ctx::new(&ident, inner.ports.ids.new_id(), req.face.clone(), inner.ports.clock.now_ms());
+        let _live = self.register(&ctx, &ident, spec.kind);
+        // The key is encoded as a list so no choice of subject or key can collide with another.
+        let idem_id = match (&req.idempotency_key, spec.kind) {
+            (Some(k), OpKind::Command) => Some(json!([ident.subject, spec.name, k]).to_string()),
+            _ => None,
+        };
+
+        let out = if spec.kind == OpKind::Command {
+            // One transaction for the handler, its hooks, the event rows and the idempotency record:
+            // either all of it is stored, or none of it.
+            let mut out: Option<Result<PipelineOut>> = None;
+            inner.ports.db.transaction(&mut || {
+                let r = self.pipeline(&ctx, &spec, &handler, &owner, &req.input, idem_id.as_deref(), true);
+                let verdict = r.as_ref().map(|_| ()).map_err(|e| e.clone());
+                out = Some(r);
+                verdict
+            })?;
+            out.expect("transaction ran")?
+        } else {
+            self.pipeline(&ctx, &spec, &handler, &owner, &req.input, None, true)?
+        };
+        self.after_commit(out.events, ctx.now_ms, 0);
+        Ok(CallResponse { data: out.data, replayed: out.replayed })
+    }
+
+    fn register(&self, ctx: &Ctx, ident: &Identity, kind: OpKind) -> RequestGuard<'_> {
+        self.inner.requests.lock().unwrap().insert(
+            ctx.request_id.clone(),
+            RequestInfo { ident: ident.clone(), face: ctx.face.clone(), kind, depth: 0 },
+        );
+        RequestGuard { map: &self.inner.requests, id: ctx.request_id.clone() }
+    }
+
+    fn pipeline(&self, ctx: &Ctx, spec: &OpSpec, handler: &OpHandler, owner: &str, input: &Value, idem: Option<&str>, append: bool) -> Result<PipelineOut> {
+        let inner = &self.inner;
+        if let Some(id) = idem {
+            if let Some(rec) = inner.ports.db.get("_idem", id)? {
+                return if rec["input"] == *input {
+                    Ok(PipelineOut { data: rec["result"].clone(), events: vec![], pending: vec![], replayed: true })
+                } else {
+                    Err(LinkError::new("idempotency_conflict", "this idempotency key was already used with different input"))
+                };
+            }
+        }
+        let hooks: Vec<HookEntry> = {
+            let st = inner.state.read().unwrap();
+            let mut h: Vec<HookEntry> =
+                st.hooks.iter().filter(|h| pattern_matches(&h.pattern, &spec.name)).cloned().collect();
+            h.sort_by(|a, b| (a.priority, a.rank, &a.owner, &a.name).cmp(&(b.priority, b.rank, &b.owner, &b.name)));
+            h
+        };
+
+        let mut used: Vec<Services> = vec![];
+        let mut input = input.clone();
+        let original = input.clone();
+        for h in &hooks {
+            if let HookFn::Before(f) = &h.f {
+                let svc = self.services_ro(&h.owner, spec.kind == OpKind::Query);
+                guarded("a before-hook", || f(&ctx.for_plugin(&h.owner), spec, &mut input, &svc))?;
+                used.push(svc);
+            }
+        }
+        if input != original {
+            schema::validate(&spec.input, &input)?;
+        }
+
+        let arounds: Vec<&HookEntry> = hooks.iter().filter(|h| matches!(h.f, HookFn::Around(_))).collect();
+        let used_cell = std::cell::RefCell::new(std::mem::take(&mut used));
+        let effective = std::cell::RefCell::new(input.clone());
+        let out = self.run_around(&arounds, ctx, spec, handler, owner, input.clone(), &used_cell, &effective)?;
+        let mut used = used_cell.into_inner();
+        // After-hooks (audit) must see what the handler actually ran with, not what arrived.
+        let input = effective.into_inner();
+
+        for h in &hooks {
+            if let HookFn::After(f) = &h.f {
+                let svc = self.services_ro(&h.owner, spec.kind == OpKind::Query);
+                guarded("an after-hook", || f(&ctx.for_plugin(&h.owner), spec, &input, &out, &svc))?;
+                used.push(svc);
+            }
+        }
+
+        let mut events = vec![];
+        let mut pending = vec![];
+        for s in &used {
+            for p in s.take_pending() {
+                if spec.kind == OpKind::Query {
+                    return Err(LinkError::internal(format!("query `{}` tried to emit an event; only commands may", spec.name)));
+                }
+                if append {
+                    events.push(inner.events.append(&p.kind, &p.plugin, &p.audience, p.data, ctx.now_ms)?);
+                } else {
+                    pending.push(p);
+                }
+            }
+        }
+        if let Some(id) = idem {
+            let rec = json!({ "input": original, "result": out, "ts": ctx.now_ms });
+            inner.ports.db.put("_idem", id, &rec)?;
+        }
+        Ok(PipelineOut { data: out, events, pending, replayed: false })
+    }
+
+    /// The `around` hooks nest, first in order outermost, with the handler in the middle. Work done
+    /// by a link that fails is undone (a savepoint) and its pending events are dropped, so a hook
+    /// that recovers from a failure sees a clean state.
+    #[allow(clippy::too_many_arguments)]
+    fn run_around(&self, arounds: &[&HookEntry], ctx: &Ctx, spec: &OpSpec, handler: &OpHandler, owner: &str, input: Value, used: &std::cell::RefCell<Vec<Services>>, effective: &std::cell::RefCell<Value>) -> Result<Value> {
+        let read_only = spec.kind == OpKind::Query;
+        let Some((h, rest)) = arounds.split_first() else {
+            let svc = self.services_ro(owner, read_only);
+            *effective.borrow_mut() = input.clone();
+            let out = guarded("a handler", || handler(&ctx.for_plugin(owner), input, &svc))?;
+            used.borrow_mut().push(svc);
+            return Ok(out);
+        };
+        let HookFn::Around(f) = &h.f else { unreachable!("only around hooks are passed in") };
+        let svc = self.services_ro(&h.owner, read_only);
+        let seen = input.clone();
+        let next = Next::new(|passed: Value| {
+            if passed != seen {
+                schema::validate(&spec.input, &passed)?;
+            }
+            let mark = used.borrow().len();
+            let attempt = |this: &Self| this.run_around(rest, ctx, spec, handler, owner, passed.clone(), used, effective);
+            let r = if read_only {
+                attempt(self)
+            } else {
+                let mut out = None;
+                let t = self.inner.ports.db.transaction(&mut || {
+                    let r = attempt(self);
+                    let verdict = r.as_ref().map(|_| ()).map_err(|e| e.clone());
+                    out = Some(r);
+                    verdict
+                });
+                match (out, t) {
+                    (Some(Ok(_)), Err(e)) => Err(e), // the savepoint could not be released: the work is gone
+                    (Some(r), _) => r,
+                    (None, Err(e)) => Err(e),
+                    (None, Ok(())) => Err(LinkError::internal("a transaction ended without running")),
+                }
+            };
+            if r.is_err() {
+                used.borrow_mut().truncate(mark);
+            }
+            r
+        });
+        let out = guarded("an around-hook", || f(&ctx.for_plugin(&h.owner), spec, input, &svc, next));
+        used.borrow_mut().push(svc);
+        out
+    }
+
+    /// A plugin calling another plugin's op. Same user as the request being served, same policy and
+    /// contract checks; events it emits are handed back so the outermost call writes them.
+    pub(crate) fn call_nested(&self, caller: &str, request_id: &str, op: &str, input: Value) -> Result<(Value, Vec<PendingEvent>)> {
+        let (ident, face, parent_kind, depth) = {
+            let reqs = self.inner.requests.lock().unwrap();
+            let Some(r) = reqs.get(request_id) else {
+                return Err(LinkError::internal("plugin calls are only possible while a request is being served"));
+            };
+            (r.ident.clone(), r.face.clone(), r.kind, r.depth)
+        };
+        if depth >= 5 {
+            return Err(LinkError::internal("plugin calls are nested too deeply"));
+        }
+        let (spec, handler, owner) = {
+            let st = self.inner.state.read().unwrap();
+            match st.ops.get(op) {
+                Some(e) => (e.spec.clone(), e.handler.clone(), e.owner.clone()),
+                None => return Err(LinkError::new("unknown_op", format!("no operation `{op}`"))),
+            }
+        };
+        let allowed = self
+            .inner
+            .manifests
+            .get(caller)
+            .map(|m| m.requires.plugins.iter().any(|r| r.split('@').next() == Some(owner.as_str())))
+            .unwrap_or(false);
+        if !allowed {
+            return Err(LinkError::capability_denied(caller, &format!("calling `{op}` (plugin `{owner}` is not in requires.plugins)")));
+        }
+        if parent_kind == OpKind::Query && spec.kind == OpKind::Command {
+            return Err(LinkError::conflict(format!("a query cannot run the command `{op}`")));
+        }
+        if !self.inner.ports.policy.check(&ident, &spec.permission) {
+            return Err(LinkError::permission_denied(&spec.permission));
+        }
+        schema::validate(&spec.input, &input)?;
+        let ctx = Ctx::new(&ident, request_id.to_string(), face, self.inner.ports.clock.now_ms());
+        if let Some(r) = self.inner.requests.lock().unwrap().get_mut(request_id) {
+            r.depth += 1;
+        }
+        let mut out: Option<Result<PipelineOut>> = None;
+        let res = self.inner.ports.db.transaction(&mut || {
+            let r = self.pipeline(&ctx, &spec, &handler, &owner, &input, None, false);
+            let verdict = r.as_ref().map(|_| ()).map_err(|e| e.clone());
+            out = Some(r);
+            verdict
+        });
+        if let Some(r) = self.inner.requests.lock().unwrap().get_mut(request_id) {
+            r.depth -= 1;
+        }
+        res?;
+        let o = out.expect("nested call ran")?;
+        Ok((o.data, o.pending))
+    }
+
+    /// After a commit: wake readers of the log, then run listeners. Listeners are best-effort and
+    /// each batch of events they emit is committed in its own transaction.
+    fn after_commit(&self, events: Vec<Event>, ts: i64, depth: u8) {
+        if events.is_empty() {
+            return;
+        }
+        let audiences: std::collections::BTreeSet<&str> = events.iter().map(|e| e.audience.as_str()).collect();
+        for a in audiences {
+            self.inner.events.wake(a);
+        }
+        if depth > 8 {
+            eprintln!("[nuah] event listeners are chaining too deep; stopping");
+            return;
+        }
+        for event in events {
+            let listeners: Vec<ListenerEntry> = {
+                let st = self.inner.state.read().unwrap();
+                st.listeners.iter().filter(|l| pattern_matches(&l.pattern, &event.kind)).cloned().collect()
+            };
+            let mut pending = vec![];
+            for l in listeners {
+                let svc = self.services(&l.owner);
+                if let Err(e) = guarded("a listener", || (l.f)(&event, &svc)) {
+                    eprintln!("[nuah] listener of plugin `{}` failed on `{}`: {e}", l.owner, event.kind);
+                }
+                pending.extend(svc.take_pending());
+            }
+            if pending.is_empty() {
+                continue;
+            }
+            let mut written = vec![];
+            let res = self.inner.ports.db.transaction(&mut || {
+                written.clear();
+                for p in &pending {
+                    written.push(self.inner.events.append(&p.kind, &p.plugin, &p.audience, p.data.clone(), ts)?);
+                }
+                Ok(())
+            });
+            match res {
+                Ok(()) => self.after_commit(written, ts, depth + 1),
+                Err(e) => eprintln!("[nuah] could not store events emitted by listeners: {e}"),
+            }
+        }
+    }
+
+    /// Run a route a plugin added (the HTTP projection forwards matching requests here).
+    pub fn route(
+        &self,
+        method: &str,
+        path: &str,
+        credential: Option<&str>,
+        query: HashMap<String, String>,
+        body: Vec<u8>,
+    ) -> Result<RouteResponse> {
+        let entry = {
+            let st = self.inner.state.read().unwrap();
+            st.routes
+                .iter()
+                .find(|r| r.spec.method.eq_ignore_ascii_case(method) && r.spec.path == path)
+                .cloned()
+                .ok_or_else(|| LinkError::not_found("route"))?
+        };
+        let ident = self.authenticate(credential)?;
+        if !self.inner.ports.policy.check(&ident, &entry.spec.permission) {
+            return Err(LinkError::permission_denied(&entry.spec.permission));
+        }
+        let ctx = Ctx::new(&ident, self.inner.ports.ids.new_id(), None, self.inner.ports.clock.now_ms());
+        let read_only = method.eq_ignore_ascii_case("GET");
+        let _live = self.register(&ctx, &ident, if read_only { OpKind::Query } else { OpKind::Command });
+        let mut result: Option<RouteResponse> = None;
+        let mut events: Vec<Event> = vec![];
+        let mut run = || -> Result<()> {
+            events.clear();
+            let svc = self.services_ro(&entry.owner, read_only);
+            let res = guarded("a route handler", || {
+                (entry.handler)(&ctx.for_plugin(&entry.owner), RouteRequest { query: query.clone(), body: body.clone() }, &svc)
+            })?;
+            for p in svc.take_pending() {
+                if read_only {
+                    return Err(LinkError::internal("a GET route tried to emit an event; use POST"));
+                }
+                events.push(self.inner.events.append(&p.kind, &p.plugin, &p.audience, p.data, ctx.now_ms)?);
+            }
+            result = Some(res);
+            Ok(())
+        };
+        // GET routes read without holding a write transaction; others run as one atomic unit.
+        if read_only { run()?; } else { self.inner.ports.db.transaction(&mut run)?; }
+        self.after_commit(events, ctx.now_ms, 0);
+        Ok(result.expect("route ran"))
+    }
+
+    pub fn events_since(&self, subject: &str, after: u64, limit: usize) -> Result<Vec<Event>> {
+        self.inner.events.since(subject, after, limit)
+    }
+    /// The newest event the subject may see.
+    pub fn latest_seq_for(&self, subject: &str) -> u64 {
+        self.inner.events.latest_for(subject).unwrap_or(0)
+    }
+    pub fn latest_seq(&self) -> u64 {
+        self.inner.events.latest_seq()
+    }
+    /// A wake-up signal: something was committed. Read the log to find out what.
+    pub fn subscribe(&self) -> broadcast::Receiver<String> {
+        self.inner.events.subscribe()
+    }
+
+    /// Turn a running plugin off. Everything it registered goes with it; its data stays.
+    pub fn disable(&self, id: &str) -> Result<()> {
+        if let Some(port) = self.inner.bound.iter().find(|(k, p)| p.as_str() == id && PORT_NAMES.contains(&k.as_str())).map(|(k, _)| k.clone()) {
+            return Err(LinkError::conflict(format!("`{id}` is the adapter for port `{port}` and cannot be disabled while running")));
+        }
+        let mut st = self.inner.state.write().unwrap();
+        if !st.active.iter().any(|a| a == id) {
+            return Err(LinkError::not_found(&format!("active plugin `{id}`")));
+        }
+        let dependents: Vec<&String> = st
+            .active
+            .iter()
+            .filter(|a| self.inner.manifests[*a].requires.plugins.iter().any(|r| r.split('@').next() == Some(id)))
+            .collect();
+        if !dependents.is_empty() {
+            return Err(LinkError::conflict(format!(
+                "`{id}` is required by {}; disable those first",
+                dependents.iter().map(|d| format!("`{d}`")).collect::<Vec<_>>().join(", ")
+            )));
+        }
+        for d in &self.inner.manifests[id].defines.extension_points {
+            let users: Vec<&String> = st
+                .active
+                .iter()
+                .filter(|a| a.as_str() != id)
+                .filter(|a| {
+                    let m = &self.inner.manifests[*a];
+                    m.requires.extension_points.contains(&d.name) || m.provides.iter().any(|p| p.extension_point == d.name)
+                })
+                .collect();
+            if !users.is_empty() {
+                return Err(LinkError::conflict(format!(
+                    "`{id}` defines extension point `{}`, which {} use",
+                    d.name,
+                    users.iter().map(|u| format!("`{u}`")).collect::<Vec<_>>().join(", ")
+                )));
+            }
+        }
+        for p in &self.inner.manifests[id].provides {
+            let Some(def) = self.inner.extension_points.get(&p.extension_point) else { continue };
+            let others = st.active.iter().filter(|a| a.as_str() != id).filter(|a| self.inner.manifests[*a].provides.iter().any(|q| q.extension_point == p.extension_point)).count();
+            let required = st.active.iter().any(|a| a.as_str() != id && self.inner.manifests[a].requires.extension_points.contains(&p.extension_point));
+            if required && ((def.policy == "single") || (def.policy == "first" && others == 0)) {
+                return Err(LinkError::conflict(format!("`{id}` is the only provider of extension point `{}`, which is in use", p.extension_point)));
+            }
+        }
+        st.ops.retain(|_, e| e.owner != id);
+        st.port_impls.retain(|i| i.owner != id);
+        st.hooks.retain(|h| h.owner != id);
+        st.listeners.retain(|l| l.owner != id);
+        st.routes.retain(|r| r.owner != id);
+        st.active.retain(|a| a != id);
+        st.inactive.push((id.to_string(), "disabled at runtime".to_string()));
+        Ok(())
+    }
+
+    /// The core describing itself: contract, plugins, ports, slots, and (when a credential is
+    /// given) who the caller is and which operations they may use.
+    pub fn describe(&self, credential: Option<&str>, face: Option<&str>) -> Value {
+        let inner = &self.inner;
+        let identity = inner.ports.auth.authenticate(credential).ok();
+        // Before sign-in a face only learns how to sign in: no plugin list, no ops, no counters.
+        let Some(identity_ref) = identity.as_ref() else {
+            return json!({
+                "contract": CONTRACT_VERSION, "profile": inner.name, "identity": null,
+                "signin": inner.ports.auth.signin(),
+            });
+        };
+        let _ = identity_ref;
+        let latest = identity.as_ref().map(|i| inner.events.latest_for(&i.subject).unwrap_or(0)).unwrap_or(0); // a db call: before taking the state lock
+        let st = inner.state.read().unwrap();
+        let mut ops: Vec<&OpEntry> = st.ops.values().collect();
+        ops.sort_by(|a, b| a.spec.name.cmp(&b.spec.name));
+        let ops_json: Vec<Value> = ops
+            .iter()
+            .map(|e| {
+                let mut v = json!(e.spec);
+                v["plugin"] = json!(e.owner);
+                if let Some(id) = &identity {
+                    v["allowed"] = json!(inner.ports.policy.check(id, &e.spec.permission));
+                }
+                v
+            })
+            .collect();
+        let face_ok = |item: &Value| match (face, item.get("faces").and_then(|f| f.as_array())) {
+            (Some(f), Some(list)) => list.iter().any(|x| x.as_str() == Some(f)),
+            _ => true,
+        };
+        let mut events: Vec<Value> = vec![];
+        let mut slots: Vec<Value> = vec![];
+        let mut assets: Vec<Value> = vec![];
+        let mut plugins: Vec<Value> = vec![];
+        for id in &st.active {
+            let m = &inner.manifests[id];
+            slots.extend(m.contributes.slots.iter().filter(|s| face_ok(s)).cloned().map(|mut s| {
+                s["plugin"] = json!(id);
+                s
+            }));
+            assets.extend(m.contributes.assets.iter().filter(|s| face_ok(s)).cloned().map(|mut s| {
+                s["plugin"] = json!(id);
+                s
+            }));
+            events.extend(m.contributes.events.iter().map(|k| json!({"kind": k, "plugin": id, "schema": m.contributes.event_schemas.get(k)})));
+            plugins.push(json!({"id": id, "version": m.version, "kind": m.kind(), "runtime": m.runtime, "quality": m.quality, "data": m.data, "requires": m.requires.plugins, "settings_schema": m.settings_schema}));
+        }
+        let ports: HashMap<&String, &String> = inner.bound.iter().collect();
+        let mut extension_points: Vec<Value> = inner
+            .extension_points
+            .values()
+            .map(|d| {
+                let mut providers: Vec<(i32, &String)> = st
+                    .active
+                    .iter()
+                    .filter_map(|id| inner.manifests[id].provides.iter().find(|p| p.extension_point == d.name).map(|p| (p.priority, id)))
+                    .collect();
+                providers.sort();
+                json!({"name": d.name, "doc": d.doc, "policy": d.policy, "methods": d.methods,
+                       "providers": providers.iter().map(|p| p.1).collect::<Vec<_>>(),
+                       "bound": inner.bound.get(&d.name)})
+            })
+            .collect();
+        extension_points.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+        let hooks: Vec<Value> = {
+            let mut h: Vec<&HookEntry> = st.hooks.iter().collect();
+            h.sort_by(|a, b| (a.priority, a.rank, &a.owner, &a.name).cmp(&(b.priority, b.rank, &b.owner, &b.name)));
+            h.iter().map(|h| json!({"plugin": h.owner, "name": h.name, "pattern": h.pattern, "priority": h.priority,
+                "phase": match h.f { HookFn::Before(_) => "before", HookFn::Around(_) => "around", HookFn::After(_) => "after" }})).collect()
+        };
+        json!({
+            "contract": CONTRACT_VERSION,
+            "profile": inner.name,
+            "ports": ports,
+            "extension_points": extension_points,
+            "events": events,
+            "hooks": hooks,
+            "plugins": plugins,
+            "inactive": st.inactive.iter().map(|(i, r)| json!({"id": i, "reason": r})).collect::<Vec<_>>(),
+            "ops": ops_json,
+            "slots": slots,
+            "assets": assets,
+            "signin": inner.ports.auth.signin(),
+            "identity": identity.as_ref().map(|i| json!({"subject": i.subject, "display": i.display, "roles": i.roles})),
+            "latest_seq": latest,
+        })
+    }
+}
+
+/// Position of each plugin in the order its hooks run (lower first), from `order.after/before`.
+/// Ties go by id so the result never depends on hash order. A cycle is reported.
+fn plugin_ranks(active: &[String], manifests: &HashMap<String, Manifest>) -> std::result::Result<HashMap<String, u32>, String> {
+    let mut before: HashMap<&str, HashSet<&str>> = active.iter().map(|a| (a.as_str(), HashSet::new())).collect(); // plugin -> those that must come first
+    for id in active {
+        let m = &manifests[id];
+        for a in &m.order.after {
+            if active.contains(a) {
+                before.get_mut(id.as_str()).unwrap().insert(a.as_str());
+            }
+        }
+        for b in &m.order.before {
+            if let Some(set) = before.get_mut(b.as_str()) {
+                set.insert(id.as_str());
+            }
+        }
+    }
+    let mut ranks = HashMap::new();
+    let mut left: Vec<&str> = active.iter().map(|s| s.as_str()).collect();
+    left.sort();
+    let mut n = 0;
+    while !left.is_empty() {
+        let Some(pos) = left.iter().position(|p| before[p].iter().all(|d| ranks.contains_key(*d))) else {
+            return Err(format!("hook order constraints form a cycle among {}", left.join(", ")));
+        };
+        ranks.insert(left.remove(pos).to_string(), n);
+        n += 1;
+    }
+    Ok(ranks)
+}
+
+fn join(v: &[&String]) -> String {
+    v.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+}

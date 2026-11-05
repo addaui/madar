@@ -1,22 +1,18 @@
 //! A small JSON-Schema subset. The contract is checked by the kernel before any plugin code runs,
 //! so every handler can trust the shape of its input.
 //!
-//! Supported: type (string or list), enum, required, properties, additionalProperties (false, or a schema for the other keys),
-//! minLength, maxLength, minimum, maximum, items, minItems, maxItems.
+//! Supported: type (string or list), enum, required, properties, additionalProperties (false, or a
+//! schema for the other keys), minLength, maxLength, minimum, maximum, items, minItems, maxItems.
 
-use crate::error::{LinkError, Result};
+use crate::error::{Error, Result};
 use serde_json::Value;
 
 pub fn validate(schema: &Value, value: &Value) -> Result<()> {
-    check(schema, value, "input")
+    check(schema, value, "")
 }
 
 fn join(path: &str, key: &str) -> String {
-    if path == "input" {
-        key.to_string()
-    } else {
-        format!("{path}.{key}")
-    }
+    if path.is_empty() { key.to_string() } else { format!("{path}.{key}") }
 }
 
 fn type_matches(t: &str, v: &Value) -> bool {
@@ -35,6 +31,7 @@ fn type_matches(t: &str, v: &Value) -> bool {
 
 fn check(schema: &Value, v: &Value, path: &str) -> Result<()> {
     let Some(obj) = schema.as_object() else { return Ok(()) };
+    let name = if path.is_empty() { "input" } else { path };
     if let Some(t) = obj.get("type") {
         let types: Vec<&str> = match t {
             Value::String(s) => vec![s.as_str()],
@@ -42,13 +39,13 @@ fn check(schema: &Value, v: &Value, path: &str) -> Result<()> {
             _ => vec![],
         };
         if !types.is_empty() && !types.iter().any(|t| type_matches(t, v)) {
-            return Err(LinkError::invalid(path, &format!("expected {}", types.join(" or "))));
+            return Err(Error::invalid(name, &format!("expected {}", types.join(" or "))));
         }
     }
     if let Some(options) = obj.get("enum").and_then(|e| e.as_array()) {
         if !options.contains(v) {
             let names: Vec<String> = options.iter().map(|o| o.to_string()).collect();
-            return Err(LinkError::invalid(path, &format!("must be one of {}", names.join(", "))));
+            return Err(Error::invalid(name, &format!("must be one of {}", names.join(", "))));
         }
     }
     match v {
@@ -56,7 +53,7 @@ fn check(schema: &Value, v: &Value, path: &str) -> Result<()> {
             if let Some(req) = obj.get("required").and_then(|r| r.as_array()) {
                 for key in req.iter().filter_map(|k| k.as_str()) {
                     if !map.contains_key(key) {
-                        return Err(LinkError::invalid(&join(path, key), "is required"));
+                        return Err(Error::invalid(&join(path, key), "is required"));
                     }
                 }
             }
@@ -65,7 +62,7 @@ fn check(schema: &Value, v: &Value, path: &str) -> Result<()> {
                 if let Some(p) = props {
                     for key in map.keys() {
                         if !p.contains_key(key) {
-                            return Err(LinkError::invalid(&join(path, key), "is not allowed"));
+                            return Err(Error::invalid(&join(path, key), "is not allowed"));
                         }
                     }
                 }
@@ -89,12 +86,12 @@ fn check(schema: &Value, v: &Value, path: &str) -> Result<()> {
             let len = s.chars().count() as u64;
             if let Some(min) = obj.get("minLength").and_then(|m| m.as_u64()) {
                 if len < min {
-                    return Err(LinkError::invalid(path, &format!("must be at least {min} characters")));
+                    return Err(Error::invalid(name, &format!("must be at least {min} characters")));
                 }
             }
             if let Some(max) = obj.get("maxLength").and_then(|m| m.as_u64()) {
                 if len > max {
-                    return Err(LinkError::invalid(path, &format!("must be at most {max} characters")));
+                    return Err(Error::invalid(name, &format!("must be at most {max} characters")));
                 }
             }
         }
@@ -102,29 +99,29 @@ fn check(schema: &Value, v: &Value, path: &str) -> Result<()> {
             let f = n.as_f64().unwrap_or(0.0);
             if let Some(min) = obj.get("minimum").and_then(|m| m.as_f64()) {
                 if f < min {
-                    return Err(LinkError::invalid(path, &format!("must be at least {min}")));
+                    return Err(Error::invalid(name, &format!("must be at least {min}")));
                 }
             }
             if let Some(max) = obj.get("maximum").and_then(|m| m.as_f64()) {
                 if f > max {
-                    return Err(LinkError::invalid(path, &format!("must be at most {max}")));
+                    return Err(Error::invalid(name, &format!("must be at most {max}")));
                 }
             }
         }
         Value::Array(items) => {
             if let Some(min) = obj.get("minItems").and_then(|m| m.as_u64()) {
                 if (items.len() as u64) < min {
-                    return Err(LinkError::invalid(path, &format!("needs at least {min} items")));
+                    return Err(Error::invalid(name, &format!("needs at least {min} items")));
                 }
             }
             if let Some(max) = obj.get("maxItems").and_then(|m| m.as_u64()) {
                 if (items.len() as u64) > max {
-                    return Err(LinkError::invalid(path, &format!("allows at most {max} items")));
+                    return Err(Error::invalid(name, &format!("allows at most {max} items")));
                 }
             }
             if let Some(sub) = obj.get("items") {
                 for (i, item) in items.iter().enumerate() {
-                    check(sub, item, &format!("{path}[{i}]"))?;
+                    check(sub, item, &format!("{name}[{i}]"))?;
                 }
             }
         }
@@ -142,7 +139,7 @@ mod tests {
     fn required_and_additional_properties() {
         let s = json!({"type":"object","required":["a"],"properties":{"a":{"type":"string","minLength":2}},"additionalProperties":false});
         assert!(validate(&s, &json!({"a":"ok"})).is_ok());
-        assert_eq!(validate(&s, &json!({})).unwrap_err().details.unwrap()["field"], "a");
+        assert_eq!(validate(&s, &json!({})).unwrap_err().params["field"], "a");
         assert!(validate(&s, &json!({"a":"x"})).is_err());
         assert!(validate(&s, &json!({"a":"ok","b":1})).is_err());
     }

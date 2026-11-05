@@ -1,64 +1,92 @@
-//! Clock and id adapters. `std` talks to the real world; `std-fixed` is deterministic,
-//! so a whole session can be replayed and compared byte for byte.
+//! Clock and id Adapters: the system ones, and fixed ones for tests and replay.
 
 use nuah_kernel::*;
+use parking_lot::Mutex;
+use serde_json::{json, Value};
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 
-struct SystemClock;
+pub struct SystemClock;
 impl Clock for SystemClock {
-    fn now_ms(&self) -> i64 {
+    fn now(&self) -> Millis {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
     }
 }
 
-struct UuidIds;
-impl Ids for UuidIds {
-    /// Random UUIDs. v7 was tried first, but its leading digits are the timestamp, so every id made
-    /// within weeks shares the same visible prefix, which breaks short ids in a terminal.
-    fn new_id(&self) -> String {
-        uuid::Uuid::new_v4().to_string()
+/// A clock that only moves when told to.
+#[derive(Default)]
+pub struct FixedClock(pub AtomicI64);
+impl FixedClock {
+    pub fn at(ms: i64) -> Arc<Self> {
+        Arc::new(FixedClock(AtomicI64::new(ms)))
+    }
+    pub fn advance(&self, ms: i64) {
+        self.0.fetch_add(ms, Ordering::SeqCst);
     }
 }
-
-pub struct StdPlugin;
-impl Plugin for StdPlugin {
-    fn manifest(&self) -> Manifest {
-        Manifest::parse(
-            r#"{"id":"std","version":"0.1.0", "description":"Real clock and random ids.","implements":[{"port":"clock"},{"port":"ids"}],"quality":"reference"}"#,
-        )
-    }
-    fn activate(&self, act: &mut Activation) -> Result<()> {
-        act.provide_clock(Arc::new(SystemClock));
-        act.provide_ids(Arc::new(UuidIds));
-        Ok(())
-    }
-}
-
-/// Each call to the clock advances one second from a fixed start; ids count up.
-pub struct FixedClock(AtomicI64);
 impl Clock for FixedClock {
-    fn now_ms(&self) -> i64 {
-        self.0.fetch_add(1000, Ordering::SeqCst)
-    }
-}
-pub struct CountingIds(AtomicU64);
-impl Ids for CountingIds {
-    fn new_id(&self) -> String {
-        format!("id-{:06}", self.0.fetch_add(1, Ordering::SeqCst) + 1)
+    fn now(&self) -> Millis {
+        self.0.load(Ordering::SeqCst)
     }
 }
 
-pub struct FixedPlugin;
-impl Plugin for FixedPlugin {
-    fn manifest(&self) -> Manifest {
-        Manifest::parse(
-            r#"{"id":"std-fixed","version":"0.1.0", "description":"Fixed clock and predictable ids, for tests.","implements":[{"port":"clock"},{"port":"ids"}],"quality":"test"}"#,
-        )
-    }
-    fn activate(&self, act: &mut Activation) -> Result<()> {
-        act.provide_clock(Arc::new(FixedClock(AtomicI64::new(1_700_000_000_000))));
-        act.provide_ids(Arc::new(CountingIds(AtomicU64::new(0))));
-        Ok(())
+pub struct RandomIds;
+impl Ids for RandomIds {
+    fn new_id(&self) -> String {
+        uuid::Uuid::new_v4().simple().to_string()
     }
 }
+
+/// Ids n1, n2, n3 ... : predictable, for tests.
+#[derive(Default)]
+pub struct SequentialIds(AtomicU64);
+impl Ids for SequentialIds {
+    fn new_id(&self) -> String {
+        format!("n{}", self.0.fetch_add(1, Ordering::SeqCst) + 1)
+    }
+}
+
+fn simple_adapter(id: &str, port: &str, desc: &str) -> Manifest {
+    serde_json::from_value(json!({"id": id, "version": "0.2.0", "name": id, "description": desc, "fills": port})).unwrap()
+}
+
+macro_rules! adapter {
+    ($name:ident, $id:literal, $port:literal, $desc:literal, |$s:ident| $make:expr) => {
+        pub struct $name;
+        impl Plugin for $name {
+            fn manifest(&self) -> Manifest {
+                simple_adapter($id, $port, $desc)
+            }
+            fn fill(&self, $s: &Value) -> Result<Option<PortImpl>> {
+                Ok(Some($make))
+            }
+        }
+    };
+}
+
+adapter!(StdClock, "clock-system", "clock", "The system clock", |_s| PortImpl::Clock(Arc::new(SystemClock)));
+adapter!(StdIds, "ids-random", "ids", "Random ids", |_s| PortImpl::Ids(Arc::new(RandomIds)));
+
+/// Test adapters hand out shared handles so a test can move time and see ids.
+pub struct TestClock(pub Arc<FixedClock>);
+impl Plugin for TestClock {
+    fn manifest(&self) -> Manifest {
+        simple_adapter("clock-fixed", "clock", "A clock that only moves when told to")
+    }
+    fn fill(&self, _s: &Value) -> Result<Option<PortImpl>> {
+        Ok(Some(PortImpl::Clock(self.0.clone())))
+    }
+}
+pub struct TestIds;
+impl Plugin for TestIds {
+    fn manifest(&self) -> Manifest {
+        simple_adapter("ids-sequential", "ids", "Predictable ids")
+    }
+    fn fill(&self, _s: &Value) -> Result<Option<PortImpl>> {
+        Ok(Some(PortImpl::Ids(Arc::new(SequentialIds::default()))))
+    }
+}
+
+/// Keeps one shared `Mutex` so the macro-generated types stay trivially `Send + Sync`.
+#[allow(dead_code)]
+type Unused = Mutex<()>;

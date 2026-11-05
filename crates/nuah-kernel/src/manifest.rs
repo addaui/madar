@@ -1,203 +1,282 @@
-//! The manifest: what a plugin says about itself without running any code.
-//! The resolver, the setup wizard, `describe` and the admin UI all read this and never load the plugin.
+//! The Manifest ([ADR 0004]): everything a plugin says about itself without running any code.
+//! Operations, hooks, listeners, Events, permissions and data are declared here; code only attaches a
+//! handler to each declared name.
+//!
+//! [ADR 0004]: https://docs.addaui.com/nuah/adr/0004-manifest-declares-everything-names-are-namespaced/
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
+use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Manifest {
-    pub id: String,
-    pub version: String,
-    /// One line for people choosing plugins (the setup wizard shows it).
-    #[serde(default)]
-    pub description: String,
-    /// "native" (T0) here. "data" means no code at all (themes). wasm/js/remote are not built yet.
-    #[serde(default = "native")]
-    pub runtime: String,
-    #[serde(default)]
-    pub implements: Vec<Implements>,
-    /// Extension points this plugin creates for other plugins to fill.
-    #[serde(default)]
-    pub defines: Defines,
-    /// Plugin-defined ports this plugin fills.
-    #[serde(default)]
-    pub provides: Vec<Provides>,
-    #[serde(default)]
-    pub requires: Requires,
-    #[serde(default)]
-    pub contributes: Contributes,
-    /// Which collections the plugin owns (may write) and which it may read without owning.
-    /// "*" in `reads` means everything (visible in describe, so it is easy to audit).
-    #[serde(default)]
-    pub data: Data,
-    /// Empty means every profile.
-    #[serde(default)]
-    pub profiles: Vec<String>,
-    #[serde(default)]
-    pub quality: String,
-    /// JSON-schema subset for this plugin's entry under `settings` in the distribution. Checked at
-    /// start, so a bad setting is reported by the resolver and not by a crash later.
-    #[serde(default)]
-    pub settings_schema: Value,
-    /// Hook order between plugins. Only decides between hooks of equal priority.
-    #[serde(default)]
-    pub order: Order,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Runtime {
+    #[default]
+    Native,
+    /// Data only: runs no code (themes).
+    Data,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Order {
-    /// Plugin ids whose hooks run before this plugin's.
-    #[serde(default)]
-    pub after: Vec<String>,
-    /// Plugin ids whose hooks run after this plugin's.
-    #[serde(default)]
-    pub before: Vec<String>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Quality {
+    #[default]
+    Reference,
+    Bronze,
+    Silver,
 }
 
-impl Manifest {
-    /// What kind of plugin this is, worked out from what it says it does: an adapter fills a Port, a
-    /// provider fills an extension point, a theme only carries data for faces, anything else is a
-    /// feature. Never declared, so it cannot disagree with the rest of the manifest.
-    pub fn kind(&self) -> &'static str {
-        if !self.implements.is_empty() {
-            "adapter"
-        } else if !self.provides.is_empty() {
-            "provider"
-        } else if self.runtime == "data" {
-            "theme"
-        } else {
-            "feature"
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginKind {
+    Adapter,
+    Provider,
+    Theme,
+    Feature,
 }
 
-fn native() -> String {
-    "native".to_string()
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OpKind {
+    #[default]
+    Command,
+    Query,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Implements {
-    pub port: String,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Stage {
+    Before,
+    Around,
+    After,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Defines {
-    #[serde(default)]
-    pub extension_points: Vec<ExtensionPointDef>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CallPolicy {
+    /// Exactly one provider, chosen by the operator.
+    #[default]
+    Single,
+    /// Providers tried by priority; the first non-null answer wins.
+    First,
+    /// Every provider is called, each isolated from the others.
+    Many,
 }
 
-/// An extension point a plugin defines for other plugins to fill. Its name must start with the defining plugin's id and a dot.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Requires {
+    pub plugins: Vec<String>,
+    /// Core Ports used: db, auth, policy, clock, ids.
+    pub ports: Vec<String>,
+    pub extension_points: Vec<String>,
+    /// Capabilities asked for: `emit`, `call`. Granted by the operator in the Profile ([ADR 0006]).
+    pub capabilities: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionPointDef {
-    pub name: String,
     #[serde(default)]
-    pub doc: String,
-    /// "single": exactly one provider is bound. "first": providers are tried in priority order and
-    /// the first answer that is not null wins. "many": every provider is called.
-    #[serde(default = "single")]
-    pub policy: String,
-    pub methods: std::collections::BTreeMap<String, ExtensionMethod>,
-}
-
-fn single() -> String {
-    "single".to_string()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ExtensionMethod {
+    pub policy: CallPolicy,
     #[serde(default)]
-    pub doc: String,
-    /// JSON-schema subset, checked before any provider runs.
-    #[serde(default)]
+    pub description: String,
     pub input: Value,
-    /// Read-only methods may be called from queries.
-    #[serde(default)]
-    pub readonly: bool,
-    /// Optional shape of what a provider returns, checked on every answer. Providers that break it
-    /// fail like any other provider error.
     #[serde(default)]
     pub output: Value,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Defines {
+    pub extension_points: BTreeMap<String, ExtensionPointDef>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Provides {
+pub struct Provide {
     pub extension_point: String,
-    /// Lower runs first for `first` and `many`.
     #[serde(default)]
     pub priority: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Data {
-    #[serde(default)]
-    pub owns: Vec<String>,
-    #[serde(default)]
-    pub reads: Vec<String>,
-    /// Indexes on fields of collections the plugin owns. Created at start if the db supports them.
-    #[serde(default)]
-    pub indexes: Vec<IndexDef>,
-    /// Version of the plugin's stored data. When it is higher than what the database remembers,
-    /// `Plugin::migrate` runs once, in a transaction, before anything is served. 0 means unversioned.
-    #[serde(default)]
-    pub version: u32,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IndexDef {
+pub struct IndexDecl {
     pub collection: String,
     pub field: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Requires {
-    /// Other plugins that must be active: "tasks" or "tasks@0.1" (version prefix).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DataDecl {
+    /// Collections this plugin owns.
+    pub collections: Vec<String>,
+    /// Other plugins' collections it may read.
+    pub reads: Vec<String>,
+    pub version: u32,
+    pub indexes: Vec<IndexDecl>,
+}
+
+/// The thing an Operation acts on, so the policy can see it ([ADR 0005]).
+///
+/// [ADR 0005]: https://docs.addaui.com/nuah/adr/0005-policy-sees-the-resource-results-carry-what-you-may-do/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceRef {
+    /// Resource type, declared by the plugin that answers for it.
+    #[serde(rename = "type")]
+    pub kind: String,
+    /// The input field holding the resource id.
+    pub id: String,
+}
+
+/// Where in a result the Subject's "can" list goes: for every object found at `at` (an object, or an
+/// array of objects; empty means the result itself) the kernel adds `can`, the permissions the Subject
+/// holds on the resource whose id is in field `id` of that object.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Affordances {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub id: String,
     #[serde(default)]
-    pub plugins: Vec<String>,
-    /// Ports the plugin may call through `Services` ("db", "clock", "ids"). Anything else is denied.
-    #[serde(default)]
-    pub ports: Vec<String>,
-    /// Extension points (defined by other plugins) the plugin may call.
-    #[serde(default)]
-    pub extension_points: Vec<String>,
-    /// Other capabilities, for now only "events".
-    #[serde(default)]
-    pub capabilities: Vec<String>,
+    pub at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Contributes {
-    /// Every operation the plugin registers. The kernel refuses a plugin that registers more or fewer.
+#[serde(default)]
+pub struct OperationDecl {
+    pub kind: OpKind,
+    pub description: String,
+    /// The Permission needed. Absent means any signed-in Subject.
+    pub permission: Option<String>,
+    /// Callable without signing in (sign-in itself).
+    pub public: bool,
+    pub resource: Option<ResourceRef>,
+    pub affordances: Option<Affordances>,
+    pub input: Value,
+    pub output: Value,
+    /// Reason codes this Operation may fail with (code -> English text), all under the plugin's namespaces.
+    pub reasons: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PermissionDecl {
+    pub description: String,
+    /// Roles that hold it by default; the Profile may change this.
+    pub default: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookDecl {
+    pub stage: Stage,
+    /// An Operation name, `ns.*` or `*`.
+    pub on: String,
     #[serde(default)]
-    pub ops: Vec<String>,
-    /// HTTP-style routes the plugin adds, as "METHOD /path".
+    pub order: i32,
+    /// The name the code binds its handler under.
+    pub handler: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListenerDecl {
+    pub id: String,
+    /// Event kinds, `ns.*` allowed.
+    pub on: Vec<String>,
+    pub handler: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct EventDecl {
+    pub description: String,
+    pub data: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Manifest {
+    pub id: String,
+    pub version: String,
     #[serde(default)]
-    pub routes: Vec<String>,
-    /// UI slot items, rendered by faces from data. Shape: {slot, id, label, action, faces?}.
+    pub name: String,
     #[serde(default)]
-    pub slots: Vec<Value>,
-    /// Event kinds the plugin may emit. Emitting anything else is refused, so faces and agents can
-    /// learn the vocabulary of Pulse from `describe` instead of guessing.
+    pub description: String,
     #[serde(default)]
-    pub events: Vec<String>,
-    /// Optional shape of the `data` of an event kind, checked when the event is emitted.
+    pub runtime: Runtime,
     #[serde(default)]
-    pub event_schemas: std::collections::BTreeMap<String, Value>,
-    /// Face-side assets such as themes. Faces pick the ones they understand.
+    pub quality: Quality,
+    /// The prefixes this plugin owns; every name it contributes starts with one.
     #[serde(default)]
-    pub assets: Vec<Value>,
+    pub namespaces: Vec<String>,
+    #[serde(default)]
+    pub requires: Requires,
+    /// The core Port this plugin fills (an Adapter).
+    #[serde(default)]
+    pub fills: Option<String>,
+    #[serde(default)]
+    pub defines: Defines,
+    #[serde(default)]
+    pub provides: Vec<Provide>,
+    #[serde(default)]
+    pub data: DataDecl,
+    #[serde(default)]
+    pub operations: BTreeMap<String, OperationDecl>,
+    #[serde(default)]
+    pub permissions: BTreeMap<String, PermissionDecl>,
+    #[serde(default)]
+    pub hooks: Vec<HookDecl>,
+    #[serde(default)]
+    pub listeners: Vec<ListenerDecl>,
+    #[serde(default)]
+    pub events: BTreeMap<String, EventDecl>,
+    /// Scopes (groups of Subjects) this plugin answers for.
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    /// Resource types this plugin answers for.
+    #[serde(default)]
+    pub resources: Vec<String>,
+    #[serde(default)]
+    pub settings_schema: Value,
+    /// A Theme's data for Faces.
+    #[serde(default)]
+    pub theme: Option<Value>,
 }
 
 impl Manifest {
-    pub fn parse(json: &str) -> Manifest {
-        serde_json::from_str(json).unwrap_or_else(|e| panic!("invalid plugin manifest: {e}\n{json}"))
+    pub fn parse(src: &str) -> Result<Manifest, String> {
+        serde_json::from_str(src).map_err(|e| format!("manifest does not parse: {e}"))
     }
 
-    pub fn allowed_capabilities(&self) -> std::collections::HashSet<String> {
-        let mut set: std::collections::HashSet<String> =
-            self.requires.ports.iter().chain(self.requires.extension_points.iter()).chain(self.requires.capabilities.iter()).cloned().collect();
-        if !self.requires.plugins.is_empty() {
-            set.insert("call".to_string()); // may call the plugins it requires
+    /// The kind comes from what the Manifest says, never from a declared field.
+    pub fn kind(&self) -> PluginKind {
+        if self.fills.is_some() {
+            PluginKind::Adapter
+        } else if !self.provides.is_empty() {
+            PluginKind::Provider
+        } else if self.theme.is_some()
+            && self.operations.is_empty()
+            && self.hooks.is_empty()
+            && self.listeners.is_empty()
+        {
+            PluginKind::Theme
+        } else {
+            PluginKind::Feature
         }
-        set
+    }
+
+    pub fn owns_name(&self, name: &str) -> bool {
+        self.namespaces.iter().any(|ns| name == ns || name.starts_with(&format!("{ns}.")))
+    }
+
+    /// A stable summary used for the contract hash.
+    pub fn contract_part(&self) -> Value {
+        let ops: BTreeMap<&String, Value> = self
+            .operations
+            .iter()
+            .map(|(n, o)| {
+                (n, json!({
+                    "kind": o.kind, "permission": o.permission, "public": o.public,
+                    "input": o.input, "output": o.output, "reasons": o.reasons.keys().collect::<Vec<_>>(),
+                }))
+            })
+            .collect();
+        json!({ "operations": ops, "events": self.events.keys().collect::<Vec<_>>() })
     }
 }

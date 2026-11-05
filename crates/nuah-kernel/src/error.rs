@@ -1,73 +1,103 @@
-//! The one error type that crosses the Link. Codes are stable and part of the contract.
+//! The error model ([ADR 0007]): a closed set of categories, plugin-owned reason codes and message keys.
+//!
+//! [ADR 0007]: https://docs.addaui.com/nuah/adr/0007-closed-error-categories-plugin-reason-codes-message-keys/
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct LinkError {
-    pub code: String,
-    pub message: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub details: Option<Value>,
+/// The closed set of error categories. Each has one fixed meaning for retrying.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Category {
+    /// The input is wrong; retrying the same input never helps.
+    Invalid,
+    /// The thing does not exist (or the Subject may not know it exists).
+    NotFound,
+    /// The Subject is known but may not do this.
+    Denied,
+    /// No valid Identity; sign in and retry.
+    Unauthenticated,
+    /// The state changed under the caller (stale revision, already exists); re-read, then retry.
+    Conflict,
+    /// The Face and Core disagree on the contract version.
+    Incompatible,
+    /// A bug or a failure of infrastructure; the caller can do nothing but retry later.
+    Internal,
 }
 
-pub type Result<T> = std::result::Result<T, LinkError>;
-
-impl LinkError {
-    pub fn new(code: &str, message: impl Into<String>) -> Self {
-        LinkError { code: code.to_string(), message: message.into(), details: None }
-    }
-    pub fn with_details(mut self, details: Value) -> Self {
-        self.details = Some(details);
-        self
-    }
-    pub fn unauthenticated(message: &str) -> Self {
-        Self::new("unauthenticated", message)
-    }
-    pub fn permission_denied(permission: &str) -> Self {
-        Self::new("permission_denied", format!("missing permission `{permission}`"))
-            .with_details(json!({ "missing": permission }))
-    }
-    pub fn not_found(what: &str) -> Self {
-        Self::new("not_found", format!("{what} not found"))
-    }
-    pub fn invalid(field: &str, message: &str) -> Self {
-        Self::new("invalid_input", format!("{field}: {message}"))
-            .with_details(json!({ "field": field }))
-    }
-    pub fn conflict(message: impl Into<String>) -> Self {
-        Self::new("conflict", message)
-    }
-    pub fn internal(message: impl Into<String>) -> Self {
-        Self::new("internal", message)
-    }
-    pub fn capability_denied(plugin: &str, capability: &str) -> Self {
-        Self::new(
-            "capability_denied",
-            format!("plugin `{plugin}` did not declare capability `{capability}` in its manifest"),
-        )
-    }
-
-    /// Status used by the HTTP projection. Other projections map codes their own way.
-    pub fn http_status(&self) -> u16 {
-        match self.code.as_str() {
-            "unauthenticated" => 401,
-            "permission_denied" => 403,
-            "not_found" | "unknown_op" => 404,
-            "invalid_input" => 400,
-            "conflict" | "idempotency_conflict" | "request_in_progress" => 409,
-            "quota_exceeded" => 429,
-            "unavailable" => 503,
-            _ => 500,
+impl Category {
+    pub fn http_status(self) -> u16 {
+        match self {
+            Category::Invalid => 400,
+            Category::Unauthenticated => 401,
+            Category::Denied => 403,
+            Category::NotFound => 404,
+            Category::Conflict => 409,
+            Category::Incompatible => 426,
+            Category::Internal => 500,
         }
     }
-}
-
-impl fmt::Display for LinkError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.code, self.message)
+    pub fn retryable(self) -> bool {
+        matches!(self, Category::Internal)
     }
 }
 
-impl std::error::Error for LinkError {}
+/// An error that crosses the Link. `key` is a message key a Face can translate; `message` is the
+/// English fallback; `reason` is a plugin-owned code (`tasks.stale_revision`) when one applies.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Error {
+    pub category: Category,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub params: Value,
+    pub message: String,
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl Error {
+    pub fn new(category: Category, key: &str, message: impl Into<String>) -> Self {
+        Error { category, reason: None, key: key.into(), params: Value::Null, message: message.into() }
+    }
+    pub fn with_reason(mut self, reason: &str) -> Self {
+        self.reason = Some(reason.into());
+        self
+    }
+    pub fn with_params(mut self, params: Value) -> Self {
+        self.params = params;
+        self
+    }
+    pub fn invalid(field: &str, message: &str) -> Self {
+        Error::new(Category::Invalid, "kernel.invalid", format!("{field}: {message}"))
+            .with_params(json!({ "field": field, "problem": message }))
+    }
+    pub fn not_found(what: &str) -> Self {
+        Error::new(Category::NotFound, "kernel.not_found", format!("{what} not found")).with_params(json!({ "what": what }))
+    }
+    pub fn denied(permission: &str) -> Self {
+        Error::new(Category::Denied, "kernel.denied", format!("not allowed: {permission}"))
+            .with_params(json!({ "permission": permission }))
+    }
+    pub fn unauthenticated() -> Self {
+        Error::new(Category::Unauthenticated, "kernel.unauthenticated", "sign in first")
+    }
+    pub fn conflict(reason: &str, message: &str) -> Self {
+        Error::new(Category::Conflict, reason, message).with_reason(reason)
+    }
+    pub fn internal(message: impl Into<String>) -> Self {
+        Error::new(Category::Internal, "kernel.internal", message)
+    }
+    /// A plugin-owned failure: the category plus a reason code under the plugin's namespace.
+    pub fn reason(category: Category, reason: &str, message: &str) -> Self {
+        Error::new(category, reason, message).with_reason(reason)
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}: {}", self.category, self.message)
+    }
+}
+impl std::error::Error for Error {}

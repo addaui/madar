@@ -1,212 +1,171 @@
-//! The conformance suite for the `db` port. Any adapter, first-party or not, must pass it.
-//! Passing this suite is what makes "swap SQLite for Postgres" a configuration change.
+//! What every data Adapter must do. The suite tests the guarantees the kernel depends on (snapshot
+//! reads, atomic writes, nested undo, tombstones, ordering, the change log), not any mechanism.
 
 use nuah_kernel::*;
 use serde_json::{json, Value};
-use std::sync::Arc;
 
-pub fn run_db_conformance(make: &dyn Fn() -> Arc<dyn Db>) {
-    roundtrip(&*make());
-    filters(&*make());
-    ordering_and_paging(&*make());
-    nulls_and_types(&*make());
-    contains(&*make());
-    batches(&*make());
-    isolation(&*make());
-    put_new_and_transactions(&*make());
-    strictness(&*make());
+fn put(w: &mut dyn DbWrite, c: &str, id: &str, body: Value) -> Doc {
+    w.put(c, id, "t", body, Expect::Any, 1000).unwrap()
 }
 
-fn ids(rows: &[Value]) -> Vec<String> {
-    rows.iter().map(|r| r["id"].as_str().unwrap().to_string()).collect()
+fn ids(p: &Page) -> Vec<String> {
+    p.items.iter().map(|d| d.id.clone()).collect()
 }
 
-fn seed(db: &dyn Db) {
-    let docs = [
-        json!({"id":"a","n":3,"s":"Beta","flag":true,"nested":{"k":"x"}}),
-        json!({"id":"b","n":1,"s":"alpha","flag":false,"nested":{"k":"y"}}),
-        json!({"id":"c","n":2,"s":"Gamma 100%","nested":{"k":"x"}}),
-        json!({"id":"d","n":2.0,"s":null}),
-    ];
-    for d in docs {
-        db.put("t", d["id"].as_str().unwrap(), &d).unwrap();
-    }
+pub fn run(db: &dyn Db) {
+    envelope(db);
+    expectations(db);
+    queries(db);
+    atomicity(db);
+    nested(db);
+    change_log(db);
 }
 
-fn roundtrip(db: &dyn Db) {
-    assert_eq!(db.get("t", "x").unwrap(), None, "missing document reads as None");
-    let doc = json!({"id":"x","v":1,"deep":{"a":[1,2,{"b":null}]},"text":"héllo ✓"});
-    db.put("t", "x", &doc).unwrap();
-    assert_eq!(db.get("t", "x").unwrap(), Some(doc.clone()), "document round-trips exactly");
-    let doc2 = json!({"id":"x","v":2});
-    db.put("t", "x", &doc2).unwrap();
-    assert_eq!(db.get("t", "x").unwrap(), Some(doc2), "put replaces");
-    assert!(db.delete("t", "x").unwrap(), "delete reports removal");
-    assert!(!db.delete("t", "x").unwrap(), "second delete reports nothing removed");
-    assert!(db.put("t", "bad", &json!([1])).is_err(), "only objects are documents");
-    assert!(db.get("t", "bad").unwrap().is_none());
-}
-
-fn filters(db: &dyn Db) {
-    seed(db);
-    let q = |f: Filter| db.query(&Query { collection: "t".into(), filters: vec![f], order_by: Some(("id".into(), false)), ..Default::default() }).unwrap();
-    let f = |field: &str, op, value| Filter { field: field.into(), op, value };
-    assert_eq!(ids(&q(f("n", FilterOp::Eq, json!(2)))), ["c", "d"], "1 and 1.0 are the same number");
-    assert_eq!(ids(&q(f("n", FilterOp::Ne, json!(2)))), ["a", "b"]);
-    assert_eq!(ids(&q(f("n", FilterOp::Lt, json!(2)))), ["b"]);
-    assert_eq!(ids(&q(f("n", FilterOp::Lte, json!(2)))), ["b", "c", "d"]);
-    assert_eq!(ids(&q(f("n", FilterOp::Gt, json!(2)))), ["a"]);
-    assert_eq!(ids(&q(f("n", FilterOp::Gte, json!(2)))), ["a", "c", "d"]);
-    assert_eq!(ids(&q(f("s", FilterOp::Eq, json!("alpha")))), ["b"]);
-    assert_eq!(ids(&q(f("nested.k", FilterOp::Eq, json!("x")))), ["a", "c"], "dotted paths reach nested fields");
-    assert_eq!(ids(&q(f("flag", FilterOp::Eq, json!(true)))), ["a"]);
-    assert_eq!(ids(&q(f("flag", FilterOp::Eq, json!(false)))), ["b"]);
-    let both = db
-        .query(&Query::new("t").eq("nested.k", "x").filter("n", FilterOp::Gt, json!(2)))
-        .unwrap();
-    assert_eq!(ids(&both), ["a"], "filters combine with AND");
-    assert!(db.query(&Query::new("t").eq("n", "2")).unwrap().is_empty(), "a string never equals a number");
-}
-
-fn ordering_and_paging(db: &dyn Db) {
-    seed(db);
-    let by = |field: &str, desc: bool| ids(&db.query(&Query::new("t").order(field, desc)).unwrap());
-    assert_eq!(by("n", false), ["b", "c", "d", "a"], "ascending, ties by id");
-    assert_eq!(by("n", true), ["a", "c", "d", "b"], "descending still breaks ties by id ascending");
-    assert_eq!(by("s", false), ["d", "a", "c", "b"], "null first, then text by bytes (uppercase before lowercase)");
-    assert_eq!(by("missing", false), ["a", "b", "c", "d"], "all-missing falls back to id order");
-    let page = db.query(&Query { collection: "t".into(), order_by: Some(("n".into(), false)), limit: Some(2), offset: 1, ..Default::default() }).unwrap();
-    assert_eq!(ids(&page), ["c", "d"], "limit and offset");
-    assert!(db.query(&Query::new("nothing")).unwrap().is_empty(), "unknown collection is empty");
-}
-
-fn nulls_and_types(db: &dyn Db) {
-    seed(db);
-    let f = |field: &str, op, value| ids(&db.query(&Query::new("t").filter(field, op, value)).unwrap());
-    assert_eq!(f("s", FilterOp::Eq, Value::Null), ["d"], "null matches null");
-    assert_eq!(f("flag", FilterOp::Eq, Value::Null), ["c", "d"], "null matches a missing field");
-    assert_eq!(f("flag", FilterOp::Ne, Value::Null), ["a", "b"]);
-    assert_eq!(f("s", FilterOp::Gt, Value::Null), Vec::<String>::new(), "ordering against null matches nothing");
-    assert_eq!(f("s", FilterOp::Lt, json!("zzz")), ["a", "b", "c"], "null fields never satisfy ordering filters");
-    assert_eq!(f("missing", FilterOp::Ne, json!(1)), ["a", "b", "c", "d"], "a missing field is not equal to a value");
-}
-
-fn contains(db: &dyn Db) {
-    seed(db);
-    let f = |needle: &str| ids(&db.query(&Query::new("t").filter("s", FilterOp::Contains, json!(needle))).unwrap());
-    assert_eq!(f("ALPHA"), ["b"], "case-insensitive for ASCII");
-    assert_eq!(f("a"), ["a", "b", "c"]);
-    assert_eq!(f("100%"), ["c"], "% is a literal, not a wildcard");
-    assert_eq!(f("_"), Vec::<String>::new(), "_ is a literal, not a wildcard");
-    assert_eq!(f(""), ["a", "b", "c"], "empty needle matches every string, never null");
-}
-
-fn batches(db: &dyn Db) {
-    db.put("t", "keep", &json!({"id":"keep"})).unwrap();
-    db.batch(&[
-        WriteOp::Put { collection: "t".into(), id: "n1".into(), doc: json!({"id":"n1"}) },
-        WriteOp::Delete { collection: "t".into(), id: "keep".into() },
-    ])
-    .unwrap();
-    assert!(db.get("t", "n1").unwrap().is_some());
-    assert!(db.get("t", "keep").unwrap().is_none());
-    let result = db.batch(&[
-        WriteOp::Put { collection: "t".into(), id: "n2".into(), doc: json!({"id":"n2"}) },
-        WriteOp::Delete { collection: "t".into(), id: "n1".into() },
-        WriteOp::Put { collection: "t".into(), id: "n3".into(), doc: json!("not an object") },
-    ]);
-    assert!(result.is_err(), "an invalid write fails the batch");
-    assert!(db.get("t", "n2").unwrap().is_none(), "a failed batch writes nothing");
-    assert!(db.get("t", "n1").unwrap().is_some(), "a failed batch deletes nothing");
-}
-
-fn isolation(db: &dyn Db) {
-    db.put("one", "same", &json!({"id":"same","c":"one"})).unwrap();
-    db.put("two", "same", &json!({"id":"same","c":"two"})).unwrap();
-    assert_eq!(db.get("one", "same").unwrap().unwrap()["c"], "one");
-    assert_eq!(db.get("two", "same").unwrap().unwrap()["c"], "two");
-    assert_eq!(db.query(&Query::new("one")).unwrap().len(), 1, "collections do not leak into each other");
-}
-
-fn put_new_and_transactions(db: &dyn Db) {
-    assert!(db.put_new("t", "a", &json!({"id":"a","v":1})).unwrap(), "first insert succeeds");
-    assert!(!db.put_new("t", "a", &json!({"id":"a","v":2})).unwrap(), "second insert reports the id is taken");
-    assert_eq!(db.get("t", "a").unwrap().unwrap()["v"], 1, "and does not overwrite");
-
-    // commit
-    db.transaction(&mut || {
-        db.put("t", "x", &json!({"id":"x"}))?;
-        assert!(db.get("t", "x")?.is_some(), "a transaction reads its own writes");
+fn envelope(db: &dyn Db) {
+    db.write(&mut |w| {
+        let a = put(w, "e", "a", json!({"x": 1}));
+        assert_eq!((a.rev, a.deleted, a.owner.as_str()), (1, false, "t"));
+        let b = put(w, "e", "a", json!({"x": 2}));
+        assert_eq!(b.rev, 2);
+        let t = w.delete("e", "a", Expect::Any, 2000).unwrap().unwrap();
+        assert_eq!((t.rev, t.deleted), (3, true));
+        assert!(w.delete("e", "a", Expect::Any, 2000).unwrap().is_none(), "deleting twice does nothing");
+        let again = put(w, "e", "a", json!({"x": 3}));
+        assert_eq!(again.rev, 4, "a tombstone keeps counting");
         Ok(())
     })
     .unwrap();
-    assert!(db.get("t", "x").unwrap().is_some());
+    db.read(&mut |r| {
+        assert_eq!(r.get("e", "a")?.unwrap().body["x"], 3);
+        assert!(r.get("e", "missing")?.is_none());
+        Ok(())
+    })
+    .unwrap();
+}
 
-    // rollback on error, including deletes and put_new
-    let r = db.transaction(&mut || {
-        db.put("t", "y", &json!({"id":"y"}))?;
-        db.delete("t", "x")?;
-        db.put_new("t", "z", &json!({"id":"z"}))?;
-        Err(LinkError::internal("boom"))
-    });
-    assert_eq!(r.unwrap_err().message, "boom");
-    assert!(db.get("t", "y").unwrap().is_none(), "puts are rolled back");
-    assert!(db.get("t", "x").unwrap().is_some(), "deletes are rolled back");
-    assert!(db.get("t", "z").unwrap().is_none(), "inserts are rolled back");
+fn expectations(db: &dyn Db) {
+    db.write(&mut |w| {
+        put(w, "x", "k", json!({}));
+        assert_eq!(w.put("x", "k", "t", json!({}), Expect::Absent, 1).unwrap_err().category, Category::Conflict);
+        assert_eq!(w.put("x", "k", "t", json!({}), Expect::Rev(7), 1).unwrap_err().category, Category::Conflict);
+        w.put("x", "k", "t", json!({"ok": true}), Expect::Rev(1), 1).unwrap();
+        w.delete("x", "k", Expect::Any, 1).unwrap();
+        w.put("x", "k", "t", json!({}), Expect::Absent, 1).expect("absent after a tombstone");
+        Ok(())
+    })
+    .unwrap();
+}
 
-    // a nested transaction joins the outer one, and a batch inside it does too
-    let r = db.transaction(&mut || {
-        db.transaction(&mut || db.put("t", "n1", &json!({"id":"n1"})))?;
-        db.batch(&[WriteOp::Put { collection: "t".into(), id: "n2".into(), doc: json!({"id":"n2"}) }])?;
-        Err(LinkError::internal("late failure"))
+fn queries(db: &dyn Db) {
+    db.write(&mut |w| {
+        for (i, (s, p)) in [("todo", 3), ("doing", 5), ("todo", 1), ("done", 9), ("todo", 7)].iter().enumerate() {
+            put(w, "q", &format!("d{i}"), json!({"s": s, "p": p, "n": {"deep": i}, "t": i % 2 == 0}));
+        }
+        put(w, "q", "gone", json!({"s": "todo", "p": 0}));
+        w.delete("q", "gone", Expect::Any, 1).unwrap();
+        put(w, "other", "o", json!({"s": "todo"}));
+        Ok(())
+    })
+    .unwrap();
+    db.read(&mut |r| {
+        let todo = r.query("q", &Query::new().eq("s", "todo"))?;
+        assert_eq!(ids(&todo), ["d0", "d2", "d4"], "default order is by id; tombstones and other collections are invisible");
+        assert_eq!(ids(&r.query("q", &Query::new().eq("s", "todo").desc("p"))?), ["d4", "d0", "d2"]);
+        assert_eq!(ids(&r.query("q", &Query::new().gte("p", 5).asc("p"))?), ["d1", "d4", "d3"]);
+        assert_eq!(ids(&r.query("q", &Query::new().gt("p", 5).lt("p", 9))?), ["d4"]);
+        assert_eq!(ids(&r.query("q", &Query::new().is_in("s", vec![json!("done"), json!("doing")]))?), ["d1", "d3"]);
+        assert_eq!(ids(&r.query("q", &Query::new().ne("s", "todo"))?), ["d1", "d3"]);
+        assert_eq!(ids(&r.query("q", &Query::new().eq("n.deep", 3))?), ["d3"]);
+        assert_eq!(ids(&r.query("q", &Query::new().eq("t", true))?), ["d0", "d2", "d4"]);
+        assert_eq!(ids(&r.query("q", &Query::new().eq("missing", Value::Null))?).len(), 5, "missing behaves like null");
+        assert!(r.query("q", &Query::new().gt("missing", 0))?.items.is_empty(), "ordered comparisons never match a missing field");
+        let p1 = r.query("q", &Query::new().asc("p").limit(2))?;
+        assert_eq!((ids(&p1), p1.next), (vec!["d2".to_string(), "d0".to_string()], Some(2)));
+        let p3 = r.query("q", &Query::new().asc("p").limit(2).offset(4))?;
+        assert_eq!((ids(&p3), p3.next), (vec!["d3".to_string()], None));
+        assert_eq!(r.count("q", &[])?, 5);
+        assert_eq!(r.count("q", &[Cond { field: "s".into(), op: Cmp::Eq, value: json!("todo") }])?, 3);
+        assert!(r.query("q", &Query::new().eq("a b", 1)).is_err(), "field paths are checked");
+        assert!(r.query("q", &Query::new().eq("a'); drop table docs; --", 1)).is_err());
+        Ok(())
+    })
+    .unwrap();
+}
+
+fn atomicity(db: &dyn Db) {
+    let r = db.write(&mut |w| {
+        put(w, "at", "a", json!({}));
+        w.append_change(ChangeRecord { seq: 0, at: 1, actor: "x".into(), request: "r".into(), operation: "o".into(), docs: vec![], events: vec![] })?;
+        Err(Error::internal("boom"))
     });
     assert!(r.is_err());
-    assert!(db.get("t", "n1").unwrap().is_none() && db.get("t", "n2").unwrap().is_none(), "nesting does not commit early");
-
-    // an inner failure that the outer code handles undoes only the inner work
-    db.transaction(&mut || {
-        db.put("t", "outer_ok", &json!({"id":"outer_ok"}))?;
-        let inner = db.transaction(&mut || {
-            db.put("t", "inner_half", &json!({"id":"inner_half"}))?;
-            Err(LinkError::internal("inner failed"))
-        });
-        assert!(inner.is_err());
-        assert!(db.get("t", "inner_half")?.is_none(), "the inner write is already undone");
+    db.read(&mut |r| {
+        assert!(r.get("at", "a")?.is_none(), "a failed write leaves nothing");
         Ok(())
     })
     .unwrap();
-    assert!(db.get("t", "outer_ok").unwrap().is_some(), "the outer work survives");
-    assert!(db.get("t", "inner_half").unwrap().is_none(), "the failed inner work stays undone after commit");
-
-    // a panic inside a transaction rolls it back and leaves the db usable
-    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = db.transaction(&mut || {
-            db.put("t", "p", &json!({"id":"p"})).unwrap();
-            panic!("handler bug");
-        });
-    }));
-    assert!(caught.is_err());
-    assert!(db.get("t", "p").unwrap().is_none(), "a panic rolls back");
-    db.put("t", "after", &json!({"id":"after"})).unwrap();
-    assert!(db.get("t", "after").unwrap().is_some(), "the db still works after a panic");
+    // a reader keeps one view even while a write goes on elsewhere is covered by the kernel tests
 }
 
-fn strictness(db: &dyn Db) {
-    seed(db);
-    assert!(db.query(&Query::new("t").eq("nested", json!({"k":"x"}))).is_err(), "object filters are rejected");
-    assert!(db.query(&Query::new("t").eq("n", json!([1]))).is_err(), "array filters are rejected");
-    for bad in ["my-field", "tags.0", "a..b", "", "a b", "1x"] {
-        assert!(db.query(&Query::new("t").eq(bad, 1)).is_err(), "field path `{bad}` is rejected by every adapter");
-        assert!(db.query(&Query::new("t").order(bad, false)).is_err());
+fn nested(db: &dyn Db) {
+    db.write(&mut |w| {
+        put(w, "n", "keep", json!({"v": 1}));
+        w.begin_nested()?;
+        put(w, "n", "gone", json!({"v": 2}));
+        put(w, "n", "keep", json!({"v": 99}));
+        w.end_nested(false)?;
+        w.begin_nested()?;
+        put(w, "n", "kept2", json!({"v": 3}));
+        w.begin_nested()?;
+        put(w, "n", "inner", json!({"v": 4}));
+        w.end_nested(false)?;
+        w.end_nested(true)?;
+        assert!(w.end_nested(true).is_err(), "nothing left to close");
+        Ok(())
+    })
+    .unwrap();
+    db.read(&mut |r| {
+        assert_eq!(r.get("n", "keep")?.unwrap().body["v"], 1);
+        assert!(r.get("n", "gone")?.is_none());
+        assert!(r.get("n", "kept2")?.is_some());
+        assert!(r.get("n", "inner")?.is_none());
+        Ok(())
+    })
+    .unwrap();
+}
+
+fn change_log(db: &dyn Db) {
+    let mut base = 0;
+    db.read(&mut |r| {
+        base = r.latest_change()?;
+        Ok(())
+    })
+    .unwrap();
+    let mut seqs = vec![];
+    for i in 0..5 {
+        db.write(&mut |w| {
+            seqs.truncate(i);
+            seqs.push(w.append_change(ChangeRecord { seq: 0, at: i as i64, actor: "a".into(), request: format!("r{i}"), operation: "op".into(), docs: vec![], events: vec![Event { kind: "k".into(), audience: Audience::subject("s"), data: json!({"i": i}) }] })?);
+            Ok(())
+        })
+        .unwrap();
     }
-    // integers beyond 2^53 stay distinct
-    db.put("big", "1", &json!({"id":"1","n":9007199254740993i64})).unwrap();
-    db.put("big", "2", &json!({"id":"2","n":9007199254740992i64})).unwrap();
-    let hit = db.query(&Query::new("big").eq("n", json!(9007199254740993i64))).unwrap();
-    assert_eq!(ids(&hit), ["1"], "large integers compare exactly");
-    // objects and arrays order like their JSON text (after "zzz", since `{` sorts after `z`), the same in every adapter
-    db.put("o", "a", &json!({"id":"a","v":{"y":2}})).unwrap();
-    db.put("o", "b", &json!({"id":"b","v":"zzz"})).unwrap();
-    db.put("o", "c", &json!({"id":"c","v":{"x":1}})).unwrap();
-    assert_eq!(ids(&db.query(&Query::new("o").order("v", false)).unwrap()), ["b", "c", "a"]);
+    assert_eq!(seqs, (base + 1..=base + 5).collect::<Vec<_>>(), "numbers grow by one, in commit order");
+    db.read(&mut |r| {
+        let got = r.changes_after(base + 2, 10)?;
+        assert_eq!(got.iter().map(|c| c.seq).collect::<Vec<_>>(), vec![base + 3, base + 4, base + 5]);
+        assert_eq!(got[0].events[0].data["i"], 2);
+        assert_eq!(r.changes_after(base, 2)?.len(), 2);
+        assert_eq!(r.latest_change()?, base + 5);
+        Ok(())
+    })
+    .unwrap();
+    db.write(&mut |w| w.prune_changes(2)).unwrap();
+    db.read(&mut |r| {
+        assert_eq!(r.latest_change()?, base + 5, "pruning never lowers the latest number");
+        assert_eq!(r.oldest_change()?, base + 4);
+        assert_eq!(r.changes_after(0, 10)?.len(), 2);
+        Ok(())
+    })
+    .unwrap();
 }
