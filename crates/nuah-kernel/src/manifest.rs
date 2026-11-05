@@ -16,6 +16,12 @@ pub struct Manifest {
     pub runtime: String,
     #[serde(default)]
     pub implements: Vec<Implements>,
+    /// Extension points this plugin creates for other plugins to fill.
+    #[serde(default)]
+    pub defines: Defines,
+    /// Plugin-defined ports this plugin fills.
+    #[serde(default)]
+    pub provides: Vec<Provides>,
     #[serde(default)]
     pub requires: Requires,
     #[serde(default)]
@@ -38,6 +44,49 @@ fn native() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Implements {
     pub port: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Defines {
+    #[serde(default)]
+    pub ports: Vec<PortDef>,
+}
+
+/// A port a plugin invents. Its name must start with the defining plugin's id and a dot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortDef {
+    pub name: String,
+    #[serde(default)]
+    pub doc: String,
+    /// "single": exactly one provider is bound. "first": providers are tried in priority order and
+    /// the first answer that is not null wins. "many": every provider is called.
+    #[serde(default = "single")]
+    pub policy: String,
+    pub methods: std::collections::BTreeMap<String, PortMethod>,
+}
+
+fn single() -> String {
+    "single".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PortMethod {
+    #[serde(default)]
+    pub doc: String,
+    /// JSON-schema subset, checked before any provider runs.
+    #[serde(default)]
+    pub input: Value,
+    /// Read-only methods may be called from queries.
+    #[serde(default)]
+    pub readonly: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Provides {
+    pub port: String,
+    /// Lower runs first for `first` and `many`.
+    #[serde(default)]
+    pub priority: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

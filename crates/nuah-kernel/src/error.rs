@@ -58,6 +58,7 @@ impl LinkError {
             "invalid_input" => 400,
             "conflict" | "idempotency_conflict" | "request_in_progress" => 409,
             "quota_exceeded" => 429,
+            "unavailable" => 503,
             _ => 500,
         }
     }

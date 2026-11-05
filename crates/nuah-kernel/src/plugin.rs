@@ -167,6 +167,8 @@ pub struct Services {
     settings: Value,
     pending: Mutex<Vec<PendingEvent>>,
     core: crate::core::Core,
+    /// True while serving a query or a GET route: only read-only port methods may be called.
+    read_only: bool,
 }
 
 impl Services {
@@ -177,6 +179,7 @@ impl Services {
         settings: Value,
         data: &crate::manifest::Data,
         core: crate::core::Core,
+        read_only: bool,
     ) -> Self {
         let db: Arc<dyn Db> = Arc::new(GuardedDb {
             inner: ports.db.clone(),
@@ -184,7 +187,7 @@ impl Services {
             owns: data.owns.iter().cloned().collect(),
             reads: data.reads.iter().cloned().collect(),
         });
-        Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]), core }
+        Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]), core, read_only }
     }
     /// Call another plugin's operation through the contract, as the user whose request is being
     /// served: the same permission check, input validation and hooks apply, and the call joins the
@@ -196,6 +199,17 @@ impl Services {
     pub fn call(&self, ctx: &Ctx, op: &str, input: Value) -> Result<Value> {
         self.need("call")?;
         let (data, events) = self.core.call_nested(&self.plugin, &ctx.request_id, op, input)?;
+        self.pending.lock().unwrap().extend(events);
+        Ok(data)
+    }
+    /// Call a method of a plugin-defined port this plugin lists in `requires.ports`. What comes
+    /// back depends on the port's policy: `single` and `first` give the provider's answer
+    /// (`first` gives null when no provider answered), `many` gives a list of
+    /// `{plugin, ok, data | error}`. Each provider runs in its own savepoint, so one that fails
+    /// leaves no half-written data behind.
+    pub fn port_call(&self, port: &str, method: &str, input: Value) -> Result<Value> {
+        self.need(port)?;
+        let (data, events) = self.core.port_call(&self.plugin, self.read_only, port, method, input)?;
         self.pending.lock().unwrap().extend(events);
         Ok(data)
     }
@@ -242,6 +256,7 @@ impl Services {
 pub type OpHandler = Arc<dyn Fn(&Ctx, Value, &Services) -> Result<Value> + Send + Sync>;
 pub type BeforeFn = Arc<dyn Fn(&Ctx, &OpSpec, &mut Value, &Services) -> Result<()> + Send + Sync>;
 pub type AfterFn = Arc<dyn Fn(&Ctx, &OpSpec, &Value, &Value, &Services) -> Result<()> + Send + Sync>;
+pub type PortHandler = Arc<dyn Fn(Value, &Services) -> Result<Value> + Send + Sync>;
 pub type ListenerFn = Arc<dyn Fn(&crate::events::Event, &Services) -> Result<()> + Send + Sync>;
 pub type RouteFn = Arc<dyn Fn(&Ctx, RouteRequest, &Services) -> Result<RouteResponse> + Send + Sync>;
 
@@ -290,6 +305,14 @@ pub(crate) struct ListenerEntry {
     pub f: ListenerFn,
 }
 #[derive(Clone)]
+pub(crate) struct PortImplEntry {
+    pub owner: String,
+    pub port: String,
+    pub method: String,
+    pub priority: i32,
+    pub handler: PortHandler,
+}
+#[derive(Clone)]
 pub(crate) struct RouteEntry {
     pub owner: String,
     pub spec: RouteSpec,
@@ -314,6 +337,7 @@ pub struct Activation {
     pub(crate) hooks: Vec<HookEntry>,
     pub(crate) listeners: Vec<ListenerEntry>,
     pub(crate) routes: Vec<RouteEntry>,
+    pub(crate) port_impls: Vec<PortImplEntry>,
     pub(crate) ports: PortSlots,
 }
 
@@ -326,6 +350,7 @@ impl Activation {
             hooks: vec![],
             listeners: vec![],
             routes: vec![],
+            port_impls: vec![],
             ports: PortSlots::default(),
         }
     }
@@ -374,6 +399,11 @@ impl Activation {
     }
     pub fn route(&mut self, spec: RouteSpec, f: impl Fn(&Ctx, RouteRequest, &Services) -> Result<RouteResponse> + Send + Sync + 'static) {
         self.routes.push(RouteEntry { owner: self.plugin.clone(), spec, handler: Arc::new(f) });
+    }
+    /// Fill one method of a plugin-defined port. The manifest's `provides` must list the port, and
+    /// every method of the port must be filled.
+    pub fn provide(&mut self, port: &str, method: &str, f: impl Fn(Value, &Services) -> Result<Value> + Send + Sync + 'static) {
+        self.port_impls.push(PortImplEntry { owner: self.plugin.clone(), port: port.into(), method: method.into(), priority: 0, handler: Arc::new(f) });
     }
     pub fn provide_db(&mut self, a: Arc<dyn Db>) {
         self.ports.db = Some(a);

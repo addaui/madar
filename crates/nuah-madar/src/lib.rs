@@ -2,6 +2,7 @@
 //! Everything product-specific lives here; the kernel and the adapters know nothing about tasks.
 
 pub mod extras;
+pub mod notify;
 pub mod tasks;
 
 use nuah_adapters::*;
@@ -26,6 +27,9 @@ pub fn catalog() -> Vec<Arc<dyn Plugin>> {
         Arc::new(extras::QuotaPlugin),
         Arc::new(extras::PrefsPlugin),
         Arc::new(extras::ExportPlugin),
+        Arc::new(notify::NotifyPlugin),
+        Arc::new(notify::NotifyInboxPlugin),
+        Arc::new(notify::NotifyCountPlugin),
     ];
     for t in extras::builtin_themes() {
         c.push(Arc::new(t));
@@ -33,7 +37,7 @@ pub fn catalog() -> Vec<Arc<dyn Plugin>> {
     c
 }
 
-const COMMON: [&str; 6] = ["tasks", "audit", "prefs", "export", "theme-paper", "theme-ink"];
+const COMMON: [&str; 9] = ["tasks", "audit", "prefs", "export", "notify", "notify-inbox", "notify-count", "theme-paper", "theme-ink"];
 
 /// Personal, offline, single user: the profile a coupled app uses.
 pub fn embedded(db_path: &str, display_name: &str) -> Distribution {
