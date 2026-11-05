@@ -69,12 +69,12 @@ pub struct Implements {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Defines {
     #[serde(default)]
-    pub ports: Vec<PortDef>,
+    pub extension_points: Vec<ExtensionPointDef>,
 }
 
-/// A port a plugin invents. Its name must start with the defining plugin's id and a dot.
+/// An extension point a plugin defines for other plugins to fill. Its name must start with the defining plugin's id and a dot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PortDef {
+pub struct ExtensionPointDef {
     pub name: String,
     #[serde(default)]
     pub doc: String,
@@ -82,7 +82,7 @@ pub struct PortDef {
     /// the first answer that is not null wins. "many": every provider is called.
     #[serde(default = "single")]
     pub policy: String,
-    pub methods: std::collections::BTreeMap<String, PortMethod>,
+    pub methods: std::collections::BTreeMap<String, ExtensionMethod>,
 }
 
 fn single() -> String {
@@ -90,7 +90,7 @@ fn single() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PortMethod {
+pub struct ExtensionMethod {
     #[serde(default)]
     pub doc: String,
     /// JSON-schema subset, checked before any provider runs.
@@ -107,7 +107,7 @@ pub struct PortMethod {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Provides {
-    pub port: String,
+    pub extension_point: String,
     /// Lower runs first for `first` and `many`.
     #[serde(default)]
     pub priority: i32,
@@ -142,6 +142,9 @@ pub struct Requires {
     /// Ports the plugin may call through `Services` ("db", "clock", "ids"). Anything else is denied.
     #[serde(default)]
     pub ports: Vec<String>,
+    /// Extension points (defined by other plugins) the plugin may call.
+    #[serde(default)]
+    pub extension_points: Vec<String>,
     /// Other capabilities, for now only "events".
     #[serde(default)]
     pub capabilities: Vec<String>,
@@ -177,7 +180,7 @@ impl Manifest {
 
     pub fn allowed_capabilities(&self) -> std::collections::HashSet<String> {
         let mut set: std::collections::HashSet<String> =
-            self.requires.ports.iter().chain(self.requires.capabilities.iter()).cloned().collect();
+            self.requires.ports.iter().chain(self.requires.extension_points.iter()).chain(self.requires.capabilities.iter()).cloned().collect();
         if !self.requires.plugins.is_empty() {
             set.insert("call".to_string()); // may call the plugins it requires
         }

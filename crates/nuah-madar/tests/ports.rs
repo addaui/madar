@@ -73,7 +73,7 @@ fn one_channel_can_be_switched_off_without_the_others_noticing() {
 fn broken_channel() -> Arc<dyn Plugin> {
     t(
         json!({"id":"notify-broken","version":"0.1.0","requires":{"ports":["db"]},"data":{"owns":["junk"]},
-               "provides":[{"port":"notify.channel","priority":1}],"contributes":{"ops":["broken.peek"]}}),
+               "provides":[{"extension_point":"notify.channel","priority":1}],"contributes":{"ops":["broken.peek"]}}),
         |a| {
             a.provide("notify.channel", "deliver", |_i, svc| {
                 svc.db()?.put("junk", "1", &json!({"x": 1}))?;
@@ -98,7 +98,7 @@ fn a_failing_channel_does_not_stop_the_others_and_leaves_nothing_behind() {
 
 fn greeter(id: &str, prio: i32, answer: Value) -> Arc<dyn Plugin> {
     t(
-        json!({"id":id,"version":"0.1.0","provides":[{"port":"greet.say","priority":prio}],"contributes":{"ops":[]}}),
+        json!({"id":id,"version":"0.1.0","provides":[{"extension_point":"greet.say","priority":prio}],"contributes":{"ops":[]}}),
         move |a| {
             let answer = answer.clone();
             a.provide("greet.say", "hello", move |_i, _s| Ok(answer.clone()));
@@ -107,11 +107,11 @@ fn greeter(id: &str, prio: i32, answer: Value) -> Arc<dyn Plugin> {
 }
 fn greet_definer(policy: &str) -> Arc<dyn Plugin> {
     t(
-        json!({"id":"greet","version":"0.1.0","requires":{"ports":["greet.say"]},
-            "defines":{"ports":[{"name":"greet.say","policy":policy,"methods":{"hello":{"input":{"type":"object","required":["name"]},"readonly":true}}}]},
+        json!({"id":"greet","version":"0.1.0","requires":{"extension_points":["greet.say"]},
+            "defines":{"extension_points":[{"name":"greet.say","policy":policy,"methods":{"hello":{"input":{"type":"object","required":["name"]},"readonly":true}}}]},
             "contributes":{"ops":["greet.run"]}}),
         |a| {
-            a.op(OpSpec::query("greet.run", "x.read", "", json!({})), |_c, _i, svc| svc.port_call("greet.say", "hello", json!({"name": "n"})));
+            a.op(OpSpec::query("greet.run", "x.read", "", json!({})), |_c, _i, svc| svc.extension_call("greet.say", "hello", json!({"name": "n"})));
         },
     )
 }
@@ -145,7 +145,7 @@ fn the_single_policy_needs_exactly_one_provider_and_the_operator_picks() {
 #[test]
 fn the_resolver_names_every_mistake_in_a_port_definition() {
     let bad_name = t(
-        json!({"id":"bad","version":"0.1.0","defines":{"ports":[{"name":"other.thing","methods":{"m":{}}},{"name":"bad.p","policy":"sideways","methods":{"m":{}}},{"name":"bad.empty","methods":{}}]},"contributes":{"ops":[]}}),
+        json!({"id":"bad","version":"0.1.0","defines":{"extension_points":[{"name":"other.thing","methods":{"m":{}}},{"name":"bad.p","policy":"sideways","methods":{"m":{}}},{"name":"bad.empty","methods":{}}]},"contributes":{"ops":[]}}),
         |_| {},
     );
     let msg = problems(dist_with(vec![bad_name], &["bad"]));
@@ -153,11 +153,11 @@ fn the_resolver_names_every_mistake_in_a_port_definition() {
     assert!(msg.contains("unknown policy `sideways`"), "{msg}");
     assert!(msg.contains("has no methods"), "{msg}");
 
-    let orphan = t(json!({"id":"orphan","version":"0.1.0","provides":[{"port":"nobody.defines"}],"requires":{"ports":["nobody.else"]},"contributes":{"ops":[]}}), |_| {});
+    let orphan = t(json!({"id":"orphan","version":"0.1.0","provides":[{"extension_point":"nobody.defines"}],"requires":{"extension_points":["nobody.else"]},"contributes":{"ops":[]}}), |_| {});
     let msg = problems(dist_with(vec![orphan], &["orphan"]));
-    assert!(msg.contains("which no enabled plugin defines") && msg.contains("requires unknown port `nobody.else`"), "{msg}");
+    assert!(msg.contains("which no enabled plugin defines") && msg.contains("requires unknown extension point `nobody.else`"), "{msg}");
 
-    let lazy = t(json!({"id":"lazy","version":"0.1.0","provides":[{"port":"greet.say"}],"contributes":{"ops":[]}}), |_| {});
+    let lazy = t(json!({"id":"lazy","version":"0.1.0","provides":[{"extension_point":"greet.say"}],"contributes":{"ops":[]}}), |_| {});
     let msg = problems(dist_with(vec![greet_definer("many"), lazy], &["greet", "lazy"]));
     assert!(msg.contains("did not fill method `hello`"), "{msg}");
 
@@ -170,11 +170,11 @@ fn the_resolver_names_every_mistake_in_a_port_definition() {
 fn port_input_is_checked_and_a_plugin_must_ask_for_the_port() {
     let sneaky = t(
         json!({"id":"sneaky","version":"0.1.0","requires":{"ports":[]},"contributes":{"ops":["sneaky.go"]}}),
-        |a| a.op(OpSpec::query("sneaky.go", "x.read", "", json!({})), |_c, _i, svc| svc.port_call("greet.say", "hello", json!({"name": "x"}))),
+        |a| a.op(OpSpec::query("sneaky.go", "x.read", "", json!({})), |_c, _i, svc| svc.extension_call("greet.say", "hello", json!({"name": "x"}))),
     );
     let bad_input = t(
-        json!({"id":"badin","version":"0.1.0","requires":{"ports":["greet.say"]},"contributes":{"ops":["badin.go"]}}),
-        |a| a.op(OpSpec::query("badin.go", "x.read", "", json!({})), |_c, _i, svc| svc.port_call("greet.say", "hello", json!({}))),
+        json!({"id":"badin","version":"0.1.0","requires":{"extension_points":["greet.say"]},"contributes":{"ops":["badin.go"]}}),
+        |a| a.op(OpSpec::query("badin.go", "x.read", "", json!({})), |_c, _i, svc| svc.extension_call("greet.say", "hello", json!({}))),
     );
     let core = start(dist_with(vec![greet_definer("many"), greeter("g1", 0, json!(1)), sneaky, bad_input], &["greet", "g1", "sneaky", "badin"])).unwrap();
     assert_eq!(call(&core, "sneaky.go", json!({})).unwrap_err().code, "capability_denied");
@@ -184,14 +184,14 @@ fn port_input_is_checked_and_a_plugin_must_ask_for_the_port() {
 #[test]
 fn queries_cannot_call_port_methods_that_change_data() {
     let definer = t(
-        json!({"id":"ch","version":"0.1.0","requires":{"ports":["ch.w"]},
-            "defines":{"ports":[{"name":"ch.w","policy":"many","methods":{"write":{}}}]},"contributes":{"ops":["ch.read","ch.write"]}}),
+        json!({"id":"ch","version":"0.1.0","requires":{"extension_points":["ch.w"]},
+            "defines":{"extension_points":[{"name":"ch.w","policy":"many","methods":{"write":{}}}]},"contributes":{"ops":["ch.read","ch.write"]}}),
         |a| {
-            a.op(OpSpec::query("ch.read", "x.read", "", json!({})), |_c, _i, svc| svc.port_call("ch.w", "write", json!({})));
-            a.op(OpSpec::command("ch.write", "x.write", "", json!({})), |_c, _i, svc| svc.port_call("ch.w", "write", json!({})));
+            a.op(OpSpec::query("ch.read", "x.read", "", json!({})), |_c, _i, svc| svc.extension_call("ch.w", "write", json!({})));
+            a.op(OpSpec::command("ch.write", "x.write", "", json!({})), |_c, _i, svc| svc.extension_call("ch.w", "write", json!({})));
         },
     );
-    let prov = t(json!({"id":"chp","version":"0.1.0","provides":[{"port":"ch.w"}],"contributes":{"ops":[]}}), |a| a.provide("ch.w", "write", |_i, _s| Ok(json!("ok"))));
+    let prov = t(json!({"id":"chp","version":"0.1.0","provides":[{"extension_point":"ch.w"}],"contributes":{"ops":[]}}), |a| a.provide("ch.w", "write", |_i, _s| Ok(json!("ok"))));
     let core = start(dist_with(vec![definer, prov], &["ch", "chp"])).unwrap();
     assert_eq!(call(&core, "ch.read", json!({})).unwrap_err().code, "conflict");
     assert_eq!(call(&core, "ch.write", json!({})).unwrap()[0]["data"], "ok");
@@ -211,7 +211,7 @@ fn describe_lists_extension_points_with_their_providers() {
 #[test]
 fn a_first_provider_that_declines_leaves_nothing_behind() {
     let decliner = t(
-        json!({"id":"dec","version":"0.1.0","requires":{"ports":["db"]},"data":{"owns":["dec_data"]},"provides":[{"port":"greet.say","priority":1}],"contributes":{"ops":["dec.peek"]}}),
+        json!({"id":"dec","version":"0.1.0","requires":{"ports":["db"]},"data":{"owns":["dec_data"]},"provides":[{"extension_point":"greet.say","priority":1}],"contributes":{"ops":["dec.peek"]}}),
         |a| {
             a.provide("greet.say", "hello", |_i, svc| { svc.db()?.put("dec_data", "1", &json!({"x": 1}))?; Ok(Value::Null) });
             a.op(OpSpec::query("dec.peek", "x.read", "", json!({})), |_c, _i, svc| Ok(json!(svc.db()?.query(&Query::new("dec_data"))?.len())));

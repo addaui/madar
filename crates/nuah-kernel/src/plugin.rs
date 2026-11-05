@@ -212,14 +212,14 @@ impl Services {
         self.pending.lock().unwrap().extend(events);
         Ok(data)
     }
-    /// Call a method of a plugin-defined port this plugin lists in `requires.ports`. What comes
+    /// Call a method of an extension point this plugin lists in `requires.extension_points`. What comes
     /// back depends on the port's policy: `single` and `first` give the provider's answer
     /// (`first` gives null when no provider answered), `many` gives a list of
     /// `{plugin, ok, data | error}`. Each provider runs in its own savepoint, so one that fails
     /// leaves no half-written data behind.
-    pub fn port_call(&self, port: &str, method: &str, input: Value) -> Result<Value> {
+    pub fn extension_call(&self, port: &str, method: &str, input: Value) -> Result<Value> {
         self.need(port)?;
-        let (data, events) = self.core.port_call(&self.plugin, self.read_only, port, method, input)?;
+        let (data, events) = self.core.extension_call(&self.plugin, self.read_only, port, method, input)?;
         self.pending.lock().unwrap().extend(events);
         Ok(data)
     }
@@ -455,7 +455,7 @@ impl Activation {
     pub fn route(&mut self, spec: RouteSpec, f: impl Fn(&Ctx, RouteRequest, &Services) -> Result<RouteResponse> + Send + Sync + 'static) {
         self.routes.push(RouteEntry { owner: self.plugin.clone(), spec, handler: Arc::new(f) });
     }
-    /// Fill one method of a plugin-defined port. The manifest's `provides` must list the port, and
+    /// Fill one method of an extension point. The manifest's `provides` must list the port, and
     /// every method of the port must be filled.
     pub fn provide(&mut self, port: &str, method: &str, f: impl Fn(Value, &Services) -> Result<Value> + Send + Sync + 'static) {
         self.port_impls.push(PortImplEntry { owner: self.plugin.clone(), port: port.into(), method: method.into(), priority: 0, handler: Arc::new(f) });

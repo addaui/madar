@@ -112,14 +112,14 @@ fn event_payloads_and_port_answers_can_carry_schemas() {
     assert_eq!(e.code, "internal");
     assert!(e.message.contains("declared schema"), "{}", e.message);
 
-    let definer = t(json!({"id":"df","version":"1","requires":{"ports":["df.p"]},
-        "defines":{"ports":[{"name":"df.p","policy":"single","methods":{"get":{"input":{"type":"object"},"output":{"type":"object","required":["v"],"properties":{"v":{"type":"integer"}}}}}}]},
+    let definer = t(json!({"id":"df","version":"1","requires":{"extension_points":["df.p"]},
+        "defines":{"extension_points":[{"name":"df.p","policy":"single","methods":{"get":{"input":{"type":"object"},"output":{"type":"object","required":["v"],"properties":{"v":{"type":"integer"}}}}}}]},
         "contributes":{"ops":["df.ask"]}}),
         |a| {
             a.op(OpSpec::command("df.ask", "df.write", "ask", json!({"type":"object","additionalProperties":true,"properties":{}})),
-                |_, input, svc| svc.port_call("df.p", "get", input));
+                |_, input, svc| svc.extension_call("df.p", "get", input));
         });
-    let provider = t(json!({"id":"pv","version":"1","provides":[{"port":"df.p"}]}),
+    let provider = t(json!({"id":"pv","version":"1","provides":[{"extension_point":"df.p"}]}),
         |a| a.provide("df.p", "get", |input, _| Ok(input)));
     let core = Core::start(dist_with(vec![definer, provider], &["df", "pv"])).unwrap();
     assert_eq!(call(&core, "df.ask", json!({"v": 3})).unwrap()["v"], 3);

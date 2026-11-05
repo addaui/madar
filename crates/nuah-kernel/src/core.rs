@@ -5,7 +5,7 @@
 
 use crate::error::{LinkError, Result};
 use crate::events::{Event, EventLog};
-use crate::manifest::{Manifest, PortDef};
+use crate::manifest::{ExtensionPointDef, Manifest};
 use crate::plugin::*;
 use crate::ports::*;
 use crate::schema;
@@ -60,10 +60,10 @@ struct Inner {
     events: EventLog,
     manifests: HashMap<String, Manifest>,
     settings: HashMap<String, Value>,
-    /// port name -> adapter plugin id (core ports and `single` plugin-defined ports)
+    /// port name -> adapter plugin id (core ports and `single` extension points)
     bound: HashMap<String, String>,
     /// Plugin-defined ports of the plugins that were active at start.
-    port_defs: HashMap<String, PortDef>,
+    extension_points: HashMap<String, ExtensionPointDef>,
     state: RwLock<State>,
     /// Live requests by id. The kernel, not the plugin, is the source of truth for who a request
     /// belongs to when a plugin calls another plugin.
@@ -226,12 +226,12 @@ impl Core {
             }
         }
         let active = still_active;
-        // 2b. plugin-defined ports: who defines them, who fills them, which provider is bound
-        let mut port_defs: HashMap<String, PortDef> = HashMap::new();
+        // 2b. extension points: who defines them, who fills them, which provider is bound
+        let mut extension_points: HashMap<String, ExtensionPointDef> = HashMap::new();
         for id in &active {
-            for d in &manifests[id].defines.ports {
+            for d in &manifests[id].defines.extension_points {
                 if !d.name.starts_with(&format!("{id}.")) {
-                    problems.push(format!("plugin `{id}` defines port `{}`; its name must start with `{id}.`", d.name));
+                    problems.push(format!("plugin `{id}` defines extension point `{}`; its name must start with `{id}.`", d.name));
                 }
                 if !["single", "first", "many"].contains(&d.policy.as_str()) {
                     problems.push(format!("port `{}` has unknown policy `{}` (use single, first or many)", d.name, d.policy));
@@ -239,27 +239,32 @@ impl Core {
                 if d.methods.is_empty() {
                     problems.push(format!("port `{}` has no methods", d.name));
                 }
-                if port_defs.insert(d.name.clone(), d.clone()).is_some() {
+                if extension_points.insert(d.name.clone(), d.clone()).is_some() {
                     problems.push(format!("port `{}` is defined twice", d.name));
                 }
             }
         }
         for id in &active {
             for need in manifests[id].requires.ports.iter() {
-                if !PORT_NAMES.contains(&need.as_str()) && !port_defs.contains_key(need) {
+                if !PORT_NAMES.contains(&need.as_str()) {
                     problems.push(format!("plugin `{id}` requires unknown port `{need}`"));
                 }
             }
+            for need in manifests[id].requires.extension_points.iter() {
+                if !extension_points.contains_key(need) {
+                    problems.push(format!("plugin `{id}` requires unknown extension point `{need}`"));
+                }
+            }
             for p in &manifests[id].provides {
-                if !port_defs.contains_key(&p.port) {
-                    problems.push(format!("plugin `{id}` provides port `{}`, which no enabled plugin defines", p.port));
+                if !extension_points.contains_key(&p.extension_point) {
+                    problems.push(format!("plugin `{id}` provides extension point `{}`, which no enabled plugin defines", p.extension_point));
                 }
             }
         }
-        for (name, def) in &port_defs {
+        for (name, def) in &extension_points {
             let providers: Vec<&String> =
-                active.iter().filter(|id| manifests[*id].provides.iter().any(|p| &p.port == name)).collect();
-            let required = active.iter().any(|id| manifests[id].requires.ports.contains(name));
+                active.iter().filter(|id| manifests[*id].provides.iter().any(|p| &p.extension_point == name)).collect();
+            let required = active.iter().any(|id| manifests[id].requires.extension_points.contains(name));
             match def.policy.as_str() {
                 "single" => match dist.bindings.get(name) {
                     Some(b) if providers.iter().any(|p| *p == b) => {
@@ -328,7 +333,7 @@ impl Core {
                 }
             }
             for key in dist.bindings.keys() {
-                if !PORT_NAMES.contains(&key.as_str()) && !port_defs.get(key).is_some_and(|d| d.policy == "single") {
+                if !PORT_NAMES.contains(&key.as_str()) && !extension_points.get(key).is_some_and(|d| d.policy == "single") {
                     problems.push(format!("binding for `{key}`: no such port, or it is not a `single` port"));
                 }
             }
@@ -485,7 +490,7 @@ impl Core {
             let want: BTreeSet<(String, String)> = m
                 .provides
                 .iter()
-                .filter_map(|p| port_defs.get(&p.port).map(|d| d.methods.keys().map(|k| (p.port.clone(), k.clone())).collect::<Vec<_>>()))
+                .filter_map(|p| extension_points.get(&p.extension_point).map(|d| d.methods.keys().map(|k| (p.extension_point.clone(), k.clone())).collect::<Vec<_>>()))
                 .flatten()
                 .collect();
             let have: BTreeSet<(String, String)> = act.port_impls.iter().map(|i| (i.port.clone(), i.method.clone())).collect();
@@ -496,7 +501,7 @@ impl Core {
                 problems.push(format!("plugin `{id}` provides `{p}` but did not fill method `{mth}`"));
             }
             for mut i in act.port_impls {
-                i.priority = m.provides.iter().find(|p| p.port == i.port).map(|p| p.priority).unwrap_or(0);
+                i.priority = m.provides.iter().find(|p| p.extension_point == i.port).map(|p| p.priority).unwrap_or(0);
                 state.port_impls.push(i);
             }
             state.hooks.extend(act.hooks.into_iter().map(|mut h| { h.rank = ranks.get(&h.owner).copied().unwrap_or(0); h }));
@@ -515,7 +520,7 @@ impl Core {
                 manifests,
                 settings: dist.settings,
                 bound,
-                port_defs,
+                extension_points,
                 state: RwLock::new(state),
                 requests: Mutex::new(HashMap::new()),
             }),
@@ -587,10 +592,10 @@ impl Core {
         )
     }
 
-    /// Call a method of a plugin-defined port on behalf of `caller` (see `Services::port_call`).
-    pub(crate) fn port_call(&self, caller: &str, read_only: bool, port: &str, method: &str, input: Value) -> Result<(Value, Vec<PendingEvent>)> {
+    /// Call a method of a extension point on behalf of `caller` (see `Services::extension_call`).
+    pub(crate) fn extension_call(&self, caller: &str, read_only: bool, port: &str, method: &str, input: Value) -> Result<(Value, Vec<PendingEvent>)> {
         thread_local!(static DEPTH: std::cell::Cell<u8> = const { std::cell::Cell::new(0) });
-        let def = self.inner.port_defs.get(port).ok_or_else(|| LinkError::not_found(&format!("port `{port}`")))?;
+        let def = self.inner.extension_points.get(port).ok_or_else(|| LinkError::not_found(&format!("port `{port}`")))?;
         let m = def.methods.get(method).ok_or_else(|| LinkError::not_found(&format!("method `{method}` of port `{port}`")))?;
         if read_only && !m.readonly {
             return Err(LinkError::conflict(format!("`{port}.{method}` changes data and cannot be called while reading")));
@@ -1029,30 +1034,30 @@ impl Core {
                 dependents.iter().map(|d| format!("`{d}`")).collect::<Vec<_>>().join(", ")
             )));
         }
-        for d in &self.inner.manifests[id].defines.ports {
+        for d in &self.inner.manifests[id].defines.extension_points {
             let users: Vec<&String> = st
                 .active
                 .iter()
                 .filter(|a| a.as_str() != id)
                 .filter(|a| {
                     let m = &self.inner.manifests[*a];
-                    m.requires.ports.contains(&d.name) || m.provides.iter().any(|p| p.port == d.name)
+                    m.requires.extension_points.contains(&d.name) || m.provides.iter().any(|p| p.extension_point == d.name)
                 })
                 .collect();
             if !users.is_empty() {
                 return Err(LinkError::conflict(format!(
-                    "`{id}` defines port `{}`, which {} use",
+                    "`{id}` defines extension point `{}`, which {} use",
                     d.name,
                     users.iter().map(|u| format!("`{u}`")).collect::<Vec<_>>().join(", ")
                 )));
             }
         }
         for p in &self.inner.manifests[id].provides {
-            let Some(def) = self.inner.port_defs.get(&p.port) else { continue };
-            let others = st.active.iter().filter(|a| a.as_str() != id).filter(|a| self.inner.manifests[*a].provides.iter().any(|q| q.port == p.port)).count();
-            let required = st.active.iter().any(|a| a.as_str() != id && self.inner.manifests[a].requires.ports.contains(&p.port));
+            let Some(def) = self.inner.extension_points.get(&p.extension_point) else { continue };
+            let others = st.active.iter().filter(|a| a.as_str() != id).filter(|a| self.inner.manifests[*a].provides.iter().any(|q| q.extension_point == p.extension_point)).count();
+            let required = st.active.iter().any(|a| a.as_str() != id && self.inner.manifests[a].requires.extension_points.contains(&p.extension_point));
             if required && ((def.policy == "single") || (def.policy == "first" && others == 0)) {
-                return Err(LinkError::conflict(format!("`{id}` is the only provider of port `{}`, which is in use", p.port)));
+                return Err(LinkError::conflict(format!("`{id}` is the only provider of extension point `{}`, which is in use", p.extension_point)));
             }
         }
         st.ops.retain(|_, e| e.owner != id);
@@ -1116,13 +1121,13 @@ impl Core {
         }
         let ports: HashMap<&String, &String> = inner.bound.iter().collect();
         let mut extension_points: Vec<Value> = inner
-            .port_defs
+            .extension_points
             .values()
             .map(|d| {
                 let mut providers: Vec<(i32, &String)> = st
                     .active
                     .iter()
-                    .filter_map(|id| inner.manifests[id].provides.iter().find(|p| p.port == d.name).map(|p| (p.priority, id)))
+                    .filter_map(|id| inner.manifests[id].provides.iter().find(|p| p.extension_point == d.name).map(|p| (p.priority, id)))
                     .collect();
                 providers.sort();
                 json!({"name": d.name, "doc": d.doc, "policy": d.policy, "methods": d.methods,

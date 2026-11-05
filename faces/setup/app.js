@@ -101,7 +101,7 @@ function card(p, problems) {
   const needs = [
     ...p.implements.map((x) => `fills ${x}`), ...p.provides.map((x) => `provides ${x}`),
     ...p.defines.map((d) => `defines ${d.name}`),
-    ...p.requires.plugins.map((x) => `needs ${x}`), ...p.requires.ports.map((x) => `uses ${x}`),
+    ...p.requires.plugins.map((x) => `needs ${x}`), ...p.requires.ports.map((x) => `uses ${x}`), ...(p.requires.extension_points || []).map((x) => `uses ${x}`),
   ];
   const hasSettings = p.settings_schema && Object.keys(p.settings_schema).length > 0 || st.settings[p.id] !== undefined;
   let box2 = null;
