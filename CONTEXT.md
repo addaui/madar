@@ -28,7 +28,7 @@ One of the kernel's fixed infrastructure slots (storage, sign-in, authorization,
 _Avoid_: interface, service (for a Port)
 
 **Adapter**:
-A plugin that fills a Port.
+A plugin that fills a Port. (A plugin that fills an Extension point is a Provider, never an Adapter.)
 _Avoid_: driver, backend
 
 **Extension point**:
@@ -39,11 +39,39 @@ _Avoid_: plugin port, hook point, socket
 A plugin that fills an Extension point.
 _Avoid_: implementation, channel (for the plugin itself)
 
+**Feature**:
+A plugin that fills no Port and no Extension point: it adds Operations, Hooks, Listeners or data of its own, such as tasks, audit or quota.
+_Avoid_: module, domain plugin, wrap plugin
+
+**Theme**:
+A plugin that only contributes data for Faces, such as colours, and runs no code.
+_Avoid_: skin, style pack
+
+**Manifest**:
+What a plugin says about itself without running any code: what it needs, fills, adds and lets be set. Everything about a plugin's kind comes from its Manifest; no kind is declared.
+_Avoid_: descriptor, config
+
+**Runtime**:
+How a plugin's code is run, and so how much it is trusted: native, data, and later wasm, js, remote.
+_Avoid_: tier, engine, language
+
+**Quality**:
+The maturity level a plugin declares about itself: reference, bronze, silver.
+_Avoid_: grade, tier, rating
+
 ### Choosing what runs
 
 **Distribution**:
 A named product: a Catalog of plugins together with the Profiles it ships. Madar is a Distribution.
 _Avoid_: edition, flavour, app (for the product as packaged plugins)
+
+**Enabled / Active / Inactive**:
+A plugin is Enabled when its Profile names it, and Active when it is running in the Core. Inactive means enabled but not running, always with a stated reason (not for this Profile, its Port went to another adapter, switched off while running). Its data stays.
+_Avoid_: disabled (as a state), loaded, installed
+
+**Settings**:
+The part of a Profile that configures one plugin, checked against the schema in its Manifest.
+_Avoid_: options, preferences (a Madar plugin's per-person choices)
 
 **Profile**:
 One set of choices for a Distribution: which plugins are on, which adapter fills each Port, and the settings of each plugin. Starting a Core takes a Profile.
@@ -134,3 +162,9 @@ _Avoid_: stream, journal, queue
 **Listener**:
 Plugin code that reacts to Events inside a Core after they are committed. It cannot refuse or undo the work that caused the Event. A Face never is one.
 _Avoid_: subscriber, handler, observer
+
+### Checking before running
+
+**Resolver**:
+The part of the Kernel that reads Manifests and a Profile and reports every problem with it, without starting anything.
+_Avoid_: validator, linker, loader
