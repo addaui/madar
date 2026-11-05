@@ -272,6 +272,20 @@ impl Services {
 
 pub type OpHandler = Arc<dyn Fn(&Ctx, Value, &Services) -> Result<Value> + Send + Sync>;
 pub type BeforeFn = Arc<dyn Fn(&Ctx, &OpSpec, &mut Value, &Services) -> Result<()> + Send + Sync>;
+/// The rest of the chain as seen from an `around` hook: the inner `around` hooks and then the handler.
+/// It can be called once at most (it is consumed), so a hook cannot run a command twice.
+pub struct Next<'a>(Box<dyn FnOnce(Value) -> Result<Value> + 'a>);
+impl<'a> Next<'a> {
+    pub(crate) fn new(f: impl FnOnce(Value) -> Result<Value> + 'a) -> Self {
+        Next(Box::new(f))
+    }
+    /// Run the rest with this input (checked against the operation's schema if you changed it).
+    /// If it fails, whatever it wrote is undone before you see the error.
+    pub fn call(self, input: Value) -> Result<Value> {
+        (self.0)(input)
+    }
+}
+pub type AroundFn = Arc<dyn for<'a> Fn(&Ctx, &OpSpec, Value, &Services, Next<'a>) -> Result<Value> + Send + Sync>;
 pub type AfterFn = Arc<dyn Fn(&Ctx, &OpSpec, &Value, &Value, &Services) -> Result<()> + Send + Sync>;
 pub type PortHandler = Arc<dyn Fn(Value, &Services) -> Result<Value> + Send + Sync>;
 pub type ListenerFn = Arc<dyn Fn(&crate::events::Event, &Services) -> Result<()> + Send + Sync>;
@@ -305,6 +319,7 @@ pub(crate) struct OpEntry {
 #[derive(Clone)]
 pub(crate) enum HookFn {
     Before(BeforeFn),
+    Around(AroundFn),
     After(AfterFn),
 }
 #[derive(Clone)]
@@ -394,6 +409,26 @@ impl Activation {
             priority,
             rank: 0,
             f: HookFn::Before(Arc::new(f)),
+        });
+    }
+    /// Wrap the handler. Runs after all `before` hooks and before the `after` hooks; among several
+    /// `around` hooks the first in hook order is outermost. Call `next.call(input)` to continue, or
+    /// return a value without calling it to answer in place of the handler (a cache, a feature flag).
+    /// You can change the input you pass on, change the result, or turn a failure into something else.
+    pub fn around(
+        &mut self,
+        name: &str,
+        pattern: &str,
+        priority: i32,
+        f: impl for<'a> Fn(&Ctx, &OpSpec, Value, &Services, Next<'a>) -> Result<Value> + Send + Sync + 'static,
+    ) {
+        self.hooks.push(HookEntry {
+            owner: self.plugin.clone(),
+            name: name.into(),
+            pattern: pattern.into(),
+            priority,
+            rank: 0,
+            f: HookFn::Around(Arc::new(f)),
         });
     }
     /// Run after the handler, inside the same transaction. An error here fails the whole call and

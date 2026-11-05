@@ -23,7 +23,7 @@ impl Plugin for TasksPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
             &json!({
-                "id": "tasks", "version": "0.1.0", "kind": "domain", "quality": "silver",
+                "id": "tasks", "version": "0.1.0", "description":"Projects, tasks, comments, follow-ups, sharing, board order and archive.", "kind": "domain", "quality": "silver",
                 "requires": {"ports": ["db", "ids"], "capabilities": ["events"]},
                 "data": {"owns": ["projects", "tasks", "comments", "followups", "memberships"], "version": 1,
                     "indexes": [{"collection":"memberships","field":"subject"},{"collection":"memberships","field":"project_id"},

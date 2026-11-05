@@ -26,6 +26,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tower_http::services::ServeDir;
 
+pub mod setup;
+
 #[derive(Clone)]
 struct App {
     core: Core,
@@ -271,7 +273,7 @@ async fn guard(State(hosts): State<Arc<Vec<String>>>, req: Request, next: Next) 
     if req.uri().path().starts_with("/x/") && req.headers().get("sec-fetch-site").and_then(|v| v.to_str().ok()) == Some("cross-site") {
         return refuse(StatusCode::FORBIDDEN, "bad_origin", "Cross-site requests are not allowed.");
     }
-    if req.method() == Method::POST && req.uri().path().starts_with("/link/call/") {
+    if req.method() == Method::POST && (req.uri().path().starts_with("/link/call/") || req.uri().path().starts_with("/setup/")) {
         let json_body = req.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("application/json"));
         if !json_body {
             return refuse(StatusCode::UNSUPPORTED_MEDIA_TYPE, "invalid_input", "Send the input as application/json.");
@@ -317,5 +319,10 @@ pub fn router_full(core: Core, web_dir: Option<PathBuf>, console_dir: Option<Pat
     if let Some(dir) = console_dir {
         r = r.nest_service("/faces/console", ServeDir::new(dir));
     }
-    r.layer(middleware::from_fn_with_state(Arc::new(hosts), guard)).with_state(App { core, tickets: Default::default() })
+    protect(r.with_state(App { core, tickets: Default::default() }), hosts)
+}
+
+/// The browser-facing guard (Host, Origin, JSON and face header, security headers) around any router.
+pub(crate) fn protect(r: Router, hosts: Vec<String>) -> Router {
+    r.layer(middleware::from_fn_with_state(Arc::new(hosts), guard))
 }

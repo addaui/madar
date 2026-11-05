@@ -18,6 +18,7 @@ use tokio::sync::broadcast;
 pub const CONTRACT_VERSION: &str = "0.1";
 
 /// What an operator chooses: which plugins are on, which adapter fills each port, and settings.
+#[derive(Clone)]
 pub struct Distribution {
     pub name: String,
     pub catalog: Vec<Arc<dyn Plugin>>,
@@ -117,6 +118,21 @@ impl Core {
     /// Resolve and start. Returns every problem found, not just the first, so an operator
     /// (or the setup wizard) can fix them in one go.
     pub fn start(dist: Distribution) -> std::result::Result<Core, Vec<String>> {
+        Self::start_with(dist, false).map(|c| c.expect("a real start returns a core"))
+    }
+
+    /// Everything the resolver can say about a distribution without starting anything: no adapter
+    /// is opened, no data is touched. Empty means the profile resolves. (Problems that only show
+    /// when plugins run, such as a database that is too new, are not found here.)
+    pub fn check(dist: &Distribution) -> Vec<crate::setup::Problem> {
+        let ids: HashSet<String> = dist.catalog.iter().map(|p| p.manifest().id).collect();
+        match Self::start_with(dist.clone(), true) {
+            Err(list) => list.iter().map(|m| crate::setup::Problem::from_message(m, &ids)).collect(),
+            Ok(_) => vec![],
+        }
+    }
+
+    fn start_with(dist: Distribution, dry_run: bool) -> std::result::Result<Option<Core>, Vec<String>> {
         let mut problems: Vec<String> = vec![];
         {
             let mut seen = HashSet::new();
@@ -363,6 +379,9 @@ impl Core {
         if !problems.is_empty() {
             return Err(problems);
         }
+        if dry_run {
+            return Ok(None);
+        }
 
         // 3. activate adapters first, then everything else
         let (adapters, others): (Vec<&String>, Vec<&String>) =
@@ -546,7 +565,7 @@ impl Core {
         if !problems.is_empty() {
             return Err(problems);
         }
-        Ok(core)
+        Ok(Some(core))
     }
 
     fn services(&self, plugin: &str) -> Services {
@@ -742,9 +761,10 @@ impl Core {
             schema::validate(&spec.input, &input)?;
         }
 
-        let svc = self.services_ro(owner, spec.kind == OpKind::Query);
-        let out = guarded("a handler", || handler(&ctx.for_plugin(owner), input.clone(), &svc))?;
-        used.push(svc);
+        let arounds: Vec<&HookEntry> = hooks.iter().filter(|h| matches!(h.f, HookFn::Around(_))).collect();
+        let used_cell = std::cell::RefCell::new(std::mem::take(&mut used));
+        let out = self.run_around(&arounds, ctx, spec, handler, owner, input.clone(), &used_cell)?;
+        let mut used = used_cell.into_inner();
 
         for h in &hooks {
             if let HookFn::After(f) = &h.f {
@@ -773,6 +793,53 @@ impl Core {
             inner.ports.db.put("_idem", id, &rec)?;
         }
         Ok(PipelineOut { data: out, events, pending, replayed: false })
+    }
+
+    /// The `around` hooks nest, first in order outermost, with the handler in the middle. Work done
+    /// by a link that fails is undone (a savepoint) and its pending events are dropped, so a hook
+    /// that recovers from a failure sees a clean state.
+    #[allow(clippy::too_many_arguments)]
+    fn run_around(&self, arounds: &[&HookEntry], ctx: &Ctx, spec: &OpSpec, handler: &OpHandler, owner: &str, input: Value, used: &std::cell::RefCell<Vec<Services>>) -> Result<Value> {
+        let read_only = spec.kind == OpKind::Query;
+        let Some((h, rest)) = arounds.split_first() else {
+            let svc = self.services_ro(owner, read_only);
+            let out = guarded("a handler", || handler(&ctx.for_plugin(owner), input, &svc))?;
+            used.borrow_mut().push(svc);
+            return Ok(out);
+        };
+        let HookFn::Around(f) = &h.f else { unreachable!("only around hooks are passed in") };
+        let svc = self.services_ro(&h.owner, read_only);
+        let seen = input.clone();
+        let next = Next::new(|passed: Value| {
+            if passed != seen {
+                schema::validate(&spec.input, &passed)?;
+            }
+            let mark = used.borrow().len();
+            let attempt = |this: &Self| this.run_around(rest, ctx, spec, handler, owner, passed.clone(), used);
+            let r = if read_only {
+                attempt(self)
+            } else {
+                let mut out = None;
+                let t = self.inner.ports.db.transaction(&mut || {
+                    let r = attempt(self);
+                    let verdict = r.as_ref().map(|_| ()).map_err(|e| e.clone());
+                    out = Some(r);
+                    verdict
+                });
+                match (out, t) {
+                    (Some(r), _) => r,
+                    (None, Err(e)) => Err(e),
+                    (None, Ok(())) => Err(LinkError::internal("a transaction ended without running")),
+                }
+            };
+            if r.is_err() {
+                used.borrow_mut().truncate(mark);
+            }
+            r
+        });
+        let out = guarded("an around-hook", || f(&ctx.for_plugin(&h.owner), spec, input, &svc, next));
+        used.borrow_mut().push(svc);
+        out
     }
 
     /// A plugin calling another plugin's op. Same user as the request being served, same policy and
@@ -1063,7 +1130,7 @@ impl Core {
             let mut h: Vec<&HookEntry> = st.hooks.iter().collect();
             h.sort_by(|a, b| (a.priority, a.rank, &a.owner, &a.name).cmp(&(b.priority, b.rank, &b.owner, &b.name)));
             h.iter().map(|h| json!({"plugin": h.owner, "name": h.name, "pattern": h.pattern, "priority": h.priority,
-                "phase": match h.f { HookFn::Before(_) => "before", HookFn::After(_) => "after" }})).collect()
+                "phase": match h.f { HookFn::Before(_) => "before", HookFn::Around(_) => "around", HookFn::After(_) => "after" }})).collect()
         };
         json!({
             "contract": CONTRACT_VERSION,

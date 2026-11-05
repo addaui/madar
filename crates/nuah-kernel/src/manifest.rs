@@ -8,6 +8,9 @@ use serde_json::Value;
 pub struct Manifest {
     pub id: String,
     pub version: String,
+    /// One line for people choosing plugins (the setup wizard shows it).
+    #[serde(default)]
+    pub description: String,
     /// "adapter", "domain", "wrap", "theme", ...
     #[serde(default)]
     pub kind: String,

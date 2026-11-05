@@ -19,7 +19,7 @@ impl Policy for AllowAll {
 pub struct PolicyAllowPlugin;
 impl Plugin for PolicyAllowPlugin {
     fn manifest(&self) -> Manifest {
-        Manifest::parse(r#"{"id":"policy-allow-all","version":"0.1.0","kind":"adapter","implements":[{"port":"policy"}],"quality":"reference"}"#)
+        Manifest::parse(r#"{"id":"policy-allow-all","version":"0.1.0", "description":"Lets every signed-in caller do everything. For single-user and test setups.","kind":"adapter","implements":[{"port":"policy"}],"quality":"reference"}"#)
     }
     fn activate(&self, act: &mut Activation) -> Result<()> {
         act.provide_policy(Arc::new(AllowAll));
@@ -58,7 +58,7 @@ impl Policy for Roles {
 pub struct PolicyRolesPlugin;
 impl Plugin for PolicyRolesPlugin {
     fn manifest(&self) -> Manifest {
-        Manifest::parse(r#"{"id":"policy-roles","version":"0.1.0","kind":"adapter","implements":[{"port":"policy"}],"quality":"reference"}"#)
+        Manifest::parse(r#"{"id":"policy-roles","version":"0.1.0", "description":"Grants permissions by role (owner, member, viewer).","kind":"adapter","implements":[{"port":"policy"}],"quality":"reference"}"#)
     }
     /// Settings: {"roles": {"viewer": ["*.read"]}} replaces the defaults for the named roles.
     fn activate(&self, act: &mut Activation) -> Result<()> {

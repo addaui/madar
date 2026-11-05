@@ -16,7 +16,7 @@ pub struct NotifyPlugin;
 impl Plugin for NotifyPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"notify","version":"0.1.0","kind":"domain","quality":"bronze",
+            &json!({"id":"notify","version":"0.1.0", "description":"Sends notifications through whichever channel plugins are on.","kind":"domain","quality":"bronze",
                 "requires":{"ports":["notify.channel"]},
                 "defines":{"ports":[{"name":"notify.channel","policy":"many",
                     "doc":"Somewhere a message to a user can go. Every enabled channel receives every message.",
@@ -53,7 +53,7 @@ pub struct NotifyInboxPlugin;
 impl Plugin for NotifyInboxPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"notify-inbox","version":"0.1.0","kind":"adapter","quality":"bronze",
+            &json!({"id":"notify-inbox","version":"0.1.0", "description":"Notification channel: keeps messages in a per-person inbox.","kind":"adapter","quality":"bronze",
                 "requires":{"ports":["db","ids","clock"]},"data":{"owns":["inbox"]},
                 "provides":[{"port":"notify.channel","priority":10}],
                 "contributes":{"ops":["inbox.list","inbox.read"]}})
@@ -109,7 +109,7 @@ pub struct NotifyCountPlugin;
 impl Plugin for NotifyCountPlugin {
     fn manifest(&self) -> Manifest {
         Manifest::parse(
-            &json!({"id":"notify-count","version":"0.1.0","kind":"adapter","quality":"bronze",
+            &json!({"id":"notify-count","version":"0.1.0", "description":"Notification channel: keeps a count of unread messages per person.","kind":"adapter","quality":"bronze",
                 "requires":{"ports":["db"]},"data":{"owns":["notify_counts"]},
                 "provides":[{"port":"notify.channel","priority":20}],
                 "contributes":{"ops":["notify.count"]}})

@@ -72,20 +72,7 @@ pub fn memory_for_tests() -> Distribution {
 /// {"name": "server", "enabled": [...], "bindings": {...}, "settings": {...}}
 pub fn from_profile_json(text: &str) -> std::result::Result<Distribution, String> {
     let v: Value = serde_json::from_str(text).map_err(|e| format!("profile is not valid JSON: {e}"))?;
-    let name = v["name"].as_str().ok_or("profile needs a `name`")?.to_string();
-    let list = |k: &str| -> Vec<String> {
-        v[k].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
-    };
-    let map = |k: &str| -> HashMap<String, Value> {
-        v[k].as_object().map(|o| o.iter().map(|(a, b)| (a.clone(), b.clone())).collect()).unwrap_or_default()
-    };
-    Ok(Distribution {
-        name,
-        catalog: catalog(),
-        enabled: list("enabled"),
-        bindings: map("bindings").into_iter().filter_map(|(k, x)| x.as_str().map(|s| (k, s.to_string()))).collect(),
-        settings: map("settings"),
-    })
+    nuah_kernel::setup::distribution_from_json(catalog(), &v)
 }
 
 /// Start a core or explain every problem found.

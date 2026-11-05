@@ -9,6 +9,7 @@ pub mod manifest;
 pub mod plugin;
 pub mod ports;
 pub mod schema;
+pub mod setup;
 
 pub use crate::core::{CallRequest, CallResponse, Core, Distribution, CONTRACT_VERSION};
 pub use error::{LinkError, Result};

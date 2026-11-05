@@ -255,3 +255,70 @@ fn pulse_tickets_are_one_use_and_the_token_is_not_accepted_in_the_url() {
     drop(first);
     assert_eq!(status(agent.get(&format!("{url}/pulse?ticket={ticket}")).call()), 401);
 }
+
+// ---------- setup mode ----------
+
+fn spawn_setup(path: std::path::PathBuf) -> String {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+        rt.block_on(async move {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            tx.send(format!("http://{}", listener.local_addr().unwrap())).unwrap();
+            let setup = nuah_server::setup::Setup { catalog: catalog(), path, starting_point: memory_for_tests() };
+            axum::serve(listener, nuah_server::setup::setup_router(setup, None, nuah_server::default_hosts())).await.unwrap();
+        });
+    });
+    rx.recv().unwrap()
+}
+
+#[test]
+fn setup_mode_checks_drafts_and_saves_only_what_resolves() {
+    let path = std::env::temp_dir().join(format!("nuah-setup-{}.json", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let base = spawn_setup(path.clone());
+    let agent = ureq::Agent::config_builder().http_status_as_error(false).build().new_agent();
+    let post = |p: &str, body: Value, face: bool| {
+        let mut r = agent.post(&format!("{base}{p}")).header("Content-Type", "application/json");
+        if face { r = r.header("X-Nuah-Face", "setup"); }
+        let mut res = r.send(body.to_string()).unwrap();
+        (res.status().as_u16(), res.body_mut().read_json::<Value>().unwrap_or(Value::Null))
+    };
+
+    let mut s = agent.get(&format!("{base}/setup/state")).call().unwrap();
+    let state: Value = s.body_mut().read_json().unwrap();
+    assert_eq!(state["file_exists"], false);
+    assert!(state["plugins"].as_array().unwrap().len() > 10);
+    assert_eq!(state["problems"], json!([]));
+
+    let good = nuah_kernel::setup::profile_json(&memory_for_tests());
+    let mut bad = good.clone();
+    bad["enabled"] = json!(["std", "export"]);
+
+    let (st, body) = post("/setup/check", bad.clone(), true);
+    assert_eq!((st, body["ok"].clone()), (200, json!(false)));
+    assert!(body["problems"].as_array().unwrap().iter().any(|p| p["code"] == "missing_dependency"));
+
+    let (st, body) = post("/setup/save", bad, true);
+    assert_eq!(st, 422);
+    assert!(body["problems"].as_array().unwrap().len() >= 2);
+    assert!(!path.exists(), "a profile that does not resolve is never written");
+
+    let (st, _) = post("/setup/save", json!({"name": "x", "enabeld": []}), true);
+    assert_eq!(st, 422, "unknown keys are rejected");
+
+    let (st, _) = post("/setup/save", good.clone(), false);
+    assert_eq!(st, 400, "the face header is required, so a plain cross-site form cannot save");
+    assert!(!path.exists());
+
+    let (st, body) = post("/setup/save", good.clone(), true);
+    assert_eq!((st, body["ok"].clone()), (200, json!(true)));
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(saved["enabled"], good["enabled"]);
+    // what was saved starts a real core
+    start(from_profile_json(&std::fs::read_to_string(&path).unwrap()).unwrap()).unwrap();
+
+    let r = agent.get(&format!("{base}/setup/state")).header("Host", "evil.example").call().unwrap();
+    assert_eq!(r.status().as_u16(), 421, "DNS rebinding is refused here too");
+    let _ = std::fs::remove_file(&path);
+}

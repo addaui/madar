@@ -22,11 +22,21 @@ struct Args {
     /// Extra Host names to answer to (repeatable), for example a LAN address. Loopback names are always allowed.
     #[arg(long = "allow-host")]
     allow_host: Vec<String>,
+    /// Run the setup wizard instead of the app: choose plugins and settings and save the profile
+    /// file given by --profile. Loopback addresses only; no data is opened.
+    #[arg(long)]
+    setup: bool,
+    /// Directory of the setup face to host at /faces/setup (with --setup).
+    #[arg(long = "setup-face")]
+    setup_face: Option<PathBuf>,
 }
 
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    if args.setup {
+        return run_setup(args).await;
+    }
     let dist = match &args.profile {
         Some(p) => {
             let text = std::fs::read_to_string(p).unwrap_or_else(|e| fatal(&format!("cannot read {}: {e}", p.display())));
@@ -63,4 +73,21 @@ async fn main() {
 fn fatal(msg: &str) -> ! {
     eprintln!("nuah-server: {msg}");
     std::process::exit(1)
+}
+
+async fn run_setup(args: Args) {
+    let host = args.listen.rsplit_once(':').map(|(h, _)| h).unwrap_or("");
+    if !["127.0.0.1", "localhost", "[::1]"].contains(&host) {
+        fatal("setup mode writes files, so it only listens on a loopback address (127.0.0.1, localhost or [::1])");
+    }
+    let Some(path) = args.profile.clone() else { fatal("--setup needs --profile <file> to read and save") };
+    let setup = nuah_server::setup::Setup {
+        catalog: nuah_madar::catalog(),
+        path,
+        starting_point: nuah_madar::embedded(&args.db, "Me"),
+    };
+    let app = nuah_server::setup::setup_router(setup, args.setup_face, nuah_server::default_hosts());
+    let listener = tokio::net::TcpListener::bind(&args.listen).await.unwrap_or_else(|e| fatal(&format!("cannot listen on {}: {e}", args.listen)));
+    eprintln!("nuah-server: setup wizard on http://{}  (nothing is started; Ctrl-C to stop)", args.listen);
+    axum::serve(listener, app).with_graceful_shutdown(async { let _ = tokio::signal::ctrl_c().await; }).await.unwrap_or_else(|e| fatal(&e.to_string()));
 }

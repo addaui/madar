@@ -24,7 +24,7 @@ impl Auth for Local {
 pub struct AuthLocalPlugin;
 impl Plugin for AuthLocalPlugin {
     fn manifest(&self) -> Manifest {
-        Manifest::parse(r#"{"id":"auth-local","version":"0.1.0","kind":"adapter","implements":[{"port":"auth"}],"quality":"reference"}"#)
+        Manifest::parse(r#"{"id":"auth-local","version":"0.1.0", "description":"One local user, no sign-in.","kind":"adapter","implements":[{"port":"auth"}],"quality":"reference","settings_schema":{"type":"object","properties":{"display":{"type":"string","minLength":1}}}}"#)
     }
     fn activate(&self, act: &mut Activation) -> Result<()> {
         let display = act.settings().get("display").and_then(|d| d.as_str()).unwrap_or("Me").to_string();
@@ -59,7 +59,7 @@ impl Auth for Token {
 pub struct AuthTokenPlugin;
 impl Plugin for AuthTokenPlugin {
     fn manifest(&self) -> Manifest {
-        Manifest::parse(r#"{"id":"auth-token","version":"0.1.0","kind":"adapter","implements":[{"port":"auth"}],"quality":"reference"}"#)
+        Manifest::parse(r#"{"id":"auth-token","version":"0.1.0", "description":"Sign in with an access token.","kind":"adapter","implements":[{"port":"auth"}],"quality":"reference","settings_schema":{"type":"object","properties":{"tokens":{"type":"object"}}}}"#)
     }
     /// Settings: {"tokens": {"<token>": {"subject": "...", "display": "...", "roles": ["owner"]}}}
     fn activate(&self, act: &mut Activation) -> Result<()> {
