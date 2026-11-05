@@ -207,3 +207,52 @@ fn describe_lists_extension_points_with_their_providers() {
     assert_eq!(ep[0]["policy"], "many");
     assert_eq!(ep[0]["providers"], json!(["notify-inbox", "notify-count"]));
 }
+
+#[test]
+fn a_first_provider_that_declines_leaves_nothing_behind() {
+    let decliner = t(
+        json!({"id":"dec","version":"0.1.0","requires":{"ports":["db"]},"data":{"owns":["dec_data"]},"provides":[{"port":"greet.say","priority":1}],"contributes":{"ops":["dec.peek"]}}),
+        |a| {
+            a.provide("greet.say", "hello", |_i, svc| { svc.db()?.put("dec_data", "1", &json!({"x": 1}))?; Ok(Value::Null) });
+            a.op(OpSpec::query("dec.peek", "x.read", "", json!({})), |_c, _i, svc| Ok(json!(svc.db()?.query(&Query::new("dec_data"))?.len())));
+        },
+    );
+    let core = start(dist_with(vec![greet_definer("first"), decliner, greeter("g2", 2, json!("yes"))], &["greet", "dec", "g2"])).unwrap();
+    assert_eq!(call(&core, "greet.run", json!({})).unwrap(), json!("yes"));
+    assert_eq!(call(&core, "dec.peek", json!({})).unwrap(), json!(0));
+}
+
+#[test]
+fn names_that_would_break_generated_code_are_refused_at_start() {
+    let evil = t(json!({"id":"evil","version":"0.1.0","contributes":{"ops":["w.a(){}};x"]}}), |_| {});
+    assert!(problems(dist_with(vec![evil], &["evil"])).contains("lowercase words"));
+    let a = t(json!({"id":"aa","version":"0.1.0","contributes":{"ops":["aa.b_c","aa.bC"]}}), |_| {});
+    let msg = problems(dist_with(vec![a], &["aa"]));
+    assert!(msg.contains("lowercase words") || msg.contains("same method name"), "{msg}");
+    let x = t(json!({"id":"xx","version":"0.1.0","contributes":{"ops":["xx.a_b","xx_a.b"]}}), |_| {});
+    assert!(problems(dist_with(vec![x], &["xx"])).contains("same"));
+    let spoof = t(json!({"id":"spoof","version":"0.1.0","requires":{"capabilities":["events"]},"contributes":{"ops":[],"events":["task.updated"]}}), |_| {});
+    assert!(problems(dist_with(vec![spoof], &["spoof"])).contains("only one plugin may emit a kind"));
+    let mut d = memory_for_tests();
+    d.bindings.insert("notify.channel".into(), "notify-inbox".into());
+    assert!(problems(d).contains("not a `single` port"));
+}
+
+#[test]
+fn a_bound_single_provider_can_go_when_nobody_needs_the_port() {
+    let mut d = dist_with(vec![greet_definer("single"), greeter("g1", 0, json!("one"))], &["greet", "g1"]);
+    d.bindings.insert("greet.say".into(), "g1".into());
+    let core = start(d).unwrap();
+    assert!(core.disable("g1").is_err(), "greet requires the port");
+    core.disable("greet").unwrap_err(); // g1 provides what greet defines
+}
+
+#[test]
+fn queries_cannot_write_even_to_their_own_collections() {
+    let sneaky = t(
+        json!({"id":"qw","version":"0.1.0","requires":{"ports":["db"]},"data":{"owns":["qw_data"]},"contributes":{"ops":["qw.read"]}}),
+        |a| a.op(OpSpec::query("qw.read", "x.read", "", json!({})), |_c, _i, svc| { svc.db()?.put("qw_data", "1", &json!({"x": 1}))?; Ok(json!(null)) }),
+    );
+    let core = start(dist_with(vec![sneaky], &["qw"])).unwrap();
+    assert_eq!(call(&core, "qw.read", json!({})).unwrap_err().code, "conflict");
+}

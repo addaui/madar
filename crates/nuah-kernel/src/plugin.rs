@@ -91,6 +91,8 @@ pub(crate) struct GuardedDb {
     plugin: String,
     owns: HashSet<String>,
     reads: HashSet<String>,
+    /// Serving a query or a GET route: nothing may be written.
+    read_only: bool,
 }
 
 impl GuardedDb {
@@ -102,6 +104,9 @@ impl GuardedDb {
         }
     }
     fn write_ok(&self, collection: &str) -> Result<()> {
+        if self.read_only {
+            return Err(LinkError::conflict(format!("plugin `{}` tried to write `{collection}` while serving a read-only request", self.plugin)));
+        }
         if collection.starts_with('_') || !self.owns.contains(collection) {
             Err(LinkError::capability_denied(&self.plugin, &format!("writing collection `{collection}`")))
         } else {
@@ -188,6 +193,7 @@ impl Services {
             plugin: plugin.to_string(),
             owns: data.owns.iter().cloned().collect(),
             reads: data.reads.iter().cloned().collect(),
+            read_only,
         });
         Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]), core, read_only, events }
     }

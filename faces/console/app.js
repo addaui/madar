@@ -106,5 +106,13 @@ function connectPulse() {
 }
 
 $("signin").addEventListener("submit", (ev) => { ev.preventDefault(); token = $("token").value.trim(); store.set("nuah.console.token", token || null); $("token").value = ""; load(); });
+// A plain link cannot carry the token, so generated documents are fetched with it and opened as a file.
+for (const a of document.querySelectorAll("a[data-doc]")) a.addEventListener("click", async (ev) => {
+  ev.preventDefault();
+  const res = await fetch(a.getAttribute("href"), { headers: headers() });
+  if (!res.ok) { alert("Sign in first (" + res.status + ")"); return; }
+  const blob = await res.blob();
+  window.open(URL.createObjectURL(new Blob([blob], { type: "text/plain" })), "_blank");
+});
 $("find").addEventListener("input", () => described && described.identity && renderOps());
 load();

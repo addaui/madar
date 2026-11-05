@@ -114,8 +114,11 @@ fn ts_type(s: &Value) -> String {
                         .iter()
                         .map(|(k, v)| format!("{}{}: {}", json!(k), if required.contains(&k.as_str()) { "" } else { "?" }, ts_type(v)))
                         .collect();
-                    let open = if o.get("additionalProperties") == Some(&json!(false)) { "" } else { "; [key: string]: unknown" };
-                    format!("{{ {}{} }}", fields.join("; "), open)
+                    let mut members = fields;
+                    if o.get("additionalProperties") != Some(&json!(false)) {
+                        members.push("[key: string]: unknown".into());
+                    }
+                    if members.is_empty() { "{}".into() } else { format!("{{ {} }}", members.join("; ")) }
                 }
                 None => "Record<string, unknown>".into(),
             },
@@ -133,7 +136,7 @@ fn paren(t: String) -> String {
     if t.contains(" | ") { format!("({t})") } else { t }
 }
 
-fn camel(name: &str) -> String {
+pub(crate) fn camel(name: &str) -> String {
     let mut out = String::new();
     let mut up = false;
     for c in name.chars() {
@@ -154,7 +157,8 @@ fn camel(name: &str) -> String {
 pub fn typescript(describe: &Value) -> String {
     let list = ops(describe);
     let mut s = String::new();
-    s.push_str(&format!("// Generated from the `{}` profile, contract {}. Do not edit.\n\n", describe["profile"].as_str().unwrap_or(""), describe["contract"].as_str().unwrap_or("")));
+    let clean = |v: &Value| v.as_str().unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == '.').collect::<String>();
+    s.push_str(&format!("// Generated from the `{}` profile, contract {}. Do not edit.\n\n", clean(&describe["profile"]), clean(&describe["contract"])));
     s.push_str("export interface Ops {\n");
     for o in &list {
         s.push_str(&format!("  /** {} */\n  {}: {};\n", o["doc"].as_str().unwrap_or("").replace("*/", "* /"), json!(o["name"]), ts_type(&object_schema(&o["input"]))));
@@ -183,7 +187,11 @@ export class NuahClient {
     );
     for o in &list {
         let name = o["name"].as_str().unwrap_or("");
-        s.push_str(&format!("\n  /** {} */\n  {}(input: Ops[{}]) {{ return this.call({}, input); }}\n", o["doc"].as_str().unwrap_or("").replace("*/", "* /"), camel(name), json!(name), json!(name)));
+        let method = camel(name);
+        if ["call", "constructor", "base", "token", "face"].contains(&method.as_str()) {
+            continue; // reachable through call("...") only
+        }
+        s.push_str(&format!("\n  /** {} */\n  {}(input: Ops[{}]) {{ return this.call({}, input); }}\n", o["doc"].as_str().unwrap_or("").replace("*/", "* /"), method, json!(name), json!(name)));
     }
     s.push_str("}\n");
     s
@@ -203,16 +211,21 @@ pub fn input_from_args(schema: &Value, args: &[String]) -> Result<Value, String>
     let props = schema.get("properties").and_then(|p| p.as_object());
     let mut out = Map::new();
     for a in args {
-        if let Some((k, raw)) = a.split_once(":=") {
+        let Some(eq) = a.find('=') else {
+            return Err(format!("`{a}` is not key=value (use key:=<json> for non-text values)"));
+        };
+        let (mut k, raw) = (&a[..eq], &a[eq + 1..]);
+        if let Some(stripped) = k.strip_suffix(':') {
+            k = stripped;
             out.insert(k.to_string(), serde_json::from_str(raw).map_err(|e| format!("{k}: not valid JSON ({e})"))?);
             continue;
         }
-        let Some((k, raw)) = a.split_once('=') else {
-            return Err(format!("`{a}` is not key=value (use key:=<json> for non-text values)"));
-        };
-        let types: Vec<&str> = match props.and_then(|p| p.get(k)).and_then(|p| p.get("type")) {
+        let prop = props.and_then(|p| p.get(k));
+        let types: Vec<&str> = match prop.and_then(|p| p.get("type")) {
             Some(Value::String(t)) => vec![t.as_str()],
             Some(Value::Array(a)) => a.iter().filter_map(|t| t.as_str()).collect(),
+            // no type: an enum decides (all strings, or JSON values), otherwise text
+            _ if prop.and_then(|p| p.get("enum")).and_then(|e| e.as_array()).is_some_and(|e| e.iter().any(|v| !v.is_string())) => vec![],
             _ => vec!["string"],
         };
         let v = if raw == "null" && types.contains(&"null") {
@@ -222,7 +235,7 @@ pub fn input_from_args(schema: &Value, args: &[String]) -> Result<Value, String>
         } else if types.contains(&"integer") {
             json!(raw.parse::<i64>().map_err(|_| format!("{k}: `{raw}` is not a whole number"))?)
         } else if types.contains(&"number") {
-            json!(raw.parse::<f64>().map_err(|_| format!("{k}: `{raw}` is not a number"))?)
+            json!(raw.parse::<f64>().ok().filter(|f| f.is_finite()).ok_or_else(|| format!("{k}: `{raw}` is not a number"))?)
         } else if types.contains(&"boolean") {
             match raw {
                 "true" | "yes" | "1" => json!(true),
@@ -292,6 +305,16 @@ mod tests {
     }
 
     #[test]
+    fn open_objects_without_properties_are_valid_typescript() {
+        let d = json!({"contract": "0.1", "profile": "a\nb", "ops": [{"name": "a.b", "kind": "query", "permission": "p", "doc": "", "plugin": "a", "input": {"type": "object", "properties": {}}},
+            {"name": "x.call", "kind": "query", "permission": "p", "doc": "", "plugin": "x", "input": {}}]});
+        let ts = typescript(&d);
+        assert!(ts.contains("[key: string]: unknown }") && !ts.contains("{ ;"), "{ts}");
+        assert!(!ts.contains("\nb"), "profile newline must not reach the comment");
+        assert!(ts.contains("xCall(") && !ts.contains("  call(input"));
+    }
+
+    #[test]
     fn tools_use_underscored_names_and_flag_read_only() {
         let t = tool_definitions(&sample());
         assert_eq!(t[0]["name"], "tasks_create");
@@ -309,6 +332,9 @@ mod tests {
         assert!(input_from_args(schema, &args(&["priority=high"])).unwrap_err().contains("whole number"));
         assert!(input_from_args(schema, &args(&["oops"])).unwrap_err().contains("key=value"));
         assert_eq!(input_from_args(schema, &args(&[r#"{"title":"x"}"#])).unwrap(), json!({"title": "x"}));
+        assert_eq!(input_from_args(schema, &args(&["title=a:=1"])).unwrap(), json!({"title": "a:=1"}));
+        assert!(input_from_args(&json!({"properties": {"x": {"type": "number"}}}), &args(&["x=NaN"])).is_err());
+        assert_eq!(input_from_args(&json!({"properties": {"n": {"enum": [1, 2]}}}), &args(&["n=1"])).unwrap(), json!({"n": 1}));
         assert!(describe_input(schema).contains(&"title (required)  string".to_string()));
     }
 }

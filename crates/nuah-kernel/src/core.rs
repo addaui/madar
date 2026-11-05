@@ -279,6 +279,45 @@ impl Core {
             }
         }
         {
+            // Names end up in generated code (TypeScript method names, tool names), so they are restricted.
+            let valid = |n: &str| {
+                let parts: Vec<&str> = n.split('.').collect();
+                parts.len() >= 2 && parts.iter().all(|p| p.chars().next().is_some_and(|c| c.is_ascii_lowercase()) && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'))
+            };
+            let mut camels: HashMap<String, String> = HashMap::new();
+            let mut tools: HashMap<String, String> = HashMap::new();
+            for id in &active {
+                for op in &manifests[id].contributes.ops {
+                    if !valid(op) {
+                        problems.push(format!("plugin `{id}` declares op `{op}`; names are lowercase words joined by dots, for example `tasks.create`"));
+                        continue;
+                    }
+                    if let Some(other) = camels.insert(crate::contract::camel(op), op.clone()).filter(|o| o != op) {
+                        problems.push(format!("ops `{other}` and `{op}` would get the same method name in generated clients"));
+                    }
+                    if let Some(other) = tools.insert(op.replace('.', "_"), op.clone()).filter(|o| o != op) {
+                        problems.push(format!("ops `{other}` and `{op}` would get the same agent tool name"));
+                    }
+                }
+            }
+            let mut kinds: HashMap<&str, &str> = HashMap::new();
+            for id in &active {
+                for k in &manifests[id].contributes.events {
+                    if !valid(k) {
+                        problems.push(format!("plugin `{id}` declares event `{k}`; names are lowercase words joined by dots"));
+                    }
+                    if let Some(first) = kinds.insert(k.as_str(), id.as_str()) {
+                        problems.push(format!("event `{k}` is declared by both `{first}` and `{id}`; only one plugin may emit a kind"));
+                    }
+                }
+            }
+            for key in dist.bindings.keys() {
+                if !PORT_NAMES.contains(&key.as_str()) && !port_defs.get(key).is_some_and(|d| d.policy == "single") {
+                    problems.push(format!("binding for `{key}`: no such port, or it is not a `single` port"));
+                }
+            }
+        }
+        {
             let mut owners: HashMap<&str, &str> = HashMap::new();
             for id in &active {
                 for c in &manifests[id].data.owns {
@@ -479,13 +518,18 @@ impl Core {
             DEPTH.with(|d| d.set(d.get() + 1));
             let tx = self.inner.ports.db.transaction(&mut || {
                 let r = guarded("a port provider", || (i.handler)(input.clone(), &svc));
-                let verdict = r.as_ref().map(|_| ()).map_err(|e| e.clone());
+                // In a `first` chain, null means "not mine": undo whatever the provider did.
+                let verdict = match &r {
+                    Ok(v) if v.is_null() && def.policy == "first" => Err(LinkError::new("_declined", "")),
+                    other => other.as_ref().map(|_| ()).map_err(|e| e.clone()),
+                };
                 out = Some(r);
                 verdict
             });
             DEPTH.with(|d| d.set(d.get() - 1));
             match (out, tx) {
                 (Some(Ok(v)), Ok(())) => (Ok(v), svc.take_pending()),
+                (Some(Ok(_)), Err(e)) if e.code == "_declined" => (Ok(Value::Null), vec![]),
                 (Some(Err(e)), _) | (_, Err(e)) => (Err(e), vec![]),
                 (None, Ok(())) => (Err(LinkError::internal("provider did not run")), vec![]),
             }
@@ -810,7 +854,7 @@ impl Core {
 
     /// Turn a running plugin off. Everything it registered goes with it; its data stays.
     pub fn disable(&self, id: &str) -> Result<()> {
-        if let Some(port) = self.inner.bound.iter().find(|(_, p)| p.as_str() == id).map(|(k, _)| k.clone()) {
+        if let Some(port) = self.inner.bound.iter().find(|(k, p)| p.as_str() == id && PORT_NAMES.contains(&k.as_str())).map(|(k, _)| k.clone()) {
             return Err(LinkError::conflict(format!("`{id}` is the adapter for port `{port}` and cannot be disabled while running")));
         }
         let mut st = self.inner.state.write().unwrap();
@@ -849,8 +893,8 @@ impl Core {
         for p in &self.inner.manifests[id].provides {
             let Some(def) = self.inner.port_defs.get(&p.port) else { continue };
             let others = st.active.iter().filter(|a| a.as_str() != id).filter(|a| self.inner.manifests[*a].provides.iter().any(|q| q.port == p.port)).count();
-            let required = st.active.iter().any(|a| self.inner.manifests[a].requires.ports.contains(&p.port));
-            if def.policy != "many" && others == 0 && required {
+            let required = st.active.iter().any(|a| a.as_str() != id && self.inner.manifests[a].requires.ports.contains(&p.port));
+            if required && ((def.policy == "single") || (def.policy == "first" && others == 0)) {
                 return Err(LinkError::conflict(format!("`{id}` is the only provider of port `{}`, which is in use", p.port)));
             }
         }
