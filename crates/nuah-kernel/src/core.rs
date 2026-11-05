@@ -510,9 +510,6 @@ impl Core {
                     problems.push(format!("index on `{}.{}` for plugin `{id}`: {e}", ix.collection, ix.field));
                 }
             }
-            if m.data.version == 0 {
-                continue;
-            }
             let stored = match db.get("_meta", &format!("data_version:{id}")) {
                 Ok(d) => d.and_then(|d| d["version"].as_u64()).unwrap_or(0) as u32,
                 Err(e) => {
@@ -520,6 +517,9 @@ impl Core {
                     continue;
                 }
             };
+            if m.data.version == 0 && stored == 0 {
+                continue;
+            }
             if stored > m.data.version {
                 problems.push(format!("the database holds data of `{id}` at version {stored}, newer than this plugin's {}; refusing to start", m.data.version));
                 continue;
@@ -531,6 +531,9 @@ impl Core {
             let mut result = Ok(());
             let tx = db.transaction(&mut || {
                 guarded("a migration", || catalog[id].migrate(stored, &svc))?;
+                if !svc.take_pending().is_empty() {
+                    return Err(LinkError::internal("a migration cannot emit events"));
+                }
                 db.put("_meta", &format!("data_version:{id}"), &json!({"id": format!("data_version:{id}"), "version": m.data.version}))
             });
             if let Err(e) = tx {

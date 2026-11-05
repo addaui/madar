@@ -206,3 +206,78 @@ fn data_from_before_sharing_is_migrated_once_and_a_newer_database_is_refused() {
     assert!(msg.contains("newer than this plugin"), "{msg}");
     let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn the_task_limit_is_per_project_and_collaborators_do_not_carry_quota_away() {
+    let mut d = dist(":memory:");
+    d.enabled.push("quota".into());
+    d.settings.insert("quota".into(), json!({"max_tasks": 2}));
+    let c = start(d).unwrap();
+    let p = ok(&c, "alice", "projects.create", json!({"name": "Home"}))["id"].as_str().unwrap().to_string();
+    ok(&c, "alice", "projects.share", json!({"id": p, "subject": "bob", "role": "editor"}));
+    ok(&c, "bob", "tasks.create", json!({"project_id": p, "title": "1"}));
+    ok(&c, "alice", "tasks.create", json!({"project_id": p, "title": "2"}));
+    assert_eq!(code(&c, "bob", "tasks.create", json!({"project_id": p, "title": "3"})), "quota_exceeded");
+    assert_eq!(code(&c, "alice", "tasks.create", json!({"project_id": p, "title": "3"})), "quota_exceeded");
+    ok(&c, "bob", "projects.unshare", json!({"id": p, "subject": "bob"}));
+    let own = ok(&c, "bob", "projects.create", json!({"name": "Mine"}))["id"].clone();
+    ok(&c, "bob", "tasks.create", json!({"project_id": own, "title": "fresh"}));
+}
+
+#[test]
+fn renumbering_a_crowded_column_bumps_versions_and_tells_everyone() {
+    let c = start(dist(":memory:")).unwrap();
+    let p = ok(&c, "alice", "projects.create", json!({"name": "Home"}))["id"].as_str().unwrap().to_string();
+    ok(&c, "alice", "projects.share", json!({"id": p, "subject": "bob", "role": "viewer"}));
+    let mk = |n: &str| ok(&c, "alice", "tasks.create", json!({"project_id": p, "title": n}))["id"].as_str().unwrap().to_string();
+    let a = mk("A");
+    mk("Z");
+    let xs: Vec<String> = (0..30).map(|i| mk(&format!("X{i}"))).collect();
+    // Bob's view of every task, kept up to date only through his events.
+    let mut seen: std::collections::HashMap<String, i64> = Default::default();
+    for t in ok(&c, "bob", "tasks.list", json!({"project_id": p})).as_array().unwrap() {
+        seen.insert(t["id"].as_str().unwrap().into(), t["version"].as_i64().unwrap());
+    }
+    let mark = c.latest_seq_for("bob");
+    for x in &xs {
+        ok(&c, "alice", "tasks.move", json!({"id": x, "after_id": a}));
+    }
+    for e in c.events_since("bob", mark, 5000).unwrap() {
+        if e.kind == "task.updated" {
+            seen.insert(e.data["task"]["id"].as_str().unwrap().into(), e.data["task"]["version"].as_i64().unwrap());
+        }
+    }
+    for t in ok(&c, "bob", "tasks.list", json!({"project_id": p})).as_array().unwrap() {
+        assert_eq!(seen[t["id"].as_str().unwrap()], t["version"].as_i64().unwrap(), "bob's copy of {} is stale", t["title"]);
+    }
+}
+
+#[test]
+fn a_removed_member_hears_nothing_about_the_tasks_afterwards() {
+    let c = start(dist(":memory:")).unwrap();
+    let p = ok(&c, "alice", "projects.create", json!({"name": "Home"}))["id"].as_str().unwrap().to_string();
+    ok(&c, "alice", "projects.share", json!({"id": p, "subject": "bob", "role": "editor"}));
+    ok(&c, "alice", "tasks.create", json!({"project_id": p, "title": "secret plans", "assignee": "bob"}));
+    let mark = c.latest_seq_for("bob");
+    ok(&c, "bob", "projects.unshare", json!({"id": p, "subject": " bob "}));
+    let got = c.events_since("bob", mark, 100).unwrap();
+    assert_eq!(got.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(), ["project.unshared"]);
+    assert!(c.events_since("alice", mark, 100).unwrap().iter().any(|e| e.kind == "task.updated"));
+}
+
+#[test]
+fn archived_tasks_cannot_be_edited_and_comment_parents_do_not_leak() {
+    let c = start(dist(":memory:")).unwrap();
+    let p = ok(&c, "alice", "projects.create", json!({"name": "Home"}))["id"].as_str().unwrap().to_string();
+    let t = ok(&c, "alice", "tasks.create", json!({"project_id": p, "title": "T"}))["id"].clone();
+    let cm = ok(&c, "alice", "comments.add", json!({"task_id": t, "text": "private"}))["id"].clone();
+    ok(&c, "alice", "tasks.update", json!({"id": t, "archived": true}));
+    assert_eq!(code(&c, "alice", "tasks.update", json!({"id": t, "status": "Done"})), "conflict");
+    assert_eq!(code(&c, "alice", "tasks.update", json!({"id": t, "title": "new"})), "conflict");
+    ok(&c, "alice", "tasks.update", json!({"id": t, "archived": false}));
+    let cp = ok(&c, "carol", "projects.create", json!({"name": "Hers"}))["id"].clone();
+    let ct = ok(&c, "carol", "tasks.create", json!({"project_id": cp, "title": "C"}))["id"].clone();
+    let probe = code(&c, "carol", "comments.add", json!({"task_id": ct, "text": "x", "parent_id": cm}));
+    let missing = code(&c, "carol", "comments.add", json!({"task_id": ct, "text": "x", "parent_id": "nope"}));
+    assert_eq!(probe, missing);
+}

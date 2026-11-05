@@ -121,7 +121,8 @@ impl Db for SqliteDb {
             return Err(LinkError::new("db_error", format!("invalid collection name `{collection}`")));
         }
         let expr = extract(field)?;
-        let name = format!("idx_c_{collection}_{}", field.replace('.', "__"));
+        // '_' and '.' are escaped so that no two (collection, field) pairs share a name
+        let name = format!("idx_c_{}_{collection}_{}", collection.len(), field.replace('_', "_u").replace('.', "_d"));
         let g = self.inner.lock();
         let conn = g.conn.borrow();
         conn.execute_batch(&format!(
@@ -308,7 +309,7 @@ mod tests {
         assert!(!plan(&db, &q).contains("idx_c_"), "no index yet");
         db.ensure_index("tasks", "project_id").unwrap();
         db.ensure_index("tasks", "project_id").unwrap(); // twice is fine
-        assert!(plan(&db, &q).contains("idx_c_tasks_project_id"), "{}", plan(&db, &q));
+        assert!(plan(&db, &q).contains("idx_c_5_tasks_project_uid"), "{}", plan(&db, &q));
         assert!(db.ensure_index("tasks; drop table docs", "x").is_err());
         assert!(db.ensure_index("tasks", "a b").is_err());
     }

@@ -92,10 +92,10 @@ impl Plugin for TasksPlugin {
         a.op(OpSpec::command("projects.share", "tasks.write", "Give someone access to a project (owner only). Roles: editor or viewer. Sharing again changes the role.",
             json!({"type":"object","required":["id","subject","role"],"additionalProperties":false,"properties":{
                 "id":{"type":"string","minLength":1},"subject":{"type":"string","minLength":1,"maxLength":200},
-                "role":{"type":"string","enum":["editor","viewer"]}}})).entity("memberships"), projects_share);
+                "role":{"type":"string","enum":["editor","viewer"]}}})).entity("projects"), projects_share);
         a.op(OpSpec::command("projects.unshare", "tasks.write", "Remove someone from a project. The owner can remove anyone; members can remove themselves. Tasks assigned to them become unassigned.",
             json!({"type":"object","required":["id","subject"],"additionalProperties":false,"properties":{
-                "id":{"type":"string","minLength":1},"subject":{"type":"string","minLength":1,"maxLength":200}}})).entity("memberships"), projects_unshare);
+                "id":{"type":"string","minLength":1},"subject":{"type":"string","minLength":1,"maxLength":200}}})).entity("projects"), projects_unshare);
         a.op(OpSpec::query("projects.members", "tasks.read", "Who has access to a project, and as what.", id.clone()), projects_members);
         a.op(OpSpec::command("tasks.delete", "tasks.write", "Delete a task with its comments and follow-ups.", id.clone()).entity("tasks"), tasks_delete);
 
@@ -473,7 +473,7 @@ fn projects_unshare(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
     let db = svc.db()?;
     let (p, role) = project_for(svc, ctx, str_of(&input, "id").unwrap(), false)?;
     let pid = p["id"].as_str().unwrap().to_string();
-    let who = str_of(&input, "subject").unwrap().to_string();
+    let who = str_of(&input, "subject").unwrap().trim().to_string();
     if role != "owner" && who != ctx.subject {
         return Err(LinkError::new("permission_denied", "you can only remove yourself from a project you do not own"));
     }
@@ -493,8 +493,11 @@ fn projects_unshare(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
     }
     for who_hears in &audience {
         svc.emit("project.unshared", who_hears, json!({"project_id": pid, "subject": who}))?;
-        for t in &freed {
-            svc.emit("task.updated", who_hears, json!({"task": present_task(t.clone()), "changes": ["assignee"]}))?;
+        // the person who left learns only that they left, not what the tasks look like now
+        if *who_hears != who {
+            for t in &freed {
+                svc.emit("task.updated", who_hears, json!({"task": present_task(t.clone()), "changes": ["assignee"]}))?;
+            }
         }
     }
     Ok(json!({"project_id": pid, "subject": who, "removed": true}))
@@ -583,6 +586,9 @@ fn tasks_update(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
     let (mut t, project, _) = task_for(svc, ctx, str_of(&input, "id").unwrap(), true)?;
     let pid = project["id"].as_str().unwrap().to_string();
     let mut changes: Vec<&str> = vec![];
+    if t["archived"] == json!(true) && input.as_object().unwrap().keys().any(|k| !["id", "archived", "expected_version"].contains(&k.as_str())) {
+        return Err(LinkError::conflict("archived tasks cannot be changed; restore the task first"));
+    }
     // Optimistic concurrency: a face that edited a stale copy is told, instead of silently overwriting.
     if let Some(expected) = input.get("expected_version").and_then(|v| v.as_i64()) {
         let current = t.get("version").and_then(|v| v.as_i64()).unwrap_or(1);
@@ -692,6 +698,7 @@ fn tasks_move(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
     };
     let crowded = matches!((prev, next), (Some(p), Some(n)) if n - p < 1e-6);
     let mut changes: Vec<&str> = vec![];
+    let mut renumbered: Vec<Value> = vec![];
     if was_status != status {
         set_status(&mut t, &project, &status, ctx.now_ms);
         changes.push("status");
@@ -706,7 +713,9 @@ fn tasks_move(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
                 t["position"] = json!(n);
             } else if position_of(&x) != n {
                 x["position"] = json!(n);
+                bump(&mut x, ctx.now_ms); // other members' copies are now stale, and editors must be able to tell
                 db.put("tasks", x["id"].as_str().unwrap(), &x)?;
+                renumbered.push(x);
             }
         }
         changes.push("position");
@@ -721,6 +730,9 @@ fn tasks_move(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
     let t = present_task(t);
     if !changes.is_empty() {
         emit_members(svc, &pid, "task.updated", json!({"task": t, "changes": changes}))?;
+    }
+    for x in renumbered {
+        emit_members(svc, &pid, "task.updated", json!({"task": present_task(x), "changes": ["position"]}))?;
     }
     Ok(t)
 }
@@ -750,7 +762,12 @@ fn comments_add(ctx: &Ctx, input: Value, svc: &Services) -> Result<Value> {
         Some(pid) => {
             let Some(p) = db.get("comments", pid)? else { return Err(LinkError::not_found("parent comment")) };
             if p["task_id"] != task["id"] {
-                return Err(LinkError::conflict("the parent comment belongs to a different task"));
+                // Only say "different task" when the caller can see that task; otherwise it looks missing.
+                return Err(if task_for(svc, ctx, str_of(&p, "task_id").unwrap_or(""), false).is_ok() {
+                    LinkError::conflict("the parent comment belongs to a different task")
+                } else {
+                    LinkError::not_found("parent comment")
+                });
             }
             if !p["parent_id"].is_null() {
                 return Err(LinkError::conflict("replies cannot be replied to"));

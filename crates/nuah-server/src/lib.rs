@@ -154,8 +154,13 @@ async fn ticket(State(app): State<App>, headers: HeaderMap) -> Result<Response, 
     let id = uuid::Uuid::new_v4().simple().to_string();
     let mut tickets = app.tickets.lock().unwrap();
     tickets.retain(|_, (_, made)| made.elapsed() < TICKET_TTL);
-    if tickets.len() >= 1000 {
-        return Err(LinkError::new("quota_exceeded", "too many Pulse tickets are waiting to be used").into());
+    // One person cannot crowd out the rest: past 5 waiting tickets their oldest is dropped.
+    let mine: Vec<(String, std::time::Instant)> =
+        tickets.iter().filter(|(_, (w, _))| w.subject == who.subject).map(|(k, (_, t))| (k.clone(), *t)).collect();
+    if mine.len() >= 5 {
+        if let Some((oldest, _)) = mine.iter().min_by_key(|(_, t)| *t) {
+            tickets.remove(oldest);
+        }
     }
     tickets.insert(id.clone(), (who, std::time::Instant::now()));
     Ok(([(header::CACHE_CONTROL, "no-store")], Json(json!({"ok": true, "ticket": id, "expires_in": TICKET_TTL.as_secs()}))).into_response())

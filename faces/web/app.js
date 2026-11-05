@@ -6,7 +6,7 @@
 const TOKEN_KEY = 'nuah.token';
 const THEME_KEY = 'nuah.theme';
 const KINDS = ['task.created', 'task.updated', 'task.deleted', 'project.created', 'project.updated',
-  'project.deleted', 'comment.added', 'comment.deleted', 'followup.added', 'prefs.changed'];
+  'project.deleted', 'project.shared', 'project.unshared', 'comment.added', 'comment.deleted', 'followup.added', 'prefs.changed'];
 
 const state = {
   desc: null, token: sessionStorage.getItem(TOKEN_KEY) || '', projects: [], projectId: null,
@@ -483,7 +483,7 @@ function onEvent(ev) {
       refreshProjectsSoon();
       if (removeTask(d.id)) { if (state.openId === d.id) closeDrawer(); renderBoard(); }
       break;
-    case 'project.created': case 'project.updated': case 'project.deleted':
+    case 'project.created': case 'project.updated': case 'project.deleted': case 'project.shared': case 'project.unshared':
       act(async () => { const before = state.projectId; await loadProjects(); if (state.projectId !== before) await loadTasks(); renderBoard(); });
       break;
     case 'comment.added': case 'comment.deleted': case 'followup.added': {

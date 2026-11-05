@@ -81,10 +81,13 @@ impl Plugin for QuotaPlugin {
     /// Settings: {"max_tasks": 1000}
     fn activate(&self, a: &mut Activation) -> Result<()> {
         let max = a.settings().get("max_tasks").and_then(|m| m.as_u64()).unwrap_or(1000) as usize;
-        a.before("max-tasks", "tasks.create", 0, move |ctx, _spec, _input, svc| {
-            let used = svc.db()?.query(&Query::new("tasks").eq("owner", ctx.subject.as_str()).limit(max + 1))?.len();
+        // The limit is per project, whoever added the tasks, so sharing a project neither
+        // multiplies the limit nor leaves a collaborator's quota used up after they leave.
+        a.before("max-tasks", "tasks.create", 0, move |_ctx, _spec, input, svc| {
+            let project = str_of(input, "project_id").unwrap_or("");
+            let used = svc.db()?.query(&Query::new("tasks").eq("project_id", project).limit(max + 1))?.len();
             if used >= max {
-                return Err(LinkError::new("quota_exceeded", format!("the limit of {max} tasks is reached"))
+                return Err(LinkError::new("quota_exceeded", format!("the limit of {max} tasks in a project is reached"))
                     .with_details(json!({"limit": max})));
             }
             Ok(())

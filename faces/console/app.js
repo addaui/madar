@@ -110,6 +110,9 @@ async function connectPulse() {
     while (feed.children.length > 50) feed.lastChild.remove();
   };
   for (const k of new Set((described.events || []).map((e) => e.kind))) es.addEventListener(k, show);
+  // A ticket works once, so the browser's own retry would be refused: start over with a new one.
+  const mine = es;
+  es.onerror = () => { if (mine.readyState === EventSource.CLOSED && es === mine) setTimeout(connectPulse, 2000); };
 }
 
 $("signin").addEventListener("submit", (ev) => { ev.preventDefault(); token = $("token").value.trim(); store.set("nuah.console.token", token || null); $("token").value = ""; load(); });
