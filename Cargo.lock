@@ -817,6 +817,7 @@ dependencies = [
  "tokio",
  "tower-http",
  "ureq",
+ "uuid",
 ]
 
 [[package]]

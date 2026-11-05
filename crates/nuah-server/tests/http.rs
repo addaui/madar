@@ -235,3 +235,23 @@ fn undeclared_events_are_refused() {
     let kinds: Vec<String> = core.describe(None, None)["events"].as_array().unwrap().iter().map(|e| e["kind"].as_str().unwrap().to_string()).collect();
     assert!(kinds.contains(&"chatty.said".to_string()) && kinds.contains(&"task.created".to_string()));
 }
+
+#[test]
+fn pulse_tickets_are_one_use_and_the_token_is_not_accepted_in_the_url() {
+    let status = |r: std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>| r.unwrap().status().as_u16();
+    let url = spawn_server(token_core());
+    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+    // no ticket without signing in
+    assert_eq!(status(agent.post(&format!("{url}/link/ticket")).header("X-Nuah-Face", "t").send_empty()), 401);
+    let mut r = agent.post(&format!("{url}/link/ticket")).header("X-Nuah-Face", "t").header("Authorization", "Bearer t-alice").send_empty().unwrap();
+    let ticket = r.body_mut().read_json::<Value>().unwrap()["ticket"].as_str().unwrap().to_string();
+    // the old way is gone
+    assert_eq!(status(agent.get(&format!("{url}/pulse?token=t-alice")).call()), 401);
+    // a made-up ticket is refused
+    assert_eq!(status(agent.get(&format!("{url}/pulse?ticket=nope")).call()), 401);
+    // the real one opens a stream once, then is spent
+    let first = agent.get(&format!("{url}/pulse?ticket={ticket}")).call().unwrap();
+    assert_eq!(first.status().as_u16(), 200);
+    drop(first);
+    assert_eq!(status(agent.get(&format!("{url}/pulse?ticket={ticket}")).call()), 401);
+}

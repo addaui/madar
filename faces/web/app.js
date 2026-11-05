@@ -431,10 +431,16 @@ async function renderNotes(id, host) {
 function setLive(s) { const el = $('live'); el.dataset.state = s; el.title = el.textContent = s === 'live' ? 'Live updates on' : 'Reconnecting to live updates'; }
 
 let pulseBackoff = 500;
-function connectPulse() {
+async function connectPulse() {
   state.es?.close();
-  const url = `/pulse?after=${state.lastSeq}` + (state.token ? `&token=${encodeURIComponent(state.token)}` : '');
-  const es = new EventSource(url);
+  // The token never goes into a URL: trade it for a one-use ticket, which is worth nothing seconds later.
+  let ticket;
+  try {
+    const r = await fetch('/link/ticket', { method: 'POST', headers: { 'X-Nuah-Face': 'web', ...authHeaders() } });
+    if (!r.ok) throw new Error(String(r.status));
+    ticket = (await r.json()).ticket;
+  } catch { setLive('down'); setTimeout(connectPulse, pulseBackoff = Math.min(pulseBackoff * 2, 30000)); return; }
+  const es = new EventSource(`/pulse?after=${state.lastSeq}&ticket=${encodeURIComponent(ticket)}`);
   state.es = es;
   es.onopen = () => setLive('live');
   es.onerror = () => {

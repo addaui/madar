@@ -175,6 +175,7 @@ pub struct Services {
     /// True while serving a query or a GET route: only read-only port methods may be called.
     read_only: bool,
     events: HashSet<String>,
+    event_schemas: std::collections::BTreeMap<String, Value>,
 }
 
 impl Services {
@@ -187,6 +188,7 @@ impl Services {
         core: crate::core::Core,
         read_only: bool,
         events: HashSet<String>,
+        event_schemas: std::collections::BTreeMap<String, Value>,
     ) -> Self {
         let db: Arc<dyn Db> = Arc::new(GuardedDb {
             inner: ports.db.clone(),
@@ -195,7 +197,7 @@ impl Services {
             reads: data.reads.iter().cloned().collect(),
             read_only,
         });
-        Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]), core, read_only, events }
+        Services { plugin: plugin.to_string(), allowed, ports, db, settings, pending: Mutex::new(vec![]), core, read_only, events, event_schemas }
     }
     /// Call another plugin's operation through the contract, as the user whose request is being
     /// served: the same permission check, input validation and hooks apply, and the call joins the
@@ -248,6 +250,10 @@ impl Services {
         self.need("events")?;
         if !self.events.contains(kind) {
             return Err(LinkError::internal(format!("plugin `{}` emitted `{kind}`, which its manifest does not declare in contributes.events", self.plugin)));
+        }
+        if let Some(schema) = self.event_schemas.get(kind) {
+            crate::schema::validate(schema, &data)
+                .map_err(|e| LinkError::internal(format!("plugin `{}` emitted `{kind}` with data that breaks its declared schema: {}", self.plugin, e.message)))?;
         }
         self.pending.lock().unwrap().push(PendingEvent {
             kind: kind.to_string(),
@@ -307,6 +313,7 @@ pub(crate) struct HookEntry {
     pub name: String,
     pub pattern: String,
     pub priority: i32,
+    pub rank: u32,
     pub f: HookFn,
 }
 #[derive(Clone)]
@@ -385,6 +392,7 @@ impl Activation {
             name: name.into(),
             pattern: pattern.into(),
             priority,
+            rank: 0,
             f: HookFn::Before(Arc::new(f)),
         });
     }
@@ -402,6 +410,7 @@ impl Activation {
             name: name.into(),
             pattern: pattern.into(),
             priority,
+            rank: 0,
             f: HookFn::After(Arc::new(f)),
         });
     }
@@ -436,6 +445,13 @@ impl Activation {
 pub trait Plugin: Send + Sync {
     fn manifest(&self) -> Manifest;
     fn activate(&self, act: &mut Activation) -> Result<()>;
+    /// Bring this plugin's stored data from version `from` to the manifest's `data.version`. Runs
+    /// once at start, inside a transaction (an error undoes it and stops the start). `from` is 0
+    /// when the database has never recorded a version for this plugin, which includes a fresh
+    /// database and data written before versions existed, so write it to cope with both.
+    fn migrate(&self, _from: u32, _svc: &Services) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Pattern used by hooks and listeners: "*", "prefix.*", or an exact name.

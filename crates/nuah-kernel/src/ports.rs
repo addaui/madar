@@ -87,6 +87,11 @@ pub trait Db: Send + Sync {
     /// Returns true when something was removed.
     fn delete(&self, collection: &str, id: &str) -> Result<bool>;
     fn query(&self, q: &Query) -> Result<Vec<Value>>;
+    /// Ask for an index on a field. Purely a speed hint: adapters without indexes do nothing, and the
+    /// answers of every query stay the same either way.
+    fn ensure_index(&self, _collection: &str, _field: &str) -> Result<()> {
+        Ok(())
+    }
     /// All-or-nothing.
     fn batch(&self, ops: &[WriteOp]) -> Result<()>;
 }

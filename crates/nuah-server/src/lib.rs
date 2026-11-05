@@ -3,6 +3,7 @@
 //!
 //!   GET  /link/describe          self-description (optional Authorization)
 //!   POST /link/call/{op}         run an operation; JSON body is the input
+//!   POST /link/ticket            a one-use, 30-second ticket for opening Pulse from a browser
 //!   GET  /pulse?after=N          server-sent events, replayed from N then live; Last-Event-ID also works
 //!   ANY  /x/...                  routes that plugins added
 //!   GET  /faces/web/...          static web face
@@ -28,7 +29,13 @@ use tower_http::services::ServeDir;
 #[derive(Clone)]
 struct App {
     core: Core,
+    /// One-use tickets for Pulse. Browsers cannot set headers on EventSource, and a long-lived
+    /// token in a URL ends up in logs and history, so a face trades its token for a ticket that
+    /// is worth nothing a few seconds later.
+    tickets: Arc<std::sync::Mutex<HashMap<String, (nuah_kernel::Identity, std::time::Instant)>>>,
 }
+
+const TICKET_TTL: Duration = Duration::from_secs(30);
 
 struct ApiError(LinkError);
 
@@ -52,14 +59,12 @@ impl IntoResponse for ApiError {
     }
 }
 
-fn bearer(headers: &HeaderMap, query: Option<&String>) -> Option<String> {
+fn bearer(headers: &HeaderMap) -> Option<String> {
     headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .map(|t| t.trim().to_string())
-        // Browsers cannot set headers on EventSource, so Pulse also accepts ?token=.
-        .or_else(|| query.cloned())
 }
 
 fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -71,7 +76,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
 }
 
 async fn describe(State(app): State<App>, headers: HeaderMap, Query(q): Query<HashMap<String, String>>) -> Result<Response, ApiError> {
-    let token = bearer(&headers, None);
+    let token = bearer(&headers);
     let face = q.get("face").cloned();
     let core = app.core.clone();
     // storage calls never run on the async worker threads
@@ -81,7 +86,7 @@ async fn describe(State(app): State<App>, headers: HeaderMap, Query(q): Query<Ha
 
 /// Documents generated from the contract (`?face=` is not used; they describe what the caller may do).
 async fn generated(app: App, headers: HeaderMap, make: fn(&Value) -> Response) -> Result<Response, ApiError> {
-    let token = bearer(&headers, None);
+    let token = bearer(&headers);
     let core = app.core.clone();
     let d = blocking(move || core.describe(token.as_deref(), None)).await?;
     if d["identity"].is_null() {
@@ -109,7 +114,7 @@ async fn call(State(app): State<App>, Path(op): Path<String>, headers: HeaderMap
         serde_json::from_slice(&body).map_err(|e| LinkError::new("invalid_input", format!("body is not valid JSON: {e}")))?
     };
     let req = CallRequest {
-        credential: bearer(&headers, None),
+        credential: bearer(&headers),
         op,
         input,
         idempotency_key: header_str(&headers, "idempotency-key"),
@@ -128,7 +133,7 @@ async fn plugin_route(
     Query(q): Query<HashMap<String, String>>,
     body: Bytes,
 ) -> Result<Response, ApiError> {
-    let token = bearer(&headers, None);
+    let token = bearer(&headers);
     let core = app.core.clone();
     let path = format!("/x/{rest}");
     let res = blocking(move || core.route(method.as_str(), &path, token.as_deref(), q, body.to_vec())).await??;
@@ -144,12 +149,33 @@ async fn plugin_route(
     Ok(out)
 }
 
+async fn ticket(State(app): State<App>, headers: HeaderMap) -> Result<Response, ApiError> {
+    let who = app.core.authenticate(bearer(&headers).as_deref())?;
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    let mut tickets = app.tickets.lock().unwrap();
+    tickets.retain(|_, (_, made)| made.elapsed() < TICKET_TTL);
+    if tickets.len() >= 1000 {
+        return Err(LinkError::new("quota_exceeded", "too many Pulse tickets are waiting to be used").into());
+    }
+    tickets.insert(id.clone(), (who, std::time::Instant::now()));
+    Ok(([(header::CACHE_CONTROL, "no-store")], Json(json!({"ok": true, "ticket": id, "expires_in": TICKET_TTL.as_secs()}))).into_response())
+}
+
 async fn pulse(
     State(app): State<App>,
     headers: HeaderMap,
     Query(q): Query<HashMap<String, String>>,
 ) -> Result<axum::response::sse::Sse<impl Stream<Item = Result<Sse, Infallible>>>, ApiError> {
-    let who = app.core.authenticate(bearer(&headers, q.get("token")).as_deref())?; // no db involved
+    let who = match q.get("ticket") {
+        Some(t) => {
+            let mut tickets = app.tickets.lock().unwrap();
+            match tickets.remove(t) {
+                Some((who, made)) if made.elapsed() < TICKET_TTL => who,
+                _ => return Err(LinkError::unauthenticated("the Pulse ticket is unknown, used or expired").into()),
+            }
+        }
+        None => app.core.authenticate(bearer(&headers).as_deref())?, // no db involved
+    };
     // EventSource resends the last id it saw as Last-Event-ID when it reconnects, but keeps the
     // original URL, so the header can be newer than ?after. Take whichever is further along.
     let from_query: Option<u64> = q.get("after").and_then(|a| a.parse().ok());
@@ -275,6 +301,7 @@ pub fn router_full(core: Core, web_dir: Option<PathBuf>, console_dir: Option<Pat
         .route("/link/openapi.json", get(openapi_doc))
         .route("/link/tools.json", get(tools_doc))
         .route("/link/client.ts", get(client_ts))
+        .route("/link/ticket", post(ticket))
         .route("/pulse", get(pulse))
         .route("/x/{*rest}", any(plugin_route));
     if let Some(dir) = web_dir {
@@ -285,5 +312,5 @@ pub fn router_full(core: Core, web_dir: Option<PathBuf>, console_dir: Option<Pat
     if let Some(dir) = console_dir {
         r = r.nest_service("/faces/console", ServeDir::new(dir));
     }
-    r.layer(middleware::from_fn_with_state(Arc::new(hosts), guard)).with_state(App { core })
+    r.layer(middleware::from_fn_with_state(Arc::new(hosts), guard)).with_state(App { core, tickets: Default::default() })
 }

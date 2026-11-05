@@ -90,12 +90,19 @@ function opCard(o) {
     h("div", { class: "muted" }, "needs ", h("code", {}, o.permission)), form);
 }
 
-function connectPulse() {
+async function connectPulse() {
   if (es) es.close();
   if (!described || !described.identity) return;
   const feed = $("pulse");
   feed.replaceChildren();
-  es = new EventSource("/pulse" + (token ? "?token=" + encodeURIComponent(token) : "") + (described.latest_seq ? (token ? "&" : "?") + "after=" + described.latest_seq : ""));
+  // Trade the token for a one-use ticket so the token never appears in a URL.
+  let ticket;
+  try {
+    const r = await fetch("/link/ticket", { method: "POST", headers: { "X-Nuah-Face": "console", ...(token ? { Authorization: "Bearer " + token } : {}) } });
+    if (!r.ok) return;
+    ticket = (await r.json()).ticket;
+  } catch { return; }
+  es = new EventSource("/pulse?ticket=" + encodeURIComponent(ticket) + (described.latest_seq ? "&after=" + described.latest_seq : ""));
   // Events are named by kind, and the core declares every kind a plugin may emit.
   const show = (m) => {
     let e; try { e = JSON.parse(m.data); } catch { return; }

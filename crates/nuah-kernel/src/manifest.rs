@@ -35,6 +35,23 @@ pub struct Manifest {
     pub profiles: Vec<String>,
     #[serde(default)]
     pub quality: String,
+    /// JSON-schema subset for this plugin's entry under `settings` in the distribution. Checked at
+    /// start, so a bad setting is reported by the resolver and not by a crash later.
+    #[serde(default)]
+    pub settings_schema: Value,
+    /// Hook order between plugins. Only decides between hooks of equal priority.
+    #[serde(default)]
+    pub order: Order,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Order {
+    /// Plugin ids whose hooks run before this plugin's.
+    #[serde(default)]
+    pub after: Vec<String>,
+    /// Plugin ids whose hooks run after this plugin's.
+    #[serde(default)]
+    pub before: Vec<String>,
 }
 
 fn native() -> String {
@@ -79,6 +96,10 @@ pub struct PortMethod {
     /// Read-only methods may be called from queries.
     #[serde(default)]
     pub readonly: bool,
+    /// Optional shape of what a provider returns, checked on every answer. Providers that break it
+    /// fail like any other provider error.
+    #[serde(default)]
+    pub output: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +116,19 @@ pub struct Data {
     pub owns: Vec<String>,
     #[serde(default)]
     pub reads: Vec<String>,
+    /// Indexes on fields of collections the plugin owns. Created at start if the db supports them.
+    #[serde(default)]
+    pub indexes: Vec<IndexDef>,
+    /// Version of the plugin's stored data. When it is higher than what the database remembers,
+    /// `Plugin::migrate` runs once, in a transaction, before anything is served. 0 means unversioned.
+    #[serde(default)]
+    pub version: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexDef {
+    pub collection: String,
+    pub field: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -125,6 +159,9 @@ pub struct Contributes {
     /// learn the vocabulary of Pulse from `describe` instead of guessing.
     #[serde(default)]
     pub events: Vec<String>,
+    /// Optional shape of the `data` of an event kind, checked when the event is emitted.
+    #[serde(default)]
+    pub event_schemas: std::collections::BTreeMap<String, Value>,
     /// Face-side assets such as themes. Faces pick the ones they understand.
     #[serde(default)]
     pub assets: Vec<Value>,

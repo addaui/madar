@@ -327,6 +327,39 @@ impl Core {
                 }
             }
         }
+        for id in &active {
+            let m = &manifests[id];
+            if !m.settings_schema.is_null() {
+                if let Err(e) = schema::validate(&m.settings_schema, dist.settings.get(id).unwrap_or(&json!({}))) {
+                    problems.push(format!("settings of plugin `{id}`: {}", e.message));
+                }
+            }
+            for ix in &m.data.indexes {
+                if !m.data.owns.contains(&ix.collection) {
+                    problems.push(format!("plugin `{id}` asks for an index on `{}.{}` but does not own that collection", ix.collection, ix.field));
+                }
+                if let Err(e) = check_field_path(&ix.field) {
+                    problems.push(format!("plugin `{id}`: {}", e.message));
+                }
+            }
+            for k in m.contributes.event_schemas.keys() {
+                if !m.contributes.events.contains(k) {
+                    problems.push(format!("plugin `{id}` has a schema for event `{k}` but does not declare the event"));
+                }
+            }
+            for other in m.order.after.iter().chain(m.order.before.iter()) {
+                if !manifests.contains_key(other) {
+                    problems.push(format!("plugin `{id}` orders itself against unknown plugin `{other}`"));
+                }
+            }
+        }
+        let ranks = match plugin_ranks(&active, &manifests) {
+            Ok(r) => r,
+            Err(e) => {
+                problems.push(e);
+                HashMap::new()
+            }
+        };
         if !problems.is_empty() {
             return Err(problems);
         }
@@ -447,7 +480,7 @@ impl Core {
                 i.priority = m.provides.iter().find(|p| p.port == i.port).map(|p| p.priority).unwrap_or(0);
                 state.port_impls.push(i);
             }
-            state.hooks.extend(act.hooks);
+            state.hooks.extend(act.hooks.into_iter().map(|mut h| { h.rank = ranks.get(&h.owner).copied().unwrap_or(0); h }));
             state.listeners.extend(act.listeners);
             state.routes.extend(act.routes);
         }
@@ -455,7 +488,7 @@ impl Core {
             return Err(problems);
         }
 
-        Ok(Core {
+        let core = Core {
             inner: Arc::new(Inner {
                 name: dist.name,
                 ports,
@@ -467,7 +500,50 @@ impl Core {
                 state: RwLock::new(state),
                 requests: Mutex::new(HashMap::new()),
             }),
-        })
+        };
+        // 5. storage: indexes, then versioned migrations, before anything is served
+        let db = &core.inner.ports.db;
+        for id in &active {
+            let m = &core.inner.manifests[id];
+            for ix in &m.data.indexes {
+                if let Err(e) = db.ensure_index(&ix.collection, &ix.field) {
+                    problems.push(format!("index on `{}.{}` for plugin `{id}`: {e}", ix.collection, ix.field));
+                }
+            }
+            if m.data.version == 0 {
+                continue;
+            }
+            let stored = match db.get("_meta", &format!("data_version:{id}")) {
+                Ok(d) => d.and_then(|d| d["version"].as_u64()).unwrap_or(0) as u32,
+                Err(e) => {
+                    problems.push(format!("cannot read the data version of `{id}`: {e}"));
+                    continue;
+                }
+            };
+            if stored > m.data.version {
+                problems.push(format!("the database holds data of `{id}` at version {stored}, newer than this plugin's {}; refusing to start", m.data.version));
+                continue;
+            }
+            if stored == m.data.version {
+                continue;
+            }
+            let svc = core.services(id);
+            let mut result = Ok(());
+            let tx = db.transaction(&mut || {
+                guarded("a migration", || catalog[id].migrate(stored, &svc))?;
+                db.put("_meta", &format!("data_version:{id}"), &json!({"id": format!("data_version:{id}"), "version": m.data.version}))
+            });
+            if let Err(e) = tx {
+                result = Err(e);
+            }
+            if let Err(e) = result {
+                problems.push(format!("migration of `{id}` from version {stored} to {} failed: {e}", m.data.version));
+            }
+        }
+        if !problems.is_empty() {
+            return Err(problems);
+        }
+        Ok(core)
     }
 
     fn services(&self, plugin: &str) -> Services {
@@ -485,6 +561,7 @@ impl Core {
             self.clone(),
             read_only,
             m.contributes.events.iter().cloned().collect(),
+            m.contributes.event_schemas.clone(),
         )
     }
 
@@ -517,7 +594,12 @@ impl Core {
             let mut out: Option<Result<Value>> = None;
             DEPTH.with(|d| d.set(d.get() + 1));
             let tx = self.inner.ports.db.transaction(&mut || {
-                let r = guarded("a port provider", || (i.handler)(input.clone(), &svc));
+                let r = guarded("a port provider", || (i.handler)(input.clone(), &svc)).and_then(|v| {
+                    if !m.output.is_null() && !v.is_null() {
+                        schema::validate(&m.output, &v).map_err(|e| LinkError::internal(format!("provider `{}` of `{port}.{method}` returned data that breaks the port's output schema: {}", i.owner, e.message)))?;
+                    }
+                    Ok(v)
+                });
                 // In a `first` chain, null means "not mine": undo whatever the provider did.
                 let verdict = match &r {
                     Ok(v) if v.is_null() && def.policy == "first" => Err(LinkError::new("_declined", "")),
@@ -639,7 +721,7 @@ impl Core {
             let st = inner.state.read().unwrap();
             let mut h: Vec<HookEntry> =
                 st.hooks.iter().filter(|h| pattern_matches(&h.pattern, &spec.name)).cloned().collect();
-            h.sort_by(|a, b| (a.priority, &a.owner, &a.name).cmp(&(b.priority, &b.owner, &b.name)));
+            h.sort_by(|a, b| (a.priority, a.rank, &a.owner, &a.name).cmp(&(b.priority, b.rank, &b.owner, &b.name)));
             h
         };
 
@@ -954,8 +1036,8 @@ impl Core {
                 s["plugin"] = json!(id);
                 s
             }));
-            events.extend(m.contributes.events.iter().map(|k| json!({"kind": k, "plugin": id})));
-            plugins.push(json!({"id": id, "version": m.version, "kind": m.kind, "runtime": m.runtime, "quality": m.quality, "data": m.data, "requires": m.requires.plugins}));
+            events.extend(m.contributes.events.iter().map(|k| json!({"kind": k, "plugin": id, "schema": m.contributes.event_schemas.get(k)})));
+            plugins.push(json!({"id": id, "version": m.version, "kind": m.kind, "runtime": m.runtime, "quality": m.quality, "data": m.data, "requires": m.requires.plugins, "settings_schema": m.settings_schema}));
         }
         let ports: HashMap<&String, &String> = inner.bound.iter().collect();
         let mut extension_points: Vec<Value> = inner
@@ -974,12 +1056,19 @@ impl Core {
             })
             .collect();
         extension_points.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+        let hooks: Vec<Value> = {
+            let mut h: Vec<&HookEntry> = st.hooks.iter().collect();
+            h.sort_by(|a, b| (a.priority, a.rank, &a.owner, &a.name).cmp(&(b.priority, b.rank, &b.owner, &b.name)));
+            h.iter().map(|h| json!({"plugin": h.owner, "name": h.name, "pattern": h.pattern, "priority": h.priority,
+                "phase": match h.f { HookFn::Before(_) => "before", HookFn::After(_) => "after" }})).collect()
+        };
         json!({
             "contract": CONTRACT_VERSION,
             "profile": inner.name,
             "ports": ports,
             "extension_points": extension_points,
             "events": events,
+            "hooks": hooks,
             "plugins": plugins,
             "inactive": st.inactive.iter().map(|(i, r)| json!({"id": i, "reason": r})).collect::<Vec<_>>(),
             "ops": ops_json,
@@ -990,6 +1079,37 @@ impl Core {
             "latest_seq": latest,
         })
     }
+}
+
+/// Position of each plugin in the order its hooks run (lower first), from `order.after/before`.
+/// Ties go by id so the result never depends on hash order. A cycle is reported.
+fn plugin_ranks(active: &[String], manifests: &HashMap<String, Manifest>) -> std::result::Result<HashMap<String, u32>, String> {
+    let mut before: HashMap<&str, HashSet<&str>> = active.iter().map(|a| (a.as_str(), HashSet::new())).collect(); // plugin -> those that must come first
+    for id in active {
+        let m = &manifests[id];
+        for a in &m.order.after {
+            if active.contains(a) {
+                before.get_mut(id.as_str()).unwrap().insert(a.as_str());
+            }
+        }
+        for b in &m.order.before {
+            if let Some(set) = before.get_mut(b.as_str()) {
+                set.insert(id.as_str());
+            }
+        }
+    }
+    let mut ranks = HashMap::new();
+    let mut left: Vec<&str> = active.iter().map(|s| s.as_str()).collect();
+    left.sort();
+    let mut n = 0;
+    while !left.is_empty() {
+        let Some(pos) = left.iter().position(|p| before[p].iter().all(|d| ranks.contains_key(*d))) else {
+            return Err(format!("hook order constraints form a cycle among {}", left.join(", ")));
+        };
+        ranks.insert(left.remove(pos).to_string(), n);
+        n += 1;
+    }
+    Ok(ranks)
 }
 
 fn join(v: &[&String]) -> String {

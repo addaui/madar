@@ -115,6 +115,21 @@ impl Db for SqliteDb {
         Ok(())
     }
 
+    fn ensure_index(&self, collection: &str, field: &str) -> Result<()> {
+        let plain = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !plain(collection) {
+            return Err(LinkError::new("db_error", format!("invalid collection name `{collection}`")));
+        }
+        let expr = extract(field)?;
+        let name = format!("idx_c_{collection}_{}", field.replace('.', "__"));
+        let g = self.inner.lock();
+        let conn = g.conn.borrow();
+        conn.execute_batch(&format!(
+            "CREATE INDEX IF NOT EXISTS {name} ON docs (collection, {expr})"
+        ))
+        .map_err(db_err)
+    }
+
     fn delete(&self, collection: &str, id: &str) -> Result<bool> {
         let g = self.inner.lock();
         let conn = g.conn.borrow();
@@ -284,5 +299,17 @@ mod tests {
         assert!(newest.contains("idx_events_seq2") && !newest.contains("TEMP B-TREE"), "max-seq lookup: {newest}");
         let after = plan(&db, &Query::new("_events").filter("seq", FilterOp::Gt, json!(5)).order("seq", false));
         assert!(after.contains("idx_events_seq2") && !after.contains("TEMP B-TREE"), "read-after-N: {after}");
+    }
+
+    #[test]
+    fn an_index_requested_by_a_plugin_is_used_and_rejects_bad_names() {
+        let db = SqliteDb::open(":memory:").unwrap();
+        let q = Query::new("tasks").filter("project_id", FilterOp::Gt, json!(0));
+        assert!(!plan(&db, &q).contains("idx_c_"), "no index yet");
+        db.ensure_index("tasks", "project_id").unwrap();
+        db.ensure_index("tasks", "project_id").unwrap(); // twice is fine
+        assert!(plan(&db, &q).contains("idx_c_tasks_project_id"), "{}", plan(&db, &q));
+        assert!(db.ensure_index("tasks; drop table docs", "x").is_err());
+        assert!(db.ensure_index("tasks", "a b").is_err());
     }
 }
