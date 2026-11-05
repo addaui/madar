@@ -4,9 +4,8 @@ A plugin-first core framework. This repository holds the first test of the idea:
 manager built as **one core and two faces**. Nothing here is a product; it exists to find out where the
 design is wrong before more apps are built on it.
 
-- `docs/concept-map.html` and `docs/DRAFT-research-and-proposal.md`: the vision and research.
-- `docs/madar-test/PRD.md`: what this test must prove, with acceptance criteria.
-- `docs/madar-test/LOG.md`: what was built, what reviews found, what changed.
+Documentation (PRD, ADRs, specs, plans, tasks, glossary) lives in docmd, not in this repo:
+https://docs.addaui.com/nuah/ . Working rules for contributors and agents are in `the contributor notes`.
 
 ## Layout
 
