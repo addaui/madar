@@ -11,7 +11,7 @@ pub mod ports;
 pub mod schema;
 pub mod setup;
 
-pub use crate::core::{CallRequest, CallResponse, Core, Distribution, CONTRACT_VERSION};
+pub use crate::core::{CallRequest, CallResponse, Core, Distribution, Profile, CONTRACT_VERSION};
 pub use error::{LinkError, Result};
 pub use events::Event;
 pub use manifest::Manifest;

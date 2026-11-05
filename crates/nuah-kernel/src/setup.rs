@@ -1,7 +1,7 @@
 //! What a setup wizard needs, without starting anything: the resolver's problems as data, and the
 //! catalog as plain JSON (what each plugin is, needs, provides and lets you set).
 
-use crate::core::Distribution;
+use crate::core::{Distribution, Profile};
 use crate::ports::PORT_NAMES;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -124,7 +124,7 @@ pub fn distribution_from_json(catalog: Vec<std::sync::Arc<dyn crate::plugin::Plu
         Some(Value::Object(o)) => o.iter().map(|(k, x)| (k.clone(), x.clone())).collect(),
         Some(_) => return Err("`settings` must be an object of plugin id to settings".into()),
     };
-    Ok(Distribution { name, catalog, enabled, bindings, settings })
+    Ok(Distribution { catalog, profile: Profile { name, enabled, bindings, settings } })
 }
 
 /// The profile as JSON, in the shape `distribution_from_json` reads.

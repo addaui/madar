@@ -10,14 +10,16 @@ fn dist(path: &str) -> Distribution {
     enabled.sort();
     let tokens: Value = ["alice", "bob", "carol"].iter().map(|n| (format!("t-{n}"), json!({"subject": n, "display": n, "roles": []}))).collect::<serde_json::Map<_, _>>().into();
     Distribution {
-        name: "test".into(),
         catalog: catalog(),
-        enabled,
-        bindings: HashMap::new(),
-        settings: HashMap::from([
-            ("adapter-sqlite".to_string(), json!({"path": path})),
-            ("auth-token".to_string(), json!({"tokens": tokens})),
-        ]),
+        profile: Profile {
+            name: "test".into(),
+            enabled,
+            bindings: HashMap::new(),
+            settings: HashMap::from([
+                ("adapter-sqlite".to_string(), json!({"path": path})),
+                ("auth-token".to_string(), json!({"tokens": tokens})),
+            ]),
+        },
     }
 }
 

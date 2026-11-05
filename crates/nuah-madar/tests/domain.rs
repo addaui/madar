@@ -32,17 +32,19 @@ fn server_dist() -> Distribution {
         .iter().map(|s| s.to_string()).collect();
     enabled.sort();
     Distribution {
-        name: "server".into(),
         catalog: catalog(),
-        enabled,
-        bindings: HashMap::new(),
-        settings: HashMap::from([
-            ("auth-token".to_string(), json!({"tokens": {
-                "t-alice": {"subject": "alice", "display": "Alice", "roles": ["owner"]},
-                "t-bob": {"subject": "bob", "display": "Bob", "roles": ["member"]},
-                "t-view": {"subject": "alice", "display": "Alice (read only)", "roles": ["viewer"]}}})),
-            ("quota".to_string(), json!({"max_tasks": 3})),
-        ]),
+        profile: Profile {
+            name: "server".into(),
+            enabled,
+            bindings: HashMap::new(),
+            settings: HashMap::from([
+                ("auth-token".to_string(), json!({"tokens": {
+                    "t-alice": {"subject": "alice", "display": "Alice", "roles": ["owner"]},
+                    "t-bob": {"subject": "bob", "display": "Bob", "roles": ["member"]},
+                    "t-view": {"subject": "alice", "display": "Alice (read only)", "roles": ["viewer"]}}})),
+                ("quota".to_string(), json!({"max_tasks": 3})),
+            ]),
+        },
     }
 }
 

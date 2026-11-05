@@ -44,14 +44,16 @@ pub fn embedded(db_path: &str, display_name: &str) -> Distribution {
     let mut enabled: Vec<String> = ["std", "adapter-sqlite", "auth-local", "policy-allow-all"].iter().map(|s| s.to_string()).collect();
     enabled.extend(COMMON.iter().map(|s| s.to_string()));
     Distribution {
-        name: "embedded".into(),
         catalog: catalog(),
-        enabled,
-        bindings: HashMap::new(),
-        settings: HashMap::from([
-            ("adapter-sqlite".to_string(), json!({"path": db_path})),
-            ("auth-local".to_string(), json!({"display": display_name})),
-        ]),
+        profile: Profile {
+            name: "embedded".into(),
+            enabled,
+            bindings: HashMap::new(),
+            settings: HashMap::from([
+                ("adapter-sqlite".to_string(), json!({"path": db_path})),
+                ("auth-local".to_string(), json!({"display": display_name})),
+            ]),
+        },
     }
 }
 
@@ -60,11 +62,13 @@ pub fn memory_for_tests() -> Distribution {
     let mut enabled: Vec<String> = ["std-fixed", "adapter-memory", "auth-local", "policy-allow-all"].iter().map(|s| s.to_string()).collect();
     enabled.extend(COMMON.iter().map(|s| s.to_string()));
     Distribution {
-        name: "test".into(),
         catalog: catalog(),
-        enabled,
-        bindings: HashMap::new(),
-        settings: HashMap::new(),
+        profile: Profile {
+            name: "test".into(),
+            enabled,
+            bindings: HashMap::new(),
+            settings: HashMap::new(),
+        },
     }
 }
 

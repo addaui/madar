@@ -71,7 +71,7 @@ fn profiles_are_read_strictly_and_round_trip() {
     assert!(err(json!({"name": " "})).is_some());
     let d = memory_for_tests();
     let back = distribution_from_json(catalog(), &profile_json(&d)).unwrap();
-    assert_eq!((back.name, back.enabled), (d.name.clone(), d.enabled.clone()));
+    assert_eq!((back.profile.name, back.profile.enabled), (d.name.clone(), d.enabled.clone()));
     let info = catalog_info(&d);
     let tasks = info["plugins"].as_array().unwrap().iter().find(|p| p["id"] == "tasks").unwrap();
     assert!(!tasks["description"].as_str().unwrap().is_empty());

@@ -17,14 +17,34 @@ use tokio::sync::broadcast;
 
 pub const CONTRACT_VERSION: &str = "0.1";
 
-/// What an operator chooses: which plugins are on, which adapter fills each port, and settings.
+/// One set of choices: which plugins are on, which adapter fills each port, and the settings of
+/// each plugin. It holds no plugins.
 #[derive(Clone)]
-pub struct Distribution {
+pub struct Profile {
     pub name: String,
-    pub catalog: Vec<Arc<dyn Plugin>>,
     pub enabled: Vec<String>,
     pub bindings: HashMap<String, String>,
     pub settings: HashMap<String, Value>,
+}
+
+/// A catalog of plugins together with the Profile chosen to start it with. Starting a Core takes
+/// one. The profile's fields read straight through (`d.enabled` is `d.profile.enabled`).
+#[derive(Clone)]
+pub struct Distribution {
+    pub catalog: Vec<Arc<dyn Plugin>>,
+    pub profile: Profile,
+}
+
+impl std::ops::Deref for Distribution {
+    type Target = Profile;
+    fn deref(&self) -> &Profile {
+        &self.profile
+    }
+}
+impl std::ops::DerefMut for Distribution {
+    fn deref_mut(&mut self) -> &mut Profile {
+        &mut self.profile
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -514,11 +534,11 @@ impl Core {
 
         let core = Core {
             inner: Arc::new(Inner {
-                name: dist.name,
+                name: dist.profile.name.clone(),
                 ports,
                 events,
                 manifests,
-                settings: dist.settings,
+                settings: dist.profile.settings.clone(),
                 bound,
                 extension_points,
                 state: RwLock::new(state),
