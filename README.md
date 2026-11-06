@@ -10,18 +10,22 @@ https://docs.addaui.com/nuah/ . Working rules for contributors and agents are in
 
 | Path | What it is |
 |---|---|
-| `crates/nuah-kernel` | v2 kernel: manifests, resolver, data Port, call pipeline, Pulse, Listeners. Knows nothing about tasks. |
+| `crates/nuah-kernel` | The kernel: manifests, resolver, data Port, call pipeline, Pulse, Listeners, contract generator, setup helpers. Knows nothing about tasks. |
 | `crates/nuah-adapters` | Adapters for the Ports (memory and SQLite db, auth, policy, clock, ids) and the db conformance suite. |
-| `crates/nuah-madar` | Madar v2 as plugins: projects, tasks, discussion, audit, quota, prefs, export, notify. |
-| `spike/` | The first version (with server, CLI and web faces). Reference only; deleted when v2 reaches parity. |
+| `crates/nuah-madar` | Madar as plugins: projects, tasks, discussion, audit, quota, prefs, export, notify, themes. |
+| `crates/nuah-server` | HTTP and SSE server (`nuah-server serve`) and the setup mode (`nuah-server setup`). |
+| `crates/nuah-cli` | The `madar` command line, over HTTP or directly on a database file. |
+| `faces/web`, `faces/console`, `faces/setup` | The web board, the console generated from `describe`, and the setup wizard (vanilla JS, no build). |
 
-v2 has no server or faces yet; see https://docs.addaui.com/nuah/plans/v2-status/ for what exists.
+What exists and how it is proven: https://docs.addaui.com/nuah/plans/v2-status/
 
 ## Run it
 
 Needs Rust (`rustup`, stable).
 
 ```bash
-cargo test --workspace            # v2
-cd spike && cargo test --workspace   # the spike, which also has the runnable server and faces
+cargo test --workspace
+nuah-server hash-password < password.txt          # make an accounts file outside the repo, see the docs
+nuah-server serve --db madar.db --accounts accounts.json --web faces/web --console faces/console
+nuah-server setup --profile profile.json --face faces/setup
 ```
