@@ -528,3 +528,63 @@ fn sign_in_gives_an_expiring_session() {
     let public = core.describe_public();
     assert!(public["operations"].as_object().unwrap().keys().all(|k| k == "auth.sign_in"));
 }
+
+// ---- the database file outlives the process (PRD criteria 6 and 9) -------------------------------
+
+fn temp_db() -> String {
+    let dir = std::env::temp_dir().join(format!("madar-test-{}", uuid_like()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.join("madar.db").display().to_string()
+}
+fn uuid_like() -> String {
+    format!("{}-{:?}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos())
+}
+fn start_file(path: &str, without: &[&str]) -> std::result::Result<Core, Vec<Problem>> {
+    let mut p = profile_embedded(path);
+    p.enabled.retain(|e| !without.contains(&e.as_str()));
+    p.grants.retain(|k, _| !without.contains(&k.as_str()));
+    Core::start(&distribution(p))
+}
+
+#[test]
+fn pulse_resumes_after_the_process_restarts() {
+    let path = temp_db();
+    let al = who("alice");
+    let core = start_file(&path, &[]).unwrap();
+    let p = core.call_as(&al, "projects.create", json!({"name": "Home"}), None).unwrap().output["id"].as_str().unwrap().to_string();
+    let cursor = core.pulse_now().unwrap();
+    core.call_as(&al, "tasks.create", json!({"project": p, "title": "after the cursor"}), None).unwrap();
+    drop(core);
+
+    let core = start_file(&path, &[]).unwrap();
+    let batch = core.pulse(&al, Some(&cursor), 100).unwrap();
+    let kinds: Vec<_> = batch.events.iter().map(|e| e.kind.as_str()).collect();
+    assert!(kinds.contains(&"tasks.created"), "the event written before the restart is still there: {kinds:?}");
+    assert!(!batch.reset, "a cursor from before the restart still works");
+    // A person who cannot see the project still hears nothing.
+    let other = core.pulse(&who("mallory"), Some(&cursor), 100).unwrap();
+    assert!(other.events.iter().all(|e| e.kind != "tasks.created"));
+}
+
+#[test]
+fn switching_a_plugin_off_removes_what_it_adds_and_keeps_its_data() {
+    let path = temp_db();
+    let al = who("alice");
+    let core = start_file(&path, &[]).unwrap();
+    let p = core.call_as(&al, "projects.create", json!({"name": "Home"}), None).unwrap().output["id"].as_str().unwrap().to_string();
+    core.call_as(&al, "tasks.create", json!({"project": p, "title": "Keep me"}), None).unwrap();
+    drop(core);
+
+    // Everything that needs tasks goes off with it.
+    let without = ["tasks", "discussion", "export", "notify", "notify-inbox", "audit", "quota"];
+    let off = start_file(&path, &without).unwrap_or_else(|p| panic!("{p:#?}"));
+    let d = off.describe(&al);
+    assert!(d["operations"].get("tasks.create").is_none(), "its operations are gone");
+    assert!(d["operations"].get("projects.create").is_some(), "the rest still works");
+    assert_eq!(off.call_as(&al, "tasks.create", json!({"project": p, "title": "x"}), None).unwrap_err().category, Category::NotFound);
+    drop(off);
+
+    let back = start_file(&path, &[]).unwrap();
+    let list = back.call_as(&al, "tasks.list", json!({"project": p}), None).unwrap().output;
+    assert_eq!(list["tasks"][0]["title"], "Keep me", "its data was kept while it was off");
+}
