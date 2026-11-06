@@ -588,3 +588,78 @@ fn switching_a_plugin_off_removes_what_it_adds_and_keeps_its_data() {
     let list = back.call_as(&al, "tasks.list", json!({"project": p}), None).unwrap().output;
     assert_eq!(list["tasks"][0]["title"], "Keep me", "its data was kept while it was off");
 }
+
+// ---- Slots (ADR 0016; PRD criteria 4 and 8) -----------------------------------------------------
+
+struct Pin(Value);
+impl Plugin for Pin {
+    fn manifest(&self) -> Manifest {
+        serde_json::from_value(self.0.clone()).expect("test manifest")
+    }
+}
+
+fn pin_with(slots: Value) -> Arc<dyn Plugin> {
+    Arc::new(Pin(json!({"id": "pin", "version": "0.1.0", "name": "Pin", "namespaces": ["pin"],
+        "requires": {"plugins": ["tasks"]}, "slots": slots})))
+}
+
+fn slot_problems(slots: Value) -> Vec<Problem> {
+    let mut p = profile_embedded(":memory:");
+    p.enabled.push("pin".into());
+    Core::check(&distribution_with(p, vec![pin_with(slots)]))
+}
+
+fn archive_item() -> Value {
+    json!({"slot": "task.actions", "id": "pin.archive", "label": {"en": "Archive now", "ar": "أرشفة"},
+        "operation": "tasks.update", "args": {"project": "$project.id", "id": "$task.id", "archived": true}})
+}
+
+#[test]
+fn a_plugin_adds_a_button_by_declaring_it_and_nobody_else_changes() {
+    let mut p = profile_test(&[]);
+    p.enabled.push("pin".into());
+    let dist = distribution_with(p, vec![pin_with(json!([archive_item()])), Arc::new(TestClock(FixedClock::at(1_700_000_000_000))), Arc::new(TestIds)]);
+    let core = Core::start(&dist).unwrap_or_else(|p| panic!("{p:#?}"));
+    let d = core.describe(&who("alice"));
+    let items: Vec<&Value> = d["slots"].as_array().unwrap().iter().collect();
+    // Madar's export item and the new one, in their Slots, each in the caller's reach.
+    assert!(items.iter().any(|i| i["id"] == "export.project" && i["slot"] == "project.actions"));
+    let mine = items.iter().find(|i| i["id"] == "pin.archive").expect("the new item is listed");
+    assert_eq!((mine["slot"].as_str(), mine["operation"].as_str(), mine["plugin"].as_str()), (Some("task.actions"), Some("tasks.update"), Some("pin")));
+    assert_eq!(mine["label"]["en"], "Archive now");
+    // The item does what its Operation does: run it the way a Face would, with the context filled in.
+    let al = who("alice");
+    let proj = core.call_as(&al, "projects.create", json!({"name": "Home"}), None).unwrap().output;
+    let task = core.call_as(&al, "tasks.create", json!({"project": proj["id"], "title": "Old"}), None).unwrap().output;
+    let ran = core.call_as(&al, "tasks.update", json!({"project": proj["id"], "id": task["id"], "archived": true}), None).unwrap().output;
+    assert_eq!(ran["archived"], true);
+}
+
+#[test]
+fn before_sign_in_a_face_learns_nothing_about_slots() {
+    let a = app();
+    assert!(a.core.describe_public().get("slots").is_none());
+    assert!(!a.core.describe(&who("alice"))["slots"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn the_resolver_rejects_slot_items_that_cannot_work() {
+    assert_eq!(slot_problems(json!([archive_item()])), vec![], "the good item resolves");
+    let codes = |slots: Value| slot_problems(slots).into_iter().map(|p| (p.code, p.message)).collect::<Vec<_>>();
+    let with = |change: &dyn Fn(&mut Value)| {
+        let mut i = archive_item();
+        change(&mut i);
+        codes(json!([i]))
+    };
+    let has = |found: &[(String, String)], code: &str, word: &str| found.iter().any(|(c, m)| c == code && m.contains(word));
+    assert!(has(&with(&|i| i["operation"] = json!("tasks.nope")), "bad_slot", "no enabled plugin declares"));
+    assert!(has(&with(&|i| { i["args"].as_object_mut().unwrap().remove("id"); }), "bad_slot", "requires id"));
+    assert!(has(&with(&|i| { i["args"]["colour"] = json!("red"); }), "bad_slot", "no input called colour"));
+    assert!(has(&with(&|i| i["id"] = json!("elsewhere.archive")), "name_outside_namespace", "elsewhere.archive"));
+    assert!(has(&with(&|i| i["label"] = json!({"ar": "x"})), "bad_slot", "English label"));
+    assert!(has(&with(&|i| i["args"]["id"] = json!("$Task id")), "bad_slot", "not `$name`"));
+    assert!(has(&with(&|i| i["result"] = json!("download")), "bad_slot", "file"));
+    assert!(has(&with(&|i| i["slot"] = json!("Task Actions")), "bad_slot", "lowercase"));
+    // The same id twice, in one plugin.
+    assert!(has(&codes(json!([archive_item(), archive_item()])), "duplicate_slot_item", "pin.archive"));
+}

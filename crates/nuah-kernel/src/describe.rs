@@ -66,10 +66,23 @@ impl Core {
             let providers: Vec<&String> = inner.plan.providers.get(n).map(|v| v.iter().map(|(_, p)| p).collect()).unwrap_or_default();
             (n.clone(), json!({"owner": owner, "policy": d.policy, "providers": providers}))
         }).collect();
+        // Slot items the caller can use: the Operation exists and the caller's Roles allow it.
+        let mut slots: Vec<Value> = vec![];
+        for (id, a) in &inner.plan.active {
+            for f in &a.manifest.slots {
+                if ops.get(&f.operation).and_then(|o| o["allowed"].as_bool()) == Some(true) {
+                    slots.push(json!({
+                        "slot": f.slot, "id": f.id, "plugin": id, "label": f.label, "operation": f.operation,
+                        "args": f.args, "result": f.result, "file": f.file, "order": f.order,
+                    }));
+                }
+            }
+        }
+        slots.sort_by(|a, b| (a["slot"].as_str(), a["order"].as_i64(), a["id"].as_str()).cmp(&(b["slot"].as_str(), b["order"].as_i64(), b["id"].as_str())));
         json!({
             "envelope": ENVELOPE_VERSION, "contract": inner.plan.hash, "profile": inner.profile_name,
             "who": who, "plugins": plugins, "operations": ops, "events": events,
-            "permissions": perms, "themes": themes, "extension_points": points,
+            "permissions": perms, "themes": themes, "extension_points": points, "slots": slots,
         })
     }
 }

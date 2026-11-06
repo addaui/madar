@@ -133,6 +133,10 @@ impl Plugin for Export {
             "id": "export", "version": "0.2.0", "name": "Export", "namespaces": ["export"],
             "description": "A whole project as one JSON document",
             "requires": {"plugins": ["projects", "tasks", "discussion"], "capabilities": ["call"]},
+            "slots": [{"slot": "project.actions", "id": "export.project", "order": 10,
+                "label": {"en": "Export", "ar": "تصدير"},
+                "operation": "export.project", "args": {"project": "$project.id"},
+                "result": "download", "file": "$project.name.json"}],
             "operations": {
                 "export.project": {"kind": "query", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
                     "description": "Download a project, its tasks, labels and comments",

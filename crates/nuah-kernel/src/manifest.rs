@@ -164,6 +164,44 @@ pub struct PermissionDecl {
     pub default: Vec<String>,
 }
 
+/// What a Face does with the answer of a Slot item's Operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SlotResult {
+    /// Nothing to show; the Face refreshes what it displays.
+    #[default]
+    None,
+    /// The answer is a document the person saves as a file.
+    Download,
+}
+
+/// An item a plugin puts into a [Slot](https://docs.addaui.com/nuah/references/glossary/#slot) a Face
+/// offers ([ADR 0012], [ADR 0016]). It can only name an Operation.
+///
+/// [ADR 0012]: https://docs.addaui.com/nuah/adr/0012-slot-actions-name-operations-faces-declare-slots/
+/// [ADR 0016]: https://docs.addaui.com/nuah/adr/0016-slot-items-are-declared-in-manifests-listed-by-describe-and-checked-against-each-face/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlotFill {
+    /// The Slot, named by the Face: `project.actions`.
+    pub slot: String,
+    /// Unique, under one of the plugin's namespaces.
+    pub id: String,
+    /// Language code to text; `en` is required.
+    pub label: BTreeMap<String, String>,
+    /// The Operation the item runs.
+    pub operation: String,
+    /// The Operation's input: a literal, or `$name.path` read from the Slot's context.
+    #[serde(default)]
+    pub args: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub result: SlotResult,
+    /// With `download`: the file name, a template such as `$project.name.json`.
+    #[serde(default)]
+    pub file: Option<String>,
+    #[serde(default)]
+    pub order: i32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookDecl {
     pub stage: Stage,
@@ -238,6 +276,9 @@ pub struct Manifest {
     pub resources: Vec<String>,
     #[serde(default)]
     pub settings_schema: Value,
+    /// Items this plugin puts into Slots that Faces offer.
+    #[serde(default)]
+    pub slots: Vec<SlotFill>,
     /// A Theme's data for Faces.
     #[serde(default)]
     pub theme: Option<Value>,

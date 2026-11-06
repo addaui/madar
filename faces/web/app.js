@@ -196,7 +196,7 @@ function boardView() {
   const subs = (id) => S.tasks.filter((x) => x.parent === id);
   const head = h("div", { class: "head" }, h("h1", {}, p.name),
     h("button", { onclick: () => { S.panel = S.panel === "members" ? null : "members"; render(); } }, t("members") + " (" + S.members.length + ")"),
-    h("button", { onclick: exportProject }, t("export")),
+    slotButtons("project.actions", { project: p }),
     manager ? h("button", { onclick: () => { S.panel = S.panel === "audit" ? null : "audit"; if (S.panel === "audit") loadAudit(); else render(); } }, t("audit")) : null,
     manager ? h("button", { onclick: renameProject }, t("rename")) : null,
     manager ? h("button", { class: "danger", onclick: deleteProject }, t("delete")) : h("button", { class: "danger", onclick: leaveProject }, t("leave")));
@@ -235,11 +235,29 @@ async function dropOn(id, status, overCard) {
 async function renameProject() { const n = prompt(t("rename"), S.project.name); if (n && n.trim()) { await attempt(() => call("projects.update", { project: S.project.id, name: n.trim(), expected_rev: S.project.rev })); refreshAll(); } }
 async function deleteProject() { if (confirm(t("sure"))) { await attempt(() => call("projects.delete", { project: S.project.id })); S.view = "today"; refreshAll(); } }
 async function leaveProject() { if (confirm(t("leave") + "?")) { await attempt(() => call("projects.leave", { project: S.project.id })); S.view = "today"; refreshAll(); } }
-async function exportProject() {
-  const out = await attempt(() => call("export.project", { project: S.project.id }));
-  if (!out) return;
-  const a = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" })), download: S.project.name + ".json" });
-  document.body.append(a); a.click(); a.remove();
+// Slots: places plugins may add buttons to. What to show comes from `describe`; a button only
+// names an Operation, and its inputs are read from the Slot's context (ADR 0016).
+const fromContext = (ctx, path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), ctx);
+const fillRefs = (v, ctx) => (typeof v === "string" && v.startsWith("$") ? fromContext(ctx, v.slice(1)) : v);
+const fillFile = (tpl, ctx) => tpl.replace(/\$([a-z0-9_]+(?:\.[a-z0-9_]+)*)/g, (m, path) => {
+  // In a file name the path ends where the text after it begins: `$project.name.json` is the name, then `.json`.
+  const parts = path.split("."); let value = ctx, used = 0;
+  for (const k of parts) { if (value != null && typeof value === "object" && k in value) { value = value[k]; used++; } else break; }
+  return String(value) + parts.slice(used).map((x) => "." + x).join("");
+});
+function slotLabel(item) { return item.label[lang] || item.label.en || item.id; }
+function slotButtons(slot, ctx) {
+  return (S.desc.slots || []).filter((i) => i.slot === slot).map((item) =>
+    h("button", { "data-slot-item": item.id, onclick: () => runSlot(item, ctx) }, slotLabel(item)));
+}
+async function runSlot(item, ctx) {
+  const args = Object.fromEntries(Object.entries(item.args).map(([k, v]) => [k, fillRefs(v, ctx)]));
+  const out = await attempt(() => call(item.operation, args));
+  if (out === undefined || out === null) return;
+  if (item.result === "download") {
+    const a = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" })), download: fillFile(item.file || "download.json", ctx) });
+    document.body.append(a); a.click(); a.remove();
+  } else refreshAll();
 }
 
 function membersPanel(manager) {
@@ -297,6 +315,7 @@ function drawer() {
     S.labels.length ? [h("label", {}, t("labels")), labelBox] : null,
     writer ? h("div", { class: "row", style: "margin-top:14px" }, h("button", { class: "primary", onclick: save }, t("save")),
       h("button", { onclick: async () => { await attempt(() => call("tasks.update", { project: p.id, id: task.id, archived: !task.archived })); S.openTask = null; drawerCache = null; refreshAll(); } }, task.archived ? t("restore") : t("archive")),
+      slotButtons("task.actions", { project: p, task }),
       h("button", { class: "danger", onclick: async () => { if (confirm(t("sure"))) { await attempt(() => call("tasks.remove", { project: p.id, id: task.id })); S.openTask = null; drawerCache = null; refreshAll(); } } }, t("delete"))) : null,
     task.parent ? null : [h("h3", {}, t("subtasks")),
       ...subs.map((s) => h("div", { class: "list-item" }, h("input", { type: "checkbox", checked: !!s.completed_at, disabled: !writer, onchange: async () => { const done = p.statuses[p.statuses.length - 1].id, first = p.statuses[0].id; await attempt(() => call("tasks.move", { project: p.id, id: s.id, status: s.completed_at ? first : done })); refreshAll(); } }), h("span", { class: "grow" }, s.title))),

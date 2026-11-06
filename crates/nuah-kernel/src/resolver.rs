@@ -160,6 +160,7 @@ pub fn resolve(dist: &Distribution) -> (Vec<Problem>, Plan) {
 
     let mut resource_kinds: BTreeMap<String, String> = BTreeMap::new();
     let mut permission_owner: BTreeMap<String, String> = BTreeMap::new();
+    let mut slot_item_owner: BTreeMap<String, String> = BTreeMap::new();
 
     for (id, _, m) in &enabled {
         let needs_ns = !m.operations.is_empty()
@@ -168,7 +169,8 @@ pub fn resolve(dist: &Distribution) -> (Vec<Problem>, Plan) {
             || !m.data.collections.is_empty()
             || !m.scopes.is_empty()
             || !m.resources.is_empty()
-            || !m.defines.extension_points.is_empty();
+            || !m.defines.extension_points.is_empty()
+            || !m.slots.is_empty();
         if needs_ns && m.namespaces.is_empty() {
             ps.push(problem("no_namespace", &[id], format!("{id} contributes names but declares no namespace")));
         }
@@ -184,6 +186,12 @@ pub fn resolve(dist: &Distribution) -> (Vec<Problem>, Plan) {
             own("operation", n, &mut ps);
             if let Some(other) = plan.ops.insert(n.clone(), id.clone()) {
                 ps.push(problem("duplicate_operation", &[&other, id], format!("{other} and {id} both declare the operation {n}")));
+            }
+        }
+        for f in &m.slots {
+            own("slot item", &f.id, &mut ps);
+            if let Some(other) = slot_item_owner.insert(f.id.clone(), id.clone()) {
+                ps.push(problem("duplicate_slot_item", &[&other, id], format!("{other} and {id} both declare the slot item {}", f.id)));
             }
         }
         for n in m.events.keys() {
@@ -312,6 +320,13 @@ pub fn resolve(dist: &Distribution) -> (Vec<Problem>, Plan) {
             if plan.ext_points.get(point).is_some_and(|(_, d)| d.policy == CallPolicy::Single) && !plan.providers.contains_key(point) {
                 ps.push(problem("extension_point_unfilled", &[id], format!("{id} needs {point}, and no enabled plugin provides it")));
             }
+        }
+    }
+
+    // 4b. Slot items name an Operation and give it everything it needs
+    for (id, _, m) in &enabled {
+        for f in &m.slots {
+            check_slot_item(id, f, &enabled, &mut ps);
         }
     }
 
@@ -483,6 +498,50 @@ pub fn resolve(dist: &Distribution) -> (Vec<Problem>, Plan) {
 }
 
 /// Fill in defaults so the rest of the kernel can rely on them.
+/// `$name` or `$name.path.to.field`: where a Slot item's argument comes from.
+fn is_context_ref(s: &str) -> bool {
+    s.strip_prefix('$').is_some_and(|r| !r.is_empty() && r.split('.').all(|w| !w.is_empty() && w.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')))
+}
+
+fn check_slot_item(plugin: &str, f: &SlotFill, enabled: &[(String, Arc<dyn Plugin>, Manifest)], ps: &mut Vec<Problem>) {
+    let bad = |ps: &mut Vec<Problem>, why: String| ps.push(problem("bad_slot", &[plugin], format!("{plugin}: slot item {}: {why}", f.id)));
+    let named = |s: &str| !s.is_empty() && s.split('.').all(|w| !w.is_empty() && w.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'));
+    if !named(&f.slot) {
+        bad(ps, format!("the slot name {:?} must be lowercase words joined by dots", f.slot));
+    }
+    if f.label.get("en").map_or(true, |l| l.trim().is_empty()) {
+        bad(ps, "needs an English label (`label.en`)".into());
+    }
+    for (name, value) in &f.args {
+        if let Some(r) = value.as_str().filter(|r| r.starts_with('$')) {
+            if !is_context_ref(r) {
+                bad(ps, format!("argument {name} reads {r:?}, which is not `$name` or `$name.path`"));
+            }
+        }
+    }
+    if f.result == SlotResult::Download && f.file.as_deref().map_or(true, |t| t.trim().is_empty()) {
+        bad(ps, "a download needs a `file` name".into());
+    }
+    let Some(op) = enabled.iter().find_map(|(_, _, m)| m.operations.get(&f.operation)) else {
+        bad(ps, format!("names the operation {}, which no enabled plugin declares", f.operation));
+        return;
+    };
+    // The item must give the Operation what it requires, and nothing it does not know.
+    let required: Vec<&str> = op.input["required"].as_array().map(|r| r.iter().filter_map(|x| x.as_str()).collect()).unwrap_or_default();
+    for r in required {
+        if !f.args.contains_key(r) {
+            bad(ps, format!("{} requires {r}, which the item does not provide", f.operation));
+        }
+    }
+    if let Some(props) = op.input["properties"].as_object() {
+        for name in f.args.keys() {
+            if !props.contains_key(name) {
+                bad(ps, format!("{} has no input called {name}", f.operation));
+            }
+        }
+    }
+}
+
 fn normalize(m: &mut Manifest) {
     for d in m.operations.values_mut() {
         if d.input.is_null() {

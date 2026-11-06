@@ -282,6 +282,45 @@ pub fn describe_input(schema: &Value) -> Vec<String> {
 }
 
 
+/// Compare what plugins put into Slots (from `describe`) with what a Face says it offers
+/// (`slots.json`: `{"face": "web", "slots": {"project.actions": {"context": ["project"], "results": ["none", "download"]}}}`).
+/// Returns one sentence per mismatch; an empty list means the Face shows every item it is given
+/// ([ADR 0016]).
+///
+/// [ADR 0016]: https://docs.addaui.com/nuah/adr/0016-slot-items-are-declared-in-manifests-listed-by-describe-and-checked-against-each-face/
+pub fn slot_warnings(describe: &Value, declaration: &Value) -> Vec<String> {
+    let face = declaration["face"].as_str().unwrap_or("this face");
+    let offered = declaration["slots"].as_object().cloned().unwrap_or_default();
+    let mut out = vec![];
+    for item in describe["slots"].as_array().cloned().unwrap_or_default() {
+        let (slot, id) = (item["slot"].as_str().unwrap_or("?"), item["id"].as_str().unwrap_or("?"));
+        let Some(decl) = offered.get(slot) else {
+            out.push(format!("{id} fills the slot {slot}, which {face} does not offer"));
+            continue;
+        };
+        let context: Vec<&str> = decl["context"].as_array().map(|c| c.iter().filter_map(|x| x.as_str()).collect()).unwrap_or_default();
+        let mut refs: Vec<&str> = item["args"].as_object().map(|a| a.values().filter_map(|v| v.as_str()).collect()).unwrap_or_default();
+        refs.extend(item["file"].as_str());
+        for r in refs {
+            // `$project.id`, or a file template such as `$project.name.json`: the name is the first word.
+            let mut rest = r;
+            while let Some(at) = rest.find('$') {
+                let name: String = rest[at + 1..].chars().take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_').collect();
+                if !context.contains(&name.as_str()) {
+                    out.push(format!("{id} reads ${name}, which the slot {slot} of {face} does not provide"));
+                }
+                rest = &rest[at + 1..];
+            }
+        }
+        let result = item["result"].as_str().unwrap_or("none");
+        let handles: Vec<&str> = decl["results"].as_array().map(|c| c.iter().filter_map(|x| x.as_str()).collect()).unwrap_or_default();
+        if !handles.contains(&result) {
+            out.push(format!("{id} returns {result}, which {face} cannot handle in the slot {slot}"));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,5 +391,23 @@ mod tests {
         assert!(input_from_args(schema, &args(&["oops"])).unwrap_err().contains("key=value"));
         assert_eq!(input_from_args(schema, &args(&[r#"{"title":"x"}"#])).unwrap(), json!({"title": "x"}));
         assert!(describe_input(schema).contains(&"title (required)  string".to_string()));
+    }
+
+    #[test]
+    fn a_face_is_told_about_items_it_would_not_show() {
+        let describe = json!({"slots": [
+            {"slot": "project.actions", "id": "export.project", "args": {"project": "$project.id"}, "file": "$project.name.json", "result": "download"},
+            {"slot": "task.actions", "id": "x.one", "args": {}, "result": "none"},
+            {"slot": "project.actions", "id": "x.two", "args": {"a": "$task.id"}, "result": "none"},
+            {"slot": "project.actions", "id": "x.three", "args": {}, "result": "download"},
+        ]});
+        let face = json!({"face": "web", "slots": {"project.actions": {"context": ["project"], "results": ["none", "download"]}}});
+        let w = slot_warnings(&describe, &face);
+        assert_eq!(w.len(), 2, "{w:#?}");
+        assert!(w.iter().any(|m| m.contains("x.one") && m.contains("does not offer")));
+        assert!(w.iter().any(|m| m.contains("x.two") && m.contains("$task")));
+        assert!(slot_warnings(&json!({"slots": []}), &face).is_empty());
+        let no_download = json!({"face": "web", "slots": {"project.actions": {"context": ["project"], "results": ["none"]}}});
+        assert!(slot_warnings(&describe, &no_download).iter().any(|m| m.contains("cannot handle")));
     }
 }
