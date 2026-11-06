@@ -991,3 +991,122 @@ fn a_rich_task_description_is_checked_and_its_references_become_links() {
     assert_eq!(links["links"][0]["from"]["id"], t["id"]);
     assert_eq!(links["links"][0]["title"], "Implement");
 }
+
+// ---- threads and the timeline (ADR 0024) ---------------------------------------------------------------------
+
+#[test]
+fn a_comment_thread_counts_its_replies_and_replies_do_not_nest() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Talk");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let t = a.task(&al, &p, "Discuss")["id"].as_str().unwrap().to_string();
+    let root = a.ok(&al, "discussion.add", json!({"project": p, "task": t, "body": "start"}))["id"].as_str().unwrap().to_string();
+    let r1 = a.ok(&bo, "discussion.add", json!({"project": p, "task": t, "body": "reply one", "parent": root}))["id"].as_str().unwrap().to_string();
+    a.ok(&al, "discussion.add", json!({"project": p, "task": t, "body": doc_with("rich reply", &[]), "parent": root}));
+    // a reply to a reply is refused
+    assert_eq!(a.err(&al, "discussion.add", json!({"project": p, "task": t, "body": "deeper", "parent": r1})).reason.as_deref(), Some("discussion.bad_parent"));
+    let roots = a.ok(&al, "discussion.list", json!({"project": p, "task": t, "roots": true}))["comments"].clone();
+    assert_eq!(roots.as_array().unwrap().len(), 1);
+    assert_eq!(roots[0]["reply_count"], 2);
+    assert_eq!(roots[0]["participants"], json!(["bob", "alice"]));
+    let thread = a.ok(&al, "discussion.list", json!({"project": p, "task": t, "parent": root}))["comments"].clone();
+    assert_eq!(thread.as_array().unwrap().len(), 2);
+    // removing a reply lowers the count; removing the root takes the replies with it
+    a.ok(&bo, "discussion.remove", json!({"project": p, "id": r1}));
+    assert_eq!(a.ok(&al, "discussion.list", json!({"project": p, "task": t, "roots": true}))["comments"][0]["reply_count"], 1);
+    a.ok(&al, "discussion.remove", json!({"project": p, "id": root}));
+    assert!(a.ok(&al, "discussion.list", json!({"project": p, "task": t}))["comments"].as_array().unwrap().is_empty());
+    // a comment needs a task or a page, not both and not neither
+    assert_eq!(a.err(&al, "discussion.add", json!({"project": p, "body": "x"})).category, Category::Invalid);
+}
+
+#[test]
+fn pages_can_be_discussed_and_their_comments_go_with_them() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Docs");
+    let pg = a.ok(&al, "pages.create", json!({"project": p, "title": "RFC"}))["id"].as_str().unwrap().to_string();
+    a.ok(&al, "discussion.add", json!({"project": p, "page": pg, "body": "looks good"}));
+    assert_eq!(a.ok(&al, "discussion.list", json!({"project": p, "page": pg}))["comments"].as_array().unwrap().len(), 1);
+    // a page of another project cannot be commented on through this one
+    let q = a.project(&al, "Elsewhere");
+    assert_eq!(a.err(&al, "discussion.add", json!({"project": q, "page": pg, "body": "no"})).category, Category::NotFound);
+    a.ok(&al, "pages.delete", json!({"project": p, "id": pg}));
+    a.settle();
+    let comments_left = a.core.call_as(&al, "export.project", json!({"project": p}), None).unwrap().output["comments"].as_array().unwrap().len();
+    assert_eq!(comments_left, 0);
+}
+
+#[test]
+fn the_timeline_merges_comments_and_history_newest_first_and_pages_through_them() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Feed");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let t = a.task(&al, &p, "Story");
+    let tid = t["id"].as_str().unwrap().to_string();
+    for n in 0..4 {
+        a.clock.advance(1000);
+        a.ok(&al, "discussion.add", json!({"project": p, "task": tid, "body": format!("note {n}")}));
+    }
+    a.clock.advance(1000);
+    a.ok(&al, "tasks.update", json!({"project": p, "id": tid, "priority": 7}));
+    a.settle();
+    let target = json!({"type": "tasks.task", "id": tid});
+    let first = a.ok(&al, "timeline.feed", json!({"project": p, "target": target, "limit": 3}));
+    let kinds: Vec<&str> = first["items"].as_array().unwrap().iter().map(|x| x["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["tasks.updated", "comment", "comment"], "newest first, the owner sees history too");
+    let next = first["next"].as_i64().expect("there is more");
+    let rest = a.ok(&al, "timeline.feed", json!({"project": p, "target": target, "limit": 10, "before": next}));
+    assert!(rest["items"].as_array().unwrap().iter().all(|x| x["at"].as_i64().unwrap() < next));
+    assert!(rest["next"].is_null());
+    // an editor who is not an owner sees the comments but not the history
+    let for_bob = a.ok(&bo, "timeline.feed", json!({"project": p, "target": target}));
+    assert!(for_bob["items"].as_array().unwrap().iter().all(|x| x["source"] == "discussion"));
+    // a stranger asks and learns nothing
+    assert_eq!(a.err(&who("mallory"), "timeline.feed", json!({"project": p, "target": target})).category, Category::NotFound);
+}
+
+// ---- workspaces (ADR 0023) --------------------------------------------------------------------------------------
+
+#[test]
+fn workspaces_group_the_projects_you_see_and_belong_to_you_alone() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Client work");
+    let q = a.project(&al, "Garden");
+    let work = a.ok(&al, "workspaces.create", json!({"name": "Work"}))["id"].as_str().unwrap().to_string();
+    a.ok(&al, "workspaces.place", json!({"project": p, "workspace": work}));
+    let l = a.ok(&al, "workspaces.list", json!({}));
+    assert_eq!(l["workspaces"][0]["id"], "default");
+    assert_eq!(l["workspaces"].as_array().unwrap().len(), 2);
+    assert_eq!(l["placements"], json!([{"project": p, "workspace": work}]));
+    // the other person's view is theirs: nothing placed, and Alice's workspace is not theirs to use
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    assert!(a.ok(&bo, "workspaces.list", json!({}))["placements"].as_array().unwrap().is_empty());
+    assert_eq!(a.err(&bo, "workspaces.place", json!({"project": p, "workspace": work})).category, Category::NotFound);
+    // a workspace with projects in it cannot be deleted; emptied, it can
+    assert_eq!(a.err(&al, "workspaces.delete", json!({"id": work})).reason.as_deref(), Some("workspaces.not_empty"));
+    a.ok(&al, "workspaces.place", json!({"project": p, "workspace": "default"}));
+    a.ok(&al, "workspaces.delete", json!({"id": work}));
+    assert_eq!(a.ok(&al, "workspaces.list", json!({}))["workspaces"].as_array().unwrap().len(), 1);
+    // you cannot place a project you cannot see
+    assert_eq!(a.err(&bo, "workspaces.place", json!({"project": q, "workspace": "default"})).category, Category::NotFound);
+}
+
+#[test]
+fn leaving_or_deleting_a_project_clears_its_placement_and_the_plugin_can_be_off() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Shared");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let w = a.ok(&bo, "workspaces.create", json!({"name": "Mine"}))["id"].as_str().unwrap().to_string();
+    a.ok(&bo, "workspaces.place", json!({"project": p, "workspace": w}));
+    a.ok(&bo, "projects.leave", json!({"project": p}));
+    a.settle();
+    assert!(a.ok(&bo, "workspaces.list", json!({}))["placements"].as_array().unwrap().is_empty());
+    let path = temp_db();
+    let core = start_file(&path, &["workspaces"]).unwrap_or_else(|p| panic!("{p:#?}"));
+    assert!(core.call_as(&al, "workspaces.list", json!({}), None).is_err());
+}

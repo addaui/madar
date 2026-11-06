@@ -16,6 +16,7 @@ impl Plugin for Audit {
             "id": "audit", "version": "0.2.0", "name": "Audit", "namespaces": ["audit"],
             "description": "A history of everything that happened in a project, for its owners",
             "requires": {"plugins": ["projects"]},
+            "provides": [{"extension_point": "timeline.source", "optional": true}],
             "data": {"collections": [ENTRIES], "version": 1, "indexes": [{"collection": ENTRIES, "field": "project"}]},
             "operations": {
                 "audit.list": {"kind": "query", "description": "The history of a project (owners only)", "permission": "projects.manage", "resource": {"type":"projects.project","id":"project"},
@@ -30,6 +31,24 @@ impl Plugin for Audit {
             let page = tx.query(ENTRIES, &Query::new().eq("project", text(&i, "project")).desc("at").limit(i.get("limit").and_then(|l| l.as_u64()).unwrap_or(100) as usize).offset(i.get("after").and_then(|l| l.as_u64()).unwrap_or(0) as usize))?;
             let rows: Vec<Value> = page.items.iter().map(|d| json!({"id": d.id, "kind": d.body["kind"], "actor": d.body["actor"], "at": d.body["at"], "data": d.body["data"]})).collect();
             Ok(json!({"entries": rows, "next": page.next}))
+        });
+        // History about one task or page, for the project's owners only (the timeline tells us who asks).
+        b.provide("timeline.source", |tx, i| {
+            if i["manage"] != true {
+                return Ok(json!({"items": []}));
+            }
+            let (project, tt, id) = (text(&i, "project"), text(&i["target"], "type"), text(&i["target"], "id"));
+            let field = match tt { "tasks.task" => "task", "pages.page" => "page", _ => return Ok(json!({"items": []})) };
+            let before = i["before"].as_i64().unwrap_or(i64::MAX);
+            let page = tx.query(ENTRIES, &Query::new().eq("project", project).limit(5000))?;
+            let mut items: Vec<Value> = page.items.iter().filter(|d| {
+                let t = &d.body["data"][field];
+                (t.as_str() == Some(id) || t["id"].as_str() == Some(id)) && d.body["at"].as_i64().unwrap_or(0) < before
+                    && !text(&d.body, "kind").starts_with("discussion.") // comments are shown as themselves
+            }).map(|d| json!({"at": d.body["at"], "source": "audit", "kind": d.body["kind"], "id": d.id, "actor": d.body["actor"], "data": d.body["data"]})).collect();
+            items.sort_by(|a, b| b["at"].as_i64().cmp(&a["at"].as_i64()));
+            items.truncate(i["limit"].as_u64().unwrap_or(30) as usize);
+            Ok(json!({"items": items}))
         });
         // Safe to repeat: the entry's id comes from what was recorded, so a second delivery overwrites itself.
         b.listener("audit.record", |tx, d| {
