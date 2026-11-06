@@ -79,7 +79,7 @@ impl Plugin for AuthPassword {
             "data": {"collections": [SESSIONS]},
             "settings_schema": {"type":"object","required":["accounts"],"properties":{
                 "session_hours": {"type":"integer","minimum":1,"maximum":720},
-                "accounts": {"type":"array","minItems":1,"items":{"type":"object","required":["name","password_hash"],
+                "accounts": {"x-secret":true,"type":"array","minItems":1,"items":{"type":"object","required":["name","password_hash"],
                     "properties":{"name":{"type":"string","minLength":1},"display":{"type":"string"},
                     "password_hash":{"type":"string","minLength":1},"roles":{"type":"array","items":{"type":"string"}}},
                     "additionalProperties":false}}},

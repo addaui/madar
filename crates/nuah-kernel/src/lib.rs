@@ -14,6 +14,7 @@ pub mod ports;
 pub mod pulse;
 pub mod resolver;
 pub mod schema;
+pub mod setup;
 
 pub use crate::core::Core;
 pub use crate::db::*;

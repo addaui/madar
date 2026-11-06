@@ -27,6 +27,8 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod setup;
+
 pub const COOKIE: &str = "nuah_session";
 
 #[derive(Clone, Debug)]
@@ -73,7 +75,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
+pub(crate) fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
     headers.get(name).and_then(|v| v.to_str().ok()).map(String::from)
 }
 
@@ -263,14 +265,14 @@ fn host_only(h: &str) -> String {
     }
 }
 
-fn refuse(status: StatusCode, category: &str, key: &str, message: &str) -> Response {
+pub(crate) fn refuse(status: StatusCode, category: &str, key: &str, message: &str) -> Response {
     (status, Json(json!({"ok": false, "error": {"category": category, "key": key, "message": message}}))).into_response()
 }
 
 /// Browser-facing protections: Host allow-list (DNS rebinding), Origin must match Host (cross-site
 /// writes), commands must be JSON with the Face header (a plain cross-site form cannot send both),
 /// and security headers on every response.
-async fn guard(State(cfg): State<Arc<Config>>, req: Request, next: Next) -> Response {
+pub(crate) async fn guard(State(cfg): State<Arc<Config>>, req: Request, next: Next) -> Response {
     let host_header = header_str(req.headers(), "host").unwrap_or_default();
     if !cfg.hosts.iter().any(|h| *h == host_only(&host_header)) {
         return refuse(StatusCode::MISDIRECTED_REQUEST, "invalid", "server.bad_host", "This host name is not allowed. Start the server with --allow-host to add it.");
@@ -280,7 +282,7 @@ async fn guard(State(cfg): State<Arc<Config>>, req: Request, next: Next) -> Resp
             return refuse(StatusCode::FORBIDDEN, "denied", "server.bad_origin", "Cross-origin requests are not allowed.");
         }
     }
-    if req.method() == Method::POST && req.uri().path().starts_with("/link/call/") {
+    if req.method() == Method::POST && (req.uri().path().starts_with("/link/call/") || req.uri().path().starts_with("/setup/")) {
         if !header_str(req.headers(), "content-type").is_some_and(|c| c.starts_with("application/json")) {
             return refuse(StatusCode::UNSUPPORTED_MEDIA_TYPE, "invalid", "server.not_json", "Send the input as application/json.");
         }
