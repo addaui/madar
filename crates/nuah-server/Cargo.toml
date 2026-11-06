@@ -1,0 +1,20 @@
+[package]
+name = "nuah-server"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-stream = "0.3.6"
+axum = "0.8.9"
+clap = { version = "4.6.7", features = ["derive"] }
+futures-util = "0.3.34"
+nuah-kernel = { path = "../nuah-kernel" }
+nuah-adapters = { path = "../nuah-adapters" }
+nuah-madar = { path = "../nuah-madar" }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
+
+[dev-dependencies]
+ureq = { version = "3.5.1", features = ["json"] }

@@ -2,6 +2,7 @@
 //!
 //! Documentation lives at <https://docs.addaui.com/nuah/>; start with the Architecture overview.
 
+pub mod contract;
 pub mod core;
 pub mod db;
 pub mod describe;
