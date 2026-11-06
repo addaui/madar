@@ -1,7 +1,9 @@
 //! Madar v2: a task manager built as plugins on the Nu'ah kernel.
 //! Design: <https://docs.addaui.com/nuah/specs/madar-v2/>
 
+pub mod content;
 pub mod discussion;
+pub mod pages;
 pub mod projects;
 pub mod small;
 pub mod tasks;
@@ -20,6 +22,7 @@ pub fn catalog() -> Catalog {
         Arc::new(projects::Projects), Arc::new(tasks::Tasks), Arc::new(discussion::Discussion),
         Arc::new(small::Audit), Arc::new(small::Quota), Arc::new(small::Prefs), Arc::new(small::Export),
         Arc::new(small::Notify), Arc::new(small::NotifyInbox),
+        Arc::new(content::Editor), Arc::new(content::EditorBasic), Arc::new(content::Links), Arc::new(pages::Pages),
     ];
     for t in small::themes() {
         list.push(Arc::new(t));
@@ -27,7 +30,7 @@ pub fn catalog() -> Catalog {
     Catalog(list)
 }
 
-const FEATURES: [&str; 10] = ["projects", "tasks", "discussion", "audit", "quota", "prefs", "export", "notify", "notify-inbox", "theme-paper"];
+const FEATURES: [&str; 14] = ["projects", "tasks", "discussion", "audit", "quota", "prefs", "export", "notify", "notify-inbox", "theme-paper", "editor", "editor-basic", "links", "pages"];
 
 fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     let mut enabled: Vec<String> = adapters.iter().map(|s| s.to_string()).collect();
@@ -38,6 +41,7 @@ fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     p.grants.insert("tasks".into(), vec!["emit".into(), "call".into()]);
     p.grants.insert("discussion".into(), vec!["emit".into(), "call".into()]);
     p.grants.insert("prefs".into(), vec!["emit".into()]);
+    p.grants.insert("pages".into(), vec!["emit".into()]);
     p.grants.insert("export".into(), vec!["call".into()]);
     p.grants.insert("notify-inbox".into(), vec!["emit".into()]);
     p
