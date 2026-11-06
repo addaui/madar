@@ -11,9 +11,11 @@ impl Policy for AllowAll {
     fn name(&self) -> &str {
         "policy-allow-all"
     }
-    fn allows(&self, _who: &Identity, _permission: &str, grant: Option<&Grant>, _t: &PermissionTable) -> bool {
-        // Everyone may do everything the resource itself allows; without a resource, everything.
-        grant.map_or(true, |_| true)
+    fn allows(&self, _who: &Identity, permission: &str, grant: Option<&Grant>, _t: &PermissionTable) -> bool {
+        // Roles do not matter here; what the resource grants does ([ADR 0018]). Without a resource, everything.
+        //
+        // [ADR 0018]: https://docs.addaui.com/nuah/adr/0018-allow-all-ignores-roles-but-still-honours-what-the-resource-grants/
+        grant.map_or(true, |g| g.permissions.iter().any(|p| p == permission))
     }
 }
 

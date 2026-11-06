@@ -663,3 +663,29 @@ fn the_resolver_rejects_slot_items_that_cannot_work() {
     // The same id twice, in one plugin.
     assert!(has(&codes(json!([archive_item(), archive_item()])), "duplicate_slot_item", "pin.archive"));
 }
+
+// ---- policy-allow-all (ADR 0018) ------------------------------------------------------------------
+
+#[test]
+fn allow_all_ignores_roles_but_not_what_the_project_grants() {
+    let clock = FixedClock::at(1_700_000_000_000);
+    let mut p = profile_test(&[]);
+    p.enabled.retain(|e| e != "policy-roles");
+    p.enabled.push("policy-allow-all".into());
+    let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|p| panic!("{p:#?}"));
+    // Nobody has any Role: under allow-all that makes no difference.
+    let (owner, viewer, stranger) = (Identity::new("alice", "alice", &[]), Identity::new("bob", "bob", &[]), Identity::new("eve", "eve", &[]));
+    let call = |who: &Identity, op: &str, input: Value| core.call_as(who, op, input, None).map(|r| r.output);
+    let proj = call(&owner, "projects.create", json!({"name": "Home"})).expect("no Role is needed to start a project").clone();
+    let id = proj["id"].as_str().unwrap().to_string();
+    call(&owner, "projects.share", json!({"project": id, "subject": "bob", "level": "viewer"})).unwrap();
+
+    assert!(call(&viewer, "tasks.list", json!({"project": id})).is_ok(), "a viewer reads");
+    let denied = call(&viewer, "tasks.create", json!({"project": id, "title": "x"})).unwrap_err();
+    assert_eq!(denied.category, Category::Denied, "a viewer may not write, whatever the policy");
+    assert_eq!(call(&stranger, "tasks.list", json!({"project": id})).unwrap_err().category, Category::NotFound);
+    // The can-list tells the viewer the truth too.
+    let seen = call(&viewer, "projects.get", json!({"project": id})).unwrap();
+    assert!(!seen["can"].as_array().unwrap().iter().any(|c| c == "projects.write"), "{}", seen["can"]);
+    assert!(call(&owner, "tasks.create", json!({"project": id, "title": "ok"})).is_ok());
+}
