@@ -19,7 +19,6 @@ use axum::response::sse::{Event as Sse, KeepAlive};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{extract::Path, Json, Router};
-use futures_util::Stream;
 use nuah_kernel::{CallRequest, Category, Core, Error};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -44,6 +43,12 @@ pub struct Config {
     /// Failed sign-ins allowed overall within `throttle_window`.
     pub sign_in_failures_overall: usize,
     pub throttle_window: Duration,
+    /// Open Pulse streams one person may hold; opening another closes their oldest ([ADR 0017]).
+    ///
+    /// [ADR 0017]: https://docs.addaui.com/nuah/adr/0017-each-person-has-a-limited-number-of-pulse-streams-the-newest-wins/
+    pub pulse_streams_per_person: usize,
+    /// Open Pulse streams the whole server serves; past it a new stream is refused with 429.
+    pub pulse_streams_total: usize,
 }
 
 impl Default for Config {
@@ -55,6 +60,8 @@ impl Default for Config {
             sign_in_failures_per_name: 5,
             sign_in_failures_overall: 100,
             throttle_window: Duration::from_secs(300),
+            pulse_streams_per_person: 8,
+            pulse_streams_total: 1000,
         }
     }
 }
@@ -64,6 +71,68 @@ struct App {
     core: Core,
     cfg: Arc<Config>,
     throttle: Arc<Mutex<Throttle>>,
+    streams: Arc<Mutex<Streams>>,
+}
+
+/// The open Pulse streams: per person, oldest first ([ADR 0017]).
+///
+/// [ADR 0017]: https://docs.addaui.com/nuah/adr/0017-each-person-has-a-limited-number-of-pulse-streams-the-newest-wins/
+#[derive(Default)]
+struct Streams {
+    by_person: HashMap<String, std::collections::VecDeque<(u64, Arc<tokio::sync::Notify>)>>,
+    total: usize,
+    next: u64,
+}
+
+/// Held by a stream while it is open; dropping it frees the place.
+struct StreamSlot {
+    streams: Arc<Mutex<Streams>>,
+    person: String,
+    id: u64,
+    /// Fires when a newer stream of the same person takes this one's place.
+    replaced: Arc<tokio::sync::Notify>,
+}
+
+impl Streams {
+    fn open(this: &Arc<Mutex<Streams>>, person: &str, cfg: &Config) -> Option<StreamSlot> {
+        let mut s = this.lock().unwrap_or_else(|e| e.into_inner());
+        if s.total >= cfg.pulse_streams_total {
+            return None;
+        }
+        s.next += 1;
+        let id = s.next;
+        let replaced = Arc::new(tokio::sync::Notify::new());
+        let mut evicted = vec![];
+        {
+            let list = s.by_person.entry(person.to_string()).or_default();
+            while list.len() >= cfg.pulse_streams_per_person.max(1) {
+                if let Some((_, n)) = list.pop_front() {
+                    evicted.push(n);
+                }
+            }
+            list.push_back((id, replaced.clone()));
+        }
+        s.total = s.total + 1 - evicted.len();
+        for n in evicted {
+            n.notify_one();
+        }
+        Some(StreamSlot { streams: this.clone(), person: person.to_string(), id, replaced })
+    }
+}
+
+impl Drop for StreamSlot {
+    fn drop(&mut self) {
+        let mut s = self.streams.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(list) = s.by_person.get_mut(&self.person) else { return };
+        let before = list.len();
+        list.retain(|(i, _)| *i != self.id);
+        let removed = before - list.len();
+        if list.is_empty() {
+            s.by_person.remove(&self.person);
+        }
+        // An evicted stream was already taken out of the count.
+        s.total -= removed;
+    }
 }
 
 /// Failed sign-in times, per account name and overall ([ADR 0015]). In memory; a restart clears it.
@@ -275,7 +344,7 @@ async fn pulse(
     State(app): State<App>,
     headers: HeaderMap,
     Query(q): Query<HashMap<String, String>>,
-) -> Result<axum::response::sse::Sse<impl Stream<Item = Result<Sse, Infallible>>>, ApiError> {
+) -> Result<Response, ApiError> {
     let cred = credential(&headers);
     let core = app.core.clone();
     let c = cred.clone();
@@ -296,11 +365,17 @@ async fn pulse(
         })
         .await??,
     };
+    let Some(slot) = Streams::open(&app.streams, &who.subject, &app.cfg) else {
+        let mut r = refuse(StatusCode::TOO_MANY_REQUESTS, "denied", "pulse.too_many_streams", "The server has as many live streams as it allows. Try again shortly.");
+        r.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from(5u32));
+        return Ok(r);
+    };
     let mut wake = core.subscribe();
     let who0 = who.subject.clone();
     let stream = async_stream::stream! {
+        let slot = slot;
         let mut cursor = start.clone();
-        yield Ok(Sse::default().event("ready").data(json!({"cursor": cursor, "subject": who0}).to_string()));
+        yield Ok::<_, Infallible>(Sse::default().event("ready").data(json!({"cursor": cursor, "subject": who0}).to_string()));
         let mut tick = tokio::time::interval(Duration::from_secs(1));
         loop {
             loop {
@@ -334,10 +409,14 @@ async fn pulse(
             tokio::select! {
                 r = wake.changed() => if r.is_err() { return },
                 _ = tick.tick() => {}
+                _ = slot.replaced.notified() => {
+                    yield Ok(Sse::default().event("closed").data(json!({"category": "denied", "key": "pulse.replaced"}).to_string()));
+                    return;
+                }
             }
         }
     };
-    Ok(axum::response::sse::Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+    Ok(axum::response::sse::Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))).into_response())
 }
 
 /// Liveness only: it says nothing about the data.
@@ -401,7 +480,7 @@ pub fn router(core: Core, cfg: Config) -> Router {
         .route("/link/tools.json", get(tools_doc))
         .route("/link/client.ts", get(client_ts))
         .route("/pulse", get(pulse))
-        .with_state(App { core, cfg: cfg.clone(), throttle: Default::default() });
+        .with_state(App { core, cfg: cfg.clone(), throttle: Default::default(), streams: Default::default() });
     for (prefix, dir) in &cfg.faces {
         r = r.nest_service(prefix, tower_http::services::ServeDir::new(dir));
     }

@@ -282,3 +282,82 @@ fn the_web_board_declares_every_slot_madar_fills() {
     assert!(d["slots"].as_array().unwrap().iter().any(|i| i["id"] == "export.project" && i["slot"] == "project.actions"), "{}", d["slots"]);
     assert_eq!(nuah_kernel::contract::slot_warnings(&d, &decl), Vec::<String>::new());
 }
+
+/// Open a Pulse stream and hand back its lines as they arrive.
+fn open_stream(s: &Server, token: &str) -> Result<mpsc::Receiver<String>, u16> {
+    let res = agent().get(&format!("{}/pulse", s.base)).header("Authorization", &format!("Bearer {token}")).call().unwrap();
+    if res.status().as_u16() != 200 {
+        return Err(res.status().as_u16());
+    }
+    let (tx, rx) = mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        for line in BufReader::new(res.into_body().into_reader()).lines() {
+            match line {
+                Ok(l) => {
+                    if tx.send(l).is_err() {
+                        return;
+                    }
+                }
+                Err(_) => return,
+            }
+        }
+    });
+    Ok(rx)
+}
+
+fn saw(rx: &mpsc::Receiver<String>, needle: &str) -> bool {
+    let end = std::time::Instant::now() + Duration::from_secs(5);
+    while let Some(left) = end.checked_duration_since(std::time::Instant::now()) {
+        match rx.recv_timeout(left) {
+            Ok(l) if l.contains(needle) => return true,
+            Ok(_) => {}
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
+#[test]
+fn a_person_holds_a_few_streams_and_the_newest_replaces_the_oldest() {
+    let s = start_with(nuah_server::Config { pulse_streams_per_person: 2, ..Default::default() });
+    let (ta, tb) = (s.sign_in("alice"), s.sign_in("bob"));
+    let first = open_stream(&s, &ta).unwrap();
+    assert!(saw(&first, "event: ready"));
+    let second = open_stream(&s, &ta).unwrap();
+    assert!(saw(&second, "event: ready"));
+    // A third takes the place of the oldest, which is told why and then ends.
+    let third = open_stream(&s, &ta).unwrap();
+    assert!(saw(&third, "event: ready"));
+    assert!(saw(&first, "pulse.replaced"), "the oldest stream is closed with a reason");
+    // The newer ones still work: a change reaches both.
+    let auth = format!("Bearer {ta}");
+    s.call("projects.create", json!({"name": "P"}), &[("Authorization", auth.as_str())]);
+    assert!(saw(&second, "projects.created") && saw(&third, "projects.created"));
+    // Another person's streams are not touched by alice's limit.
+    let bob = open_stream(&s, &tb).unwrap();
+    assert!(saw(&bob, "event: ready"));
+}
+
+#[test]
+fn the_server_refuses_new_streams_when_it_is_full_and_frees_places_when_they_end() {
+    let s = start_with(nuah_server::Config { pulse_streams_total: 2, ..Default::default() });
+    let (ta, tb) = (s.sign_in("alice"), s.sign_in("bob"));
+    let a = open_stream(&s, &ta).unwrap();
+    let b = open_stream(&s, &tb).unwrap();
+    assert!(saw(&a, "event: ready") && saw(&b, "event: ready"));
+    assert_eq!(open_stream(&s, &ta).err(), Some(429), "nothing connected is dropped to make room");
+    // End bob's stream by signing him out; his place frees up and a new stream is accepted.
+    let auth = format!("Bearer {tb}");
+    s.call("auth.sign_out", json!({"token": tb}), &[("Authorization", auth.as_str())]);
+    assert!(saw(&b, "event: closed"));
+    drop(b);
+    let end = std::time::Instant::now() + Duration::from_secs(5);
+    let again = loop {
+        match open_stream(&s, &ta) {
+            Ok(rx) => break Some(rx),
+            Err(_) if std::time::Instant::now() < end => std::thread::sleep(Duration::from_millis(100)),
+            Err(_) => break None,
+        }
+    };
+    assert!(again.is_some(), "a place is free again once a stream has ended");
+}
