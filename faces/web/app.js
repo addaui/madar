@@ -3,8 +3,12 @@
 // the Core puts on every project and task; what happens on a click is an Operation.
 
 const STR = {
-  en: { today: "Today", inbox: "Inbox", projects: "Projects", newProject: "New project", signIn: "Sign in", signOut: "Sign out", name: "Name", password: "Password", add: "Add a task", addPh: "Add a task…", share: "Share", members: "Members", leave: "Leave", rename: "Rename", delete: "Delete", save: "Save", cancel: "Cancel", close: "Close", title: "Title", notes: "Notes", priority: "Priority", due: "Due", assignee: "Assignee", nobody: "Nobody", labels: "Labels", status: "Column", subtasks: "Subtasks", comments: "Comments", write: "Write a comment…", post: "Post", export: "Export", audit: "History", archive: "Archive", restore: "Restore", empty: "No projects yet. Create one to start.", none: "Nothing here.", overdue: "Overdue", todayB: "Today", soon: "Soon", later: "Later", undated: "No date", changed: "Someone changed this task. It was reloaded; apply your edit again.", sure: "Delete this? It cannot be undone.", viewer: "Viewer", editor: "Editor", owner: "Owner", person: "Person", live: "Live", offline: "Offline, retrying", markRead: "Mark all read", nothingNew: "Nothing new.", language: "Language" },
-  ar: { today: "اليوم", inbox: "الوارد", projects: "المشاريع", newProject: "مشروع جديد", signIn: "دخول", signOut: "خروج", name: "الاسم", password: "كلمة المرور", add: "أضف مهمة", addPh: "أضف مهمة…", share: "مشاركة", members: "الأعضاء", leave: "مغادرة", rename: "إعادة تسمية", delete: "حذف", save: "حفظ", cancel: "إلغاء", close: "إغلاق", title: "العنوان", notes: "ملاحظات", priority: "الأولوية", due: "الموعد", assignee: "المسؤول", nobody: "لا أحد", labels: "الوسوم", status: "العمود", subtasks: "المهام الفرعية", comments: "التعليقات", write: "اكتب تعليقاً…", post: "نشر", export: "تصدير", audit: "السجل", archive: "أرشفة", restore: "استعادة", empty: "لا مشاريع بعد. أنشئ واحداً.", none: "لا شيء هنا.", overdue: "متأخرة", todayB: "اليوم", soon: "قريباً", later: "لاحقاً", undated: "بلا موعد", changed: "غيّر أحدهم هذه المهمة. أُعيد تحميلها؛ طبّق تعديلك من جديد.", sure: "حذف هذا؟ لا يمكن التراجع.", viewer: "مشاهد", editor: "محرر", owner: "مالك", person: "الشخص", live: "مباشر", offline: "غير متصل، نعيد المحاولة", markRead: "اقرأ الكل", nothingNew: "لا جديد.", language: "اللغة" },
+  en: { today: "Today", inbox: "Inbox", projects: "Projects", newProject: "New project", signIn: "Sign in", signOut: "Sign out", name: "Name", password: "Password", add: "Add a task", addPh: "Add a task…", share: "Share", members: "Members", leave: "Leave", rename: "Rename", delete: "Delete", save: "Save", cancel: "Cancel", close: "Close", title: "Title", notes: "Notes", priority: "Priority", due: "Due", assignee: "Assignee", nobody: "Nobody", labels: "Labels", status: "Column", subtasks: "Subtasks", comments: "Comments", write: "Write a comment…", post: "Post", export: "Export", audit: "History", archive: "Archive", restore: "Restore", empty: "No projects yet. Create one to start.", none: "Nothing here.", overdue: "Overdue", todayB: "Today", soon: "Soon", later: "Later", undated: "No date", changed: "Someone changed this task. It was reloaded; apply your edit again.", sure: "Delete this? It cannot be undone.", viewer: "Viewer", editor: "Editor", owner: "Owner", person: "Person", live: "Live", offline: "Offline, retrying", markRead: "Mark all read", nothingNew: "Nothing new.", language: "Language", system: "System", archived: "Archived", noArchived: "No archived tasks.",
+    hProjects_created: "{actor} created the project {name}", hProjects_updated: "{actor} changed the project ({fields})", hProjects_shared: "{actor} shared the project with {who} as {level}", hProjects_unshared: "{actor} removed {who} from the project", hProjects_left: "{who} left the project",
+    hTasks_created: "{actor} added the task {task}", hTasks_updated: "{actor} changed {task} ({fields})", hTasks_archived: "{actor} archived {task}", hTasks_restored: "{actor} restored {task}", hTasks_completed: "{actor} completed {task}", hTasks_moved: "{actor} moved {task} to {status}", hTasks_removed: "{actor} deleted {task}", hTasks_assigned: "{actor} assigned {task} to {who}", hTasks_label_created: "{actor} created the label {name}", hTasks_label_removed: "{actor} removed a label", hDiscussion_added: "{actor} commented on {task}", hDiscussion_removed: "{actor} removed a comment on {task}", aTask: "a task" },
+  ar: { today: "اليوم", inbox: "الوارد", projects: "المشاريع", newProject: "مشروع جديد", signIn: "دخول", signOut: "خروج", name: "الاسم", password: "كلمة المرور", add: "أضف مهمة", addPh: "أضف مهمة…", share: "مشاركة", members: "الأعضاء", leave: "مغادرة", rename: "إعادة تسمية", delete: "حذف", save: "حفظ", cancel: "إلغاء", close: "إغلاق", title: "العنوان", notes: "ملاحظات", priority: "الأولوية", due: "الموعد", assignee: "المسؤول", nobody: "لا أحد", labels: "الوسوم", status: "العمود", subtasks: "المهام الفرعية", comments: "التعليقات", write: "اكتب تعليقاً…", post: "نشر", export: "تصدير", audit: "السجل", archive: "أرشفة", restore: "استعادة", empty: "لا مشاريع بعد. أنشئ واحداً.", none: "لا شيء هنا.", overdue: "متأخرة", todayB: "اليوم", soon: "قريباً", later: "لاحقاً", undated: "بلا موعد", changed: "غيّر أحدهم هذه المهمة. أُعيد تحميلها؛ طبّق تعديلك من جديد.", sure: "حذف هذا؟ لا يمكن التراجع.", viewer: "مشاهد", editor: "محرر", owner: "مالك", person: "الشخص", live: "مباشر", offline: "غير متصل، نعيد المحاولة", markRead: "اقرأ الكل", nothingNew: "لا جديد.", language: "اللغة", system: "النظام", archived: "المؤرشفة", noArchived: "لا مهام مؤرشفة.",
+    hProjects_created: "{actor} أنشأ المشروع {name}", hProjects_updated: "{actor} عدّل المشروع ({fields})", hProjects_shared: "{actor} شارك المشروع مع {who} بصفة {level}", hProjects_unshared: "{actor} أزال {who} من المشروع", hProjects_left: "{who} غادر المشروع",
+    hTasks_created: "{actor} أضاف المهمة {task}", hTasks_updated: "{actor} عدّل {task} ({fields})", hTasks_archived: "{actor} أرشف {task}", hTasks_restored: "{actor} استعاد {task}", hTasks_completed: "{actor} أنجز {task}", hTasks_moved: "{actor} نقل {task} إلى {status}", hTasks_removed: "{actor} حذف {task}", hTasks_assigned: "{actor} أسند {task} إلى {who}", hTasks_label_created: "{actor} أنشأ الوسم {name}", hTasks_label_removed: "{actor} أزال وسماً", hDiscussion_added: "{actor} علّق على {task}", hDiscussion_removed: "{actor} أزال تعليقاً على {task}", aTask: "مهمة" },
 };
 let lang = "en";
 const t = (k) => (STR[lang] && STR[lang][k]) || STR.en[k] || k;
@@ -197,6 +201,7 @@ function boardView() {
   const head = h("div", { class: "head" }, h("h1", {}, p.name),
     h("button", { onclick: () => { S.panel = S.panel === "members" ? null : "members"; render(); } }, t("members") + " (" + S.members.length + ")"),
     slotButtons("project.actions", { project: p }),
+    h("button", { onclick: () => { S.panel = S.panel === "archived" ? null : "archived"; if (S.panel === "archived") loadArchived(); else render(); } }, t("archived")),
     manager ? h("button", { onclick: () => { S.panel = S.panel === "audit" ? null : "audit"; if (S.panel === "audit") loadAudit(); else render(); } }, t("audit")) : null,
     manager ? h("button", { onclick: renameProject }, t("rename")) : null,
     manager ? h("button", { class: "danger", onclick: deleteProject }, t("delete")) : h("button", { class: "danger", onclick: leaveProject }, t("leave")));
@@ -210,7 +215,7 @@ function boardView() {
       writer ? h("form", { onsubmit: async (e) => { e.preventDefault(); const i = e.target.elements[0]; const title = i.value.trim(); if (!title) return; i.value = ""; await attempt(() => call("tasks.create", { project: p.id, title, status: s.id })); refreshAll(); } }, h("input", { class: "add", type: "text", placeholder: t("addPh"), "aria-label": t("add"), "data-keep": "add-" + s.id })) : null);
     return col;
   });
-  return h("div", {}, head, S.panel === "members" ? membersPanel(manager) : null, S.panel === "audit" ? auditPanel() : null, h("div", { class: "board" }, ...cols));
+  return h("div", {}, head, S.panel === "members" ? membersPanel(manager) : null, S.panel === "audit" ? auditPanel() : null, S.panel === "archived" ? archivedPanel(writer) : null, h("div", { class: "board" }, ...cols));
 }
 
 function card(task, subtasks, writer) {
@@ -269,8 +274,37 @@ function membersPanel(manager) {
     manager ? h("form", { class: "list-item", onsubmit: async (e) => { e.preventDefault(); if (!who.value.trim()) return; await attempt(() => call("projects.share", { project: S.project.id, subject: who.value.trim(), level: level.value })); who.value = ""; refreshAll(); } }, who, level, h("button", { type: "submit" }, t("share"))) : null);
 }
 async function loadAudit() { const out = await attempt(() => call("audit.list", { project: S.project.id, limit: 50 })); S.audit = out ? out.entries : []; render(); }
+// A person is shown by display name when they are a current member, otherwise by their sign-in name.
+function personName(subject) { if (/^listener:/.test(subject || "")) return t("system") + " (" + subject.split(":")[1] + ")"; const m = S.members.find((x) => x.subject === subject); return (m && m.display) || subject || "?"; }
+function fill(key, vals) { return t(key).replace(/\{(\w+)\}/g, (_, k) => (vals[k] === undefined ? "" : vals[k])); }
+// One sentence for a history entry, saying who did what to whom. The kernel only records the event;
+// how it reads is the Face's business.
+function describeEntry(e) {
+  const d = e.data || {}, actor = personName(e.actor);
+  const known = S.tasks.find((x) => x.id === d.task);
+  const taskTitle = (d.task && d.task.title) || d.title || (known && known.title) || t("aTask");
+  const v = { actor, name: d.name || "", who: personName(d.subject || d.assignee), level: d.level ? t(d.level) : "", task: "“" + taskTitle + "”" };
+  const col = (S.project.statuses || []).find((x) => x.id === d.status);
+  v.status = col ? col.name : d.status || "";
+  const fields = Object.keys(d.changes || {});
+  v.fields = fields.map((f) => t(f)).join(", ");
+  let key = "h" + e.kind.replace(/^(\w)/, (c) => c.toUpperCase()).replace(".", "_");
+  if (e.kind === "projects.unshared" && d.by === d.subject) key = "hProjects_left";
+  if (e.kind === "tasks.updated" && d.changes && d.changes.archived) key = d.changes.archived[1] ? "hTasks_archived" : "hTasks_restored";
+  return STR.en[key] !== undefined ? fill(key, v) : e.kind;
+}
 function auditPanel() {
-  return h("div", { class: "panel" }, h("h2", {}, t("audit")), ...(S.audit || []).map((e) => h("div", { class: "list-item" }, h("span", { class: "grow" }, e.kind), h("span", { class: "muted" }, e.actor), h("span", { class: "muted" }, new Date(e.at).toLocaleString()))));
+  return h("div", { class: "panel" }, h("h2", {}, t("audit")), ...(S.audit || []).map((e) => h("div", { class: "list-item" }, h("span", { class: "grow" }, describeEntry(e)), h("span", { class: "muted" }, new Date(e.at).toLocaleString()))));
+}
+
+// ---------- archived tasks ----------
+async function loadArchived() { const out = await attempt(() => call("tasks.list", { project: S.project.id, archived: true, limit: 500 })); S.archivedTasks = out ? out.tasks : []; render(); }
+function archivedPanel(writer) {
+  const rows = S.archivedTasks || [];
+  return h("div", { class: "panel" }, h("h2", {}, t("archived")),
+    rows.length ? null : h("div", { class: "muted" }, t("noArchived")),
+    ...rows.map((x) => h("div", { class: "list-item" }, h("span", { class: "grow" }, x.title),
+      writer ? h("button", { onclick: async () => { await attempt(() => call("tasks.update", { project: S.project.id, id: x.id, expected_rev: x.rev, archived: false })); await loadArchived(); refreshAll(); } }, t("restore")) : null)));
 }
 
 // ---------- the task drawer ----------
