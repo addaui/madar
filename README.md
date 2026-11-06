@@ -15,7 +15,8 @@ https://docs.addaui.com/nuah/ . Working rules for contributors and agents are in
 | `crates/nuah-madar` | Madar as plugins: projects, tasks, discussion, audit, quota, prefs, export, notify, themes. |
 | `crates/nuah-server` | HTTP and SSE server (`nuah-server serve`) and the setup mode (`nuah-server setup`). |
 | `crates/nuah-cli` | The `madar` command line, over HTTP or directly on a database file. |
-| `faces/web`, `faces/console`, `faces/setup` | The web board, the console generated from `describe`, and the setup wizard (vanilla JS, no build). |
+| `faces/web`, `faces/console`, `faces/setup` | The web board, the console generated from `describe`, and the setup wizard (vanilla JS, no build). The one built file is the rich-text editor, `faces/web/vendor/editor.js`. |
+| `faces/editor-src` | Source of that editor (Tiptap on ProseMirror). Rebuild with `bun install && bun run build` inside it; the built file is committed. |
 
 What exists and how it is proven: https://docs.addaui.com/nuah/plans/v2-status/
 
@@ -29,3 +30,5 @@ nuah-server hash-password < password.txt          # make an accounts file outsid
 nuah-server serve --db madar.db --accounts accounts.json --web faces/web --console faces/console
 nuah-server setup --profile profile.json --face faces/setup
 ```
+
+Rebuilding the editor (only when `faces/editor-src` changes): `cd faces/editor-src && bun install && bun run build`.
