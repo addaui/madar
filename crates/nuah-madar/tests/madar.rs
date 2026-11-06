@@ -814,7 +814,7 @@ fn notes_are_private_to_their_owner() {
 }
 
 #[test]
-fn links_remember_what_refers_to_what_and_follow_edits() {
+fn references_remember_what_refers_to_what_and_follow_edits() {
     let a = app();
     let (al, mal) = (who("alice"), who("mallory"));
     let p = a.project(&al, "Wiki");
@@ -824,7 +824,7 @@ fn links_remember_what_refers_to_what_and_follow_edits() {
     let src = a.ok(&al, "pages.create", json!({"project": p, "title": "Plan", "body": doc_with("see", &[("pages.page", &target), ("tasks.task", &t_id)])}));
     let src_id = src["id"].as_str().unwrap().to_string();
     a.settle();
-    let to = |kind: &str, id: &str| -> Vec<String> { a.ok(&al, "links.to", json!({"project": p, "kind": kind, "id": id}))["links"].as_array().unwrap().iter().map(|l| l["title"].as_str().unwrap().to_string()).collect() };
+    let to = |kind: &str, id: &str| -> Vec<String> { a.ok(&al, "refs.to", json!({"project": p, "kind": kind, "id": id}))["links"].as_array().unwrap().iter().map(|l| l["title"].as_str().unwrap().to_string()).collect() };
     assert_eq!(to("pages.page", &target), ["Plan"]);
     assert_eq!(to("tasks.task", &t_id), ["Plan"]);
     // editing the source to drop one reference removes that link only
@@ -837,13 +837,13 @@ fn links_remember_what_refers_to_what_and_follow_edits() {
     a.settle();
     assert!(to("pages.page", &target).is_empty());
     // backlinks are answered only to people who can see the project
-    assert_eq!(a.err(&mal, "links.to", json!({"project": p, "kind": "pages.page", "id": target})).category, Category::NotFound);
+    assert_eq!(a.err(&mal, "refs.to", json!({"project": p, "kind": "pages.page", "id": target})).category, Category::NotFound);
     // notes: your own, and only yours
     let n = a.ok(&al, "notes.create", json!({"title": "Idea", "body": doc_with("x", &[("pages.page", "elsewhere")])}));
     a.settle();
-    let mine = a.ok(&al, "links.mine", json!({"kind": "pages.page", "id": "elsewhere"}));
+    let mine = a.ok(&al, "refs.mine", json!({"kind": "pages.page", "id": "elsewhere"}));
     assert_eq!(mine["links"][0]["from"]["id"], n["id"]);
-    assert!(a.ok(&mal, "links.mine", json!({"kind": "pages.page", "id": "elsewhere"}))["links"].as_array().unwrap().is_empty());
+    assert!(a.ok(&mal, "refs.mine", json!({"kind": "pages.page", "id": "elsewhere"}))["links"].as_array().unwrap().is_empty());
 }
 
 #[test]
@@ -865,7 +865,7 @@ fn switching_pages_off_keeps_its_data_and_the_rest_runs() {
     let p = core.call_as(&al, "projects.create", json!({"name": "Home"}), None).unwrap().output["id"].as_str().unwrap().to_string();
     core.call_as(&al, "pages.create", json!({"project": p, "title": "Kept"}), None).unwrap();
     drop(core);
-    let core = start_file(&path, &["pages", "links"]).unwrap_or_else(|p| panic!("{p:#?}"));
+    let core = start_file(&path, &["pages", "refs"]).unwrap_or_else(|p| panic!("{p:#?}"));
     assert!(core.call_as(&al, "pages.list", json!({"project": p}), None).is_err());
     core.call_as(&al, "tasks.create", json!({"project": p, "title": "still fine"}), None).unwrap();
     drop(core);
@@ -987,7 +987,7 @@ fn a_rich_task_description_is_checked_and_its_references_become_links() {
     assert_eq!(a.err(&al, "tasks.create", json!({"project": p, "title": "bad", "description": {"type": "paragraph"}})).category, Category::Invalid);
     let t = a.ok(&al, "tasks.create", json!({"project": p, "title": "Implement", "description": doc_with("per the", &[("pages.page", &page)])}));
     a.settle();
-    let links = a.ok(&al, "links.to", json!({"project": p, "kind": "pages.page", "id": page}));
+    let links = a.ok(&al, "refs.to", json!({"project": p, "kind": "pages.page", "id": page}));
     assert_eq!(links["links"][0]["from"]["id"], t["id"]);
     assert_eq!(links["links"][0]["title"], "Implement");
 }

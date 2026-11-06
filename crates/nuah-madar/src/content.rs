@@ -1,5 +1,5 @@
-//! Rich text, the editor's block registry, and links between items.
-//! Design: ADR 0019 (links), ADR 0020 (rich text), https://docs.addaui.com/nuah/plans/madar-v3-plan/
+//! Rich text, the editor's block registry, and references between items.
+//! Design: ADR 0019 (references), ADR 0020 (rich text), https://docs.addaui.com/nuah/plans/madar-v3-plan/
 
 use crate::util::*;
 use nuah_kernel::*;
@@ -114,8 +114,8 @@ pub mod richtext {
         out
     }
 
-    /// The `links` part of an event's data: what `from` now refers to (ADR 0019).
-    pub fn links_of(kind: &str, id: &str, title: &str, doc: &Value) -> Value {
+    /// The `refs` part of an event's data: what `from` now refers to (ADR 0019).
+    pub fn refs_for(kind: &str, id: &str, title: &str, doc: &Value) -> Value {
         json!({"from": {"type": kind, "id": id}, "title": title,
                "to": refs_of(doc).into_iter().map(|(k, i)| json!({"type": k, "id": i})).collect::<Vec<_>>()})
     }
@@ -201,39 +201,39 @@ impl Plugin for EditorBasic {
     }
 }
 
-// ---- links (ADR 0019) ----------------------------------------------------------------------------------
+// ---- references (ADR 0019) ----------------------------------------------------------------------------------
 
-pub const LINKS: &str = "links.links";
+pub const LINKS: &str = "refs.refs";
 
 fn key(kind: &str, id: &str) -> String {
     format!("{kind}:{id}")
 }
 
-pub struct Links;
-impl Plugin for Links {
+pub struct Refs;
+impl Plugin for Refs {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "links", "version": "0.1.0", "name": "Links", "namespaces": ["links"],
-            "description": "Remembers what refers to what, so every item can show 'what links here'",
+            "id": "refs", "version": "0.1.0", "name": "References", "namespaces": ["refs"],
+            "description": "Remembers what refers to what, so every item can show what refers to it",
             "requires": {"plugins": ["projects"]},
             "data": {"collections": [LINKS], "version": 1,
                      "indexes": [{"collection": LINKS, "field": "from_key"}, {"collection": LINKS, "field": "to_key"}]},
             "operations": {
-                "links.to": {"kind": "query", "description": "What refers to an item, inside one project", "permission": "projects.read",
+                "refs.to": {"kind": "query", "description": "What refers to an item, inside one project", "permission": "projects.read",
                     "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project","kind","id"],"properties":{"project":{"type":"string"},"kind":{"type":"string","maxLength":60},"id":{"type":"string","maxLength":80}},"additionalProperties":false},
                     "output": {"type":"object","required":["links"]}},
-                "links.mine": {"kind": "query", "description": "What refers to one of your own notes",
+                "refs.mine": {"kind": "query", "description": "What refers to one of your own notes",
                     "input": {"type":"object","required":["kind","id"],"properties":{"kind":{"type":"string","maxLength":60},"id":{"type":"string","maxLength":80}},"additionalProperties":false},
                     "output": {"type":"object","required":["links"]}}
             },
-            "listeners": [{"id": "links.record", "on": ["pages.*", "notes.*", "tasks.*", "discussion.*"], "handler": "links.record"}]
+            "listeners": [{"id": "refs.record", "on": ["pages.*", "notes.*", "tasks.*", "discussion.*"], "handler": "refs.record"}]
         }))
     }
     fn bind(&self, b: &mut Bindings) {
         // Safe to repeat: the row ids come from the two ends, so a second delivery overwrites itself.
-        b.listener("links.record", |tx, d| {
-            let l = &d.event.data["links"];
+        b.listener("refs.record", |tx, d| {
+            let l = &d.event.data["refs"];
             let (kind, id) = (text(&l["from"], "type"), text(&l["from"], "id"));
             if l.is_null() || kind.is_empty() || id.is_empty() {
                 return Ok(());
@@ -259,12 +259,12 @@ impl Plugin for Links {
             }
             Ok(())
         });
-        b.op("links.to", |tx, i| {
+        b.op("refs.to", |tx, i| {
             let to_key = key(text(&i, "kind"), text(&i, "id"));
             let page = tx.query(LINKS, &Query::new().eq("to_key", to_key.as_str()).eq("project", text(&i, "project")).limit(200))?;
             Ok(json!({"links": page.items.iter().map(|d| json!({"from": d.body["from"], "title": d.body["title"]})).collect::<Vec<_>>()}))
         });
-        b.op("links.mine", |tx, i| {
+        b.op("refs.mine", |tx, i| {
             let to_key = key(text(&i, "kind"), text(&i, "id"));
             let me = tx.who().subject.clone();
             let page = tx.query(LINKS, &Query::new().eq("to_key", to_key.as_str()).eq("owner", me.as_str()).limit(200))?;

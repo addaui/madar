@@ -135,7 +135,7 @@ fn create(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     }))?;
     let aud = s.audience();
     tx.emit("pages.created", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "parent": d.body["parent"],
-        "links": richtext::links_of(KIND, &d.id, text(&d.body, "title"), &d.body["body"])})))?;
+        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &d.body["body"])})))?;
     Ok(view(&d, true))
 }
 
@@ -179,7 +179,7 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let d = tx.put(PAGES, &old.id, b, expect).map_err(|e| stale(e, "pages.stale_revision", "The page"))?;
     let aud = s.audience();
     tx.emit("pages.updated", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": changes,
-        "links": richtext::links_of(KIND, &d.id, text(&d.body, "title"), &d.body["body"])})))?;
+        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &d.body["body"])})))?;
     Ok(view(&d, true))
 }
 
@@ -246,7 +246,7 @@ fn remove(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     for d in all.iter().rev() {
         tx.delete(PAGES, &d.id)?;
         let aud = s.audience();
-        tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "links": richtext::links_of(KIND, &d.id, "", &Value::Null)})))?;
+        tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "refs": richtext::refs_for(KIND, &d.id, "", &Value::Null)})))?;
     }
     Ok(json!({"removed": all.len()}))
 }

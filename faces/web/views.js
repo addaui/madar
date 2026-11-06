@@ -44,7 +44,7 @@ function projectView() {
     manager ? h("button", { onclick: openProjectSettings, title: t("projectSettings") }, "⚙ " + t("projectSettings")) : null,
     manager ? h("button", { onclick: renameProject }, t("rename")) : null,
     manager ? h("button", { class: "danger", onclick: deleteProject }, t("delete")) : h("button", { class: "danger", onclick: leaveProject }, t("leave")));
-  const tabs = h("div", { class: "tabs", role: "tablist" }, ...tabsAvailable().map((x) => h("button", { role: "tab", "aria-selected": String(x === tab), class: "tab", onclick: async () => { S.tab = x; S.openPage = null; S.openTask = null; drawerCache = null; await loadTab(); setHash(); render(); } }, t(x))));
+  const tabs = h("div", { class: "tabs", role: "tablist" }, ...tabsAvailable().map((x) => h("button", { role: "tab", "aria-selected": String(x === tab), class: "tab", onclick: async () => { flushPage(); S.tab = x; S.openPage = null; S.openTask = null; drawerCache = null; await loadTab(); setHash(); render(); } }, t(x))));
   let body;
   if (tab === "list") body = listTab(); else if (tab === "overview") body = overviewTab(); else if (tab === "pages") body = pagesTab(p, writer); else body = boardTab(p, writer);
   return h("div", {}, head, tabs, S.panel === "members" ? membersPanel(manager) : null, S.panel === "audit" ? auditPanel() : null, S.panel === "archived" ? archivedPanel(writer) : null, body);

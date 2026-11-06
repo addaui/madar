@@ -83,18 +83,22 @@ async function loadPagesData() {
 function applyFresh(fresh) { S.openPage = fresh; if (pageCache) { pageCache.rev = fresh.rev; pageCache.ed.set(fresh.body); pageCache.titleEl && (pageCache.titleEl.value = fresh.title); } }
 function dropPageCache() { if (pageCache) { clearTimeout(pageCache.timer); try { pageCache.ed.destroy(); } catch (e) { /* gone */ } pageCache = null; } }
 async function openPageNow(id) { const pg = await fetchPage(id); dropPageCache(); S.openPage = pg || null; }
-async function selectPage(id) { await openPageNow(id); setHash(); render(); }
+async function selectPage(id) { flushPage(); await openPageNow(id); setHash(); render(); }
 
+// Edits are sent a moment after typing stops; leaving the page sends them at once (flushPage).
+function flushPage() { const c = pageCache; if (c && c.dirty && c.timer) { clearTimeout(c.timer); c.timer = null; savePage({ body: c.ed.json() }); } }
 async function savePage(patch) {
-  const c = pageCache; if (!c || !S.openPage) return;
+  const c = pageCache, pg = S.openPage; if (!c || !pg) return;   // the page can change while the answer is on its way, so keep these two
   c.status = t("saving"); paintSave();
-  const out = await attempt(() => call(pgOp("update"), pgIn({ id: S.openPage.id, expected_rev: c.rev, ...patch })));
+  const out = await attempt(() => call(pgOp("update"), pgIn({ id: pg.id, expected_rev: c.rev, ...patch })));
+  const same = S.openPage && S.openPage.id === pg.id;
   if (out) {
-    c.rev = out.rev; S.openPage.rev = out.rev; if (patch.title !== undefined) { S.openPage.title = out.title; const row = S.pagesList.find((x) => x.id === out.id); if (row) row.title = out.title; }
+    c.rev = out.rev; pg.rev = out.rev;
+    if (patch.title !== undefined) { pg.title = out.title; const row = S.pagesList.find((x) => x.id === out.id); if (row) row.title = out.title; }
     if (!c.timer) c.dirty = false;
-    c.status = t("saved"); paintSave(); if (patch.title !== undefined) render();
+    c.status = t("saved"); paintSave(); if (patch.title !== undefined && same) render();
   } else if (attempt.last && attempt.last.category === "conflict") {
-    c.dirty = false; clearTimeout(c.timer); c.timer = null; toast(t("pageChanged")); const fresh = await fetchPage(S.openPage.id); if (fresh) applyFresh(fresh); c.status = ""; paintSave();
+    c.dirty = false; clearTimeout(c.timer); c.timer = null; toast(t("pageChanged")); const fresh = await fetchPage(pg.id); if (fresh && same) applyFresh(fresh); c.status = ""; paintSave();
   } else { c.status = t("offline"); paintSave(); }
 }
 function paintSave() { const el = document.querySelector(".save-state"); if (el && pageCache) el.textContent = pageCache.status || ""; }
@@ -120,8 +124,8 @@ function pageView(writer) {
     c.el, back, personal() ? null : [h("h3", {}, t("timeline")), timelineBox(S.project.id, { type: "pages.page", id: pg.id }, writer)]);
 }
 async function loadBacklinks(pg, box) {
-  if (!hasOp("links.to")) return;
-  const out = await attempt(() => (personal() ? call("links.mine", { kind: "pages.page", id: pg.id }) : call("links.to", { project: S.project.id, kind: "pages.page", id: pg.id })));
+  if (!hasOp("refs.to")) return;
+  const out = await attempt(() => (personal() ? call("refs.mine", { kind: "pages.page", id: pg.id }) : call("refs.to", { project: S.project.id, kind: "pages.page", id: pg.id })));
   if (!out) return;
   box.replaceChildren(h("h3", {}, t("linkedFrom")), ...(out.links.length ? out.links.map((l) => h("button", { class: "list-item clickable quiet", onclick: () => openRef(l.from.type, l.from.id) }, (l.from.type === "tasks.task" ? "☑ " : "▤ ") + (l.title || l.from.id))) : [h("div", { class: "muted" }, t("noLinks"))]));
 }

@@ -36,7 +36,7 @@ fn check_target(tx: &mut Tx, project: &str, kind: &str, id: &str) -> Result<()> 
 fn check_body(v: &Value) -> Result<()> {
     match v {
         Value::String(s) if !s.trim().is_empty() && s.len() <= 5000 => Ok(()),
-        Value::Object(_) => crate::content::richtext::check("body", v),
+        Value::Object(_) if v.to_string().len() <= 100_000 => crate::content::richtext::check("body", v),
         _ => Err(Error::invalid("body", "write some text (up to 5000 characters) or give a rich-text document")),
     }
 }
@@ -99,8 +99,8 @@ impl Plugin for Discussion {
                 tx.put(COMMENTS, &r.id, rb, Expect::Rev(r.rev))?;
             }
             let body_doc = if i["body"].is_object() { i["body"].clone() } else { Value::Null };
-            let links = richtext::links_of("discussion.comment", &d.id, "", &body_doc);
-            tx.emit("discussion.added", Audience::scope("projects.members", &project), json!({"project": project, kind: tid, "comment": view(&d), "links": links}))?;
+            let links = richtext::refs_for("discussion.comment", &d.id, "", &body_doc);
+            tx.emit("discussion.added", Audience::scope("projects.members", &project), json!({"project": project, kind: tid, "comment": view(&d), "refs": links}))?;
             Ok(view(&d))
         });
         b.op("discussion.list", |tx, i| {
@@ -158,7 +158,7 @@ impl Plugin for Discussion {
             }
             tx.delete(COMMENTS, &c.id)?;
             tx.emit("discussion.removed", Audience::scope("projects.members", &project), json!({"project": project, "task": c.body["task"], "page": c.body["page"], "comment": c.id,
-                "links": richtext::links_of("discussion.comment", &c.id, "", &Value::Null)}))?;
+                "refs": richtext::refs_for("discussion.comment", &c.id, "", &Value::Null)}))?;
             Ok(json!({}))
         });
         b.listener("discussion.cleanup", |tx, d| {

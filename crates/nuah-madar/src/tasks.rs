@@ -241,7 +241,7 @@ impl Plugin for Tasks {
                 "custom": custom, "description": description,
             }))?;
             let aud = Audience::scope("projects.members", &project);
-            tx.emit("tasks.created", aud, json!({"project": project, "task": view(&d), "links": richtext::links_of("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
+            tx.emit("tasks.created", aud, json!({"project": project, "task": view(&d), "refs": richtext::refs_for("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
             notify_assigned(tx, &d)?;
             Ok(view(&d))
         });
@@ -331,7 +331,7 @@ impl Plugin for Tasks {
             }
             let d = tx.put(TASKS, &old.id, body, Expect::Rev(old.rev)).map_err(|e| stale(e, "tasks.stale_revision", "The task"))?;
             tx.emit("tasks.updated", Audience::scope("projects.members", &project), json!({"project": project, "task": view(&d), "changes": changes,
-                "links": richtext::links_of("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
+                "refs": richtext::refs_for("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
             if changes.contains_key("assignee") {
                 notify_assigned(tx, &d)?;
             }

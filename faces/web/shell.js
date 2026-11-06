@@ -57,6 +57,7 @@ function setHash() {
   if (location.hash !== h) history.replaceState(null, "", h);
 }
 function go(view, tab) {
+  flushPage();
   S.view = view; S.openTask = null; drawerCache = null; S.panel = null; S.openPage = null; S.wantPage = null;
   const isProject = !["today", "inbox", "notes"].includes(view);
   const want = tab || S.prefs["projects.default_tab"] || "board";
