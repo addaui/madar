@@ -11,6 +11,10 @@ struct Server {
 }
 
 fn start() -> Server {
+    start_with(Default::default())
+}
+
+fn start_with(cfg: nuah_server::Config) -> Server {
     let hash = AuthPassword::hash_password("correct horse");
     let accounts = json!([
         {"name": "alice", "password_hash": hash, "roles": ["member"]},
@@ -23,7 +27,7 @@ fn start() -> Server {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             tx.send(listener.local_addr().unwrap()).unwrap();
             nuah_server::spawn_background(core.clone());
-            axum::serve(listener, nuah_server::router(core, Default::default())).await.unwrap();
+            axum::serve(listener, nuah_server::router(core, cfg)).await.unwrap();
         });
     });
     let addr = rx.recv().unwrap();
@@ -223,4 +227,21 @@ fn listeners_run_after_commit_without_anyone_asking() {
         assert!(std::time::Instant::now() < end, "the audit entry never arrived: {:?}", list.body);
         std::thread::sleep(Duration::from_millis(100));
     }
+}
+
+#[test]
+fn faces_are_hosted_revalidated_and_the_root_leads_to_the_first() {
+    let dir = std::env::temp_dir().join(format!("nuah-faces-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("index.html"), "<title>face</title>").unwrap();
+    let cfg = nuah_server::Config { faces: vec![("/faces/web".into(), dir.clone())], ..Default::default() };
+    let s = start_with(cfg);
+    let page = s.get("/faces/web/", &[]);
+    assert_eq!(page.status, 200);
+    assert_eq!(page.header("cache-control"), Some("no-cache"), "a Face is revalidated on every load");
+    assert!(page.header("content-security-policy").is_some(), "static pages get the same security headers");
+    let root = s.get("/", &[]);
+    assert_eq!((root.status, root.header("location")), (307, Some("/faces/web/")));
+    assert_eq!(s.get("/faces/web/../../etc/passwd", &[]).status, 404);
+    std::fs::remove_dir_all(dir).ok();
 }

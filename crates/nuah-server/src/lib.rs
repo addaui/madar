@@ -288,8 +288,13 @@ async fn guard(State(cfg): State<Arc<Config>>, req: Request, next: Next) -> Resp
             return refuse(StatusCode::BAD_REQUEST, "invalid", "server.no_face", "The X-Nuah-Face header is required.");
         }
     }
+    let is_face = req.uri().path().starts_with("/faces/");
     let mut res = next.run(req).await;
     let h = res.headers_mut();
+    if is_face {
+        // Faces are small and change with every release: always ask the server whether they changed.
+        h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    }
     h.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"));
     h.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
     h.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
