@@ -101,6 +101,9 @@ async fn main() {
                 }
                 _ => die("give --profile FILE, or both --db and --accounts"),
             };
+            if dist.profile.enabled.iter().any(|p| p == "auth-local") && !listen.parse::<std::net::SocketAddr>().is_ok_and(|a| a.ip().is_loopback()) {
+                die("the profile uses auth-local (everyone is admin); listen on 127.0.0.1 or use auth-password");
+            }
             let core = Core::start(&dist).unwrap_or_else(|problems| {
                 for p in &problems {
                     eprintln!("{}: {}", p.code, p.message);

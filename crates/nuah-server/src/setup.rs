@@ -138,7 +138,7 @@ fn write_profile(path: &std::path::Path, p: &Profile) -> std::io::Result<()> {
 }
 
 pub fn setup_router(cfg: SetupConfig) -> Router {
-    let server = Arc::new(Config { hosts: cfg.server.hosts.clone(), secure_cookie: false, faces: cfg.server.faces.clone() });
+    let server = Arc::new(Config { hosts: cfg.server.hosts.clone(), secure_cookie: false, faces: cfg.server.faces.clone(), ..Config::default() });
     let faces = cfg.server.faces.clone();
     let s = Setup(Arc::new(cfg));
     let api = Router::new()

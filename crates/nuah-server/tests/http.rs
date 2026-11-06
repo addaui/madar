@@ -245,3 +245,29 @@ fn faces_are_hosted_revalidated_and_the_root_leads_to_the_first() {
     assert_eq!(s.get("/faces/web/../../etc/passwd", &[]).status, 404);
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn failed_sign_ins_are_throttled_per_account_and_a_success_clears_them() {
+    let s = start_with(nuah_server::Config { sign_in_failures_per_name: 3, sign_in_failures_overall: 6, ..Default::default() });
+    let sign_in = |name: &str, pw: &str| {
+        let mut r = agent().post(&format!("{}/link/call/auth.sign_in", s.base)).header("X-Nuah-Face", "t").header("Content-Type", "application/json").send(serde_json::to_vec(&json!({"name": name, "password": pw})).unwrap()).unwrap();
+        (r.status().as_u16(), r.headers().get("retry-after").is_some(), r.body_mut().read_json::<Value>().unwrap_or(Value::Null))
+    };
+    // Two failures, then a success: the count starts over.
+    assert_eq!(sign_in("alice", "wrong").0, 401);
+    assert_eq!(sign_in("alice", "wrong").0, 401);
+    assert_eq!(sign_in("alice", "correct horse").0, 200);
+    for _ in 0..3 {
+        assert_eq!(sign_in("Alice", "wrong").0, 401);
+    }
+    // Blocked now, even with the right password, and the case of the name does not matter.
+    let (status, retry, body) = sign_in("alice", "correct horse");
+    assert_eq!((status, retry), (429, true));
+    assert_eq!(body["error"]["key"], "auth.too_many_attempts");
+    // Another account is not affected.
+    assert_eq!(sign_in("bob", "correct horse").0, 200);
+    // Names that do not exist count too. Five failures are on the overall count so far (a success
+    // clears one name, not the overall count); one more reaches the limit of six and blocks everyone.
+    assert_eq!(sign_in("ghost", "x").0, 401);
+    assert_eq!(sign_in("bob", "correct horse").0, 429);
+}

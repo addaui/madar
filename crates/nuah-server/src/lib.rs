@@ -24,8 +24,8 @@ use nuah_kernel::{CallRequest, Category, Core, Error};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 pub mod setup;
 
@@ -39,11 +39,23 @@ pub struct Config {
     pub secure_cookie: bool,
     /// Static Faces to host: (URL prefix such as `/faces/web`, directory).
     pub faces: Vec<(String, std::path::PathBuf)>,
+    /// Failed sign-ins allowed per account name within `throttle_window` (ADR 0015).
+    pub sign_in_failures_per_name: usize,
+    /// Failed sign-ins allowed overall within `throttle_window`.
+    pub sign_in_failures_overall: usize,
+    pub throttle_window: Duration,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { hosts: ["localhost", "127.0.0.1", "[::1]"].iter().map(|s| s.to_string()).collect(), secure_cookie: false, faces: vec![] }
+        Config {
+            hosts: ["localhost", "127.0.0.1", "[::1]"].iter().map(|s| s.to_string()).collect(),
+            secure_cookie: false,
+            faces: vec![],
+            sign_in_failures_per_name: 5,
+            sign_in_failures_overall: 100,
+            throttle_window: Duration::from_secs(300),
+        }
     }
 }
 
@@ -51,6 +63,61 @@ impl Default for Config {
 struct App {
     core: Core,
     cfg: Arc<Config>,
+    throttle: Arc<Mutex<Throttle>>,
+}
+
+/// Failed sign-in times, per account name and overall ([ADR 0015]). In memory; a restart clears it.
+///
+/// [ADR 0015]: https://docs.addaui.com/nuah/adr/0015-sign-in-attempts-are-throttled-and-local-sign-in-stays-on-loopback/
+#[derive(Default)]
+struct Throttle {
+    names: HashMap<String, Vec<Instant>>,
+    overall: Vec<Instant>,
+}
+
+const MAX_TRACKED_NAMES: usize = 10_000;
+
+impl Throttle {
+    fn key(name: &str) -> String {
+        name.trim().to_lowercase().chars().take(200).collect()
+    }
+
+    fn recent(list: &mut Vec<Instant>, now: Instant, window: Duration) {
+        list.retain(|t| now.duration_since(*t) < window);
+    }
+
+    /// How long until this name may try again; `None` if it may try now.
+    fn blocked(&mut self, name: &str, cfg: &Config) -> Option<Duration> {
+        let now = Instant::now();
+        Self::recent(&mut self.overall, now, cfg.throttle_window);
+        let wait = |list: &Vec<Instant>, limit: usize| -> Option<Duration> {
+            (list.len() >= limit).then(|| list.first().map(|t| cfg.throttle_window.saturating_sub(now.duration_since(*t))).unwrap_or_default())
+        };
+        let by_name = match self.names.get_mut(&Self::key(name)) {
+            Some(list) => {
+                Self::recent(list, now, cfg.throttle_window);
+                wait(list, cfg.sign_in_failures_per_name)
+            }
+            None => None,
+        };
+        by_name.into_iter().chain(wait(&self.overall, cfg.sign_in_failures_overall)).max()
+    }
+
+    fn failed(&mut self, name: &str, cfg: &Config) {
+        let now = Instant::now();
+        self.overall.push(now);
+        self.names.retain(|_, v| {
+            Self::recent(v, now, cfg.throttle_window);
+            !v.is_empty()
+        });
+        if self.names.len() < MAX_TRACKED_NAMES {
+            self.names.entry(Self::key(name)).or_default().push(now);
+        }
+    }
+
+    fn succeeded(&mut self, name: &str) {
+        self.names.remove(&Self::key(name));
+    }
 }
 
 struct ApiError(Error);
@@ -156,9 +223,29 @@ async fn call(State(app): State<App>, Path(op): Path<String>, headers: HeaderMap
             obj.entry("token").or_insert_with(|| json!(t));
         }
     }
+    // Failed sign-ins are counted; past the limit the attempt is refused before any password is checked.
+    let attempt = (op == "auth.sign_in").then(|| input["name"].as_str().unwrap_or_default().to_string());
+    if let Some(name) = &attempt {
+        let wait = app.throttle.lock().unwrap_or_else(|e| e.into_inner()).blocked(name, &app.cfg);
+        if let Some(wait) = wait {
+            let secs = wait.as_secs() + 1;
+            let mut r = refuse(StatusCode::TOO_MANY_REQUESTS, "denied", "auth.too_many_attempts", &format!("Too many failed sign-ins. Try again in {secs} seconds."));
+            r.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from(secs));
+            return Ok(r);
+        }
+    }
     let req = CallRequest { credential: credential(&headers), op: op.clone(), input, key: header_str(&headers, "idempotency-key"), contract: header_str(&headers, "x-nuah-contract") };
     let core = app.core.clone();
-    let mut res = blocking(move || core.call(req)).await??;
+    let result = blocking(move || core.call(req)).await?;
+    if let Some(name) = &attempt {
+        let mut t = app.throttle.lock().unwrap_or_else(|e| e.into_inner());
+        match &result {
+            Ok(_) => t.succeeded(name),
+            Err(e) if e.reason.as_deref() == Some("auth.bad_credentials") => t.failed(name, &app.cfg),
+            Err(_) => {}
+        }
+    }
+    let mut res = result?;
     let mut cookie_header = None;
     match op.as_str() {
         "auth.sign_in" if cookie_mode => {
@@ -314,7 +401,7 @@ pub fn router(core: Core, cfg: Config) -> Router {
         .route("/link/tools.json", get(tools_doc))
         .route("/link/client.ts", get(client_ts))
         .route("/pulse", get(pulse))
-        .with_state(App { core, cfg: cfg.clone() });
+        .with_state(App { core, cfg: cfg.clone(), throttle: Default::default() });
     for (prefix, dir) in &cfg.faces {
         r = r.nest_service(prefix, tower_http::services::ServeDir::new(dir));
     }
