@@ -872,3 +872,122 @@ fn switching_pages_off_keeps_its_data_and_the_rest_runs() {
     let core = start_file(&path, &[]).unwrap();
     assert_eq!(core.call_as(&al, "pages.list", json!({"project": p}), None).unwrap().output["pages"][0]["title"], "Kept");
 }
+
+// ---- custom attributes, query, stats, focus, rich descriptions (ADR 0024) -----------------------------------
+
+fn project_with_attributes(a: &App, al: &Identity) -> String {
+    let attrs = json!([{"key": "estimate", "label": "Estimate", "type": "number"}, {"key": "area", "label": "Area", "type": "choice", "choices": ["web", "api"]},
+                       {"key": "ship", "label": "Ship date", "type": "date"}, {"key": "blocked", "label": "Blocked", "type": "boolean"}]);
+    a.ok(al, "projects.create", json!({"name": "Attr", "attributes": attrs}))["id"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn custom_attributes_are_defined_by_the_project_and_checked_on_tasks() {
+    let a = app();
+    let al = who("alice");
+    let p = project_with_attributes(&a, &al);
+    let t = a.ok(&al, "tasks.create", json!({"project": p, "title": "A", "custom": {"estimate": 5, "area": "web", "ship": "2026-12-01", "blocked": false}}));
+    assert_eq!(t["custom"]["estimate"], 5);
+    for bad in [json!({"nope": 1}), json!({"estimate": "five"}), json!({"area": "mobile"}), json!({"ship": "soon"}), json!({"blocked": "no"})] {
+        assert_eq!(a.err(&al, "tasks.create", json!({"project": p, "title": "B", "custom": bad.clone()})).category, Category::Invalid, "{bad}");
+    }
+    // update merges, and null removes one value
+    let u = a.ok(&al, "tasks.update", json!({"project": p, "id": t["id"], "custom": {"estimate": 8, "area": null}}));
+    assert_eq!((u["custom"]["estimate"].clone(), u["custom"]["area"].clone(), u["custom"]["ship"].clone()), (json!(8), Value::Null, json!("2026-12-01")));
+    // the schema itself is checked: duplicate keys, a choice without choices
+    let dup = json!([{"key": "x", "label": "X", "type": "text"}, {"key": "x", "label": "X2", "type": "text"}]);
+    assert_eq!(a.err(&al, "projects.update", json!({"project": p, "attributes": dup})).category, Category::Invalid);
+    let lonely = json!([{"key": "c", "label": "C", "type": "choice"}]);
+    assert_eq!(a.err(&al, "projects.update", json!({"project": p, "attributes": lonely})).category, Category::Invalid);
+}
+
+#[test]
+fn tasks_can_be_found_filtered_and_sorted_including_by_a_custom_attribute() {
+    let a = app();
+    let al = who("alice");
+    let p = project_with_attributes(&a, &al);
+    for (title, prio, est, area, due) in [("Alpha", 2, 8, "web", "2026-01-05"), ("Beta", 9, 3, "api", "2026-01-01"), ("Gamma", 5, 5, "web", "2026-01-09")] {
+        a.ok(&al, "tasks.create", json!({"project": p, "title": title, "priority": prio, "due": due, "custom": {"estimate": est, "area": area}}));
+    }
+    let titles = |input: Value| -> Vec<String> { a.ok(&al, "tasks.query", input)["tasks"].as_array().unwrap().iter().map(|t| t["title"].as_str().unwrap().to_string()).collect() };
+    assert_eq!(titles(json!({"project": p, "sort": "priority", "desc": true})), ["Beta", "Gamma", "Alpha"]);
+    assert_eq!(titles(json!({"project": p, "sort": "custom.estimate"})), ["Beta", "Gamma", "Alpha"]);
+    assert_eq!(titles(json!({"project": p, "custom": {"area": "web"}, "sort": "due"})), ["Alpha", "Gamma"]);
+    assert_eq!(titles(json!({"project": p, "priority_min": 5, "sort": "title"})), ["Beta", "Gamma"]);
+    assert_eq!(titles(json!({"project": p, "due_before": "2026-01-05", "sort": "due"})), ["Beta", "Alpha"]);
+    assert_eq!(titles(json!({"project": p, "q": "amm"})), ["Gamma"]);
+    // paging reports the total
+    let page = a.ok(&al, "tasks.query", json!({"project": p, "sort": "title", "limit": 2}));
+    assert_eq!((page["tasks"].as_array().unwrap().len(), page["total"].clone(), page["next"].clone()), (2, json!(3), json!(2)));
+    // sorting by something that is not a column or an attribute is refused
+    assert_eq!(a.err(&al, "tasks.query", json!({"project": p, "sort": "custom.nope"})).category, Category::Invalid);
+    assert_eq!(a.err(&al, "tasks.query", json!({"project": p, "sort": "notes; drop"})).category, Category::Invalid);
+    // a stranger cannot ask
+    assert_eq!(a.err(&who("mallory"), "tasks.query", json!({"project": p})).category, Category::NotFound);
+}
+
+#[test]
+fn the_overview_counts_columns_bands_overdue_and_completions_per_day() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Stats");
+    let today = date_of_clock(&a);
+    let t1 = a.ok(&al, "tasks.create", json!({"project": p, "title": "late", "priority": 9, "due": "2020-01-01"}));
+    a.ok(&al, "tasks.create", json!({"project": p, "title": "fine", "priority": 1}));
+    let t3 = a.ok(&al, "tasks.create", json!({"project": p, "title": "finished"}));
+    a.ok(&al, "tasks.update", json!({"project": p, "id": t3["id"], "status": "done"}));
+    let s = a.ok(&al, "tasks.stats", json!({"project": p, "days": 7}));
+    assert_eq!((s["total"].clone(), s["open"].clone(), s["done"].clone(), s["overdue"].clone()), (json!(3), json!(2), json!(1), json!(1)));
+    assert_eq!(s["by_status"]["todo"], 2);
+    assert_eq!(s["by_status"]["done"], 1);
+    assert_eq!((s["by_band"]["urgent"].clone(), s["by_band"]["low"].clone()), (json!(1), json!(1)));
+    let days = s["completed_per_day"].as_array().unwrap();
+    assert_eq!(days.len(), 7);
+    assert_eq!(days.last().unwrap()["date"], today.as_str());
+    assert_eq!(days.last().unwrap()["n"], 1);
+    let _ = t1;
+}
+
+fn date_of_clock(a: &App) -> String {
+    nuah_madar::util::date_of(a.core.now())
+}
+
+#[test]
+fn focus_ranks_your_open_tasks_by_urgency_in_two_lists() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Day");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let today = date_of_clock(&a);
+    let mk = |title: &str, prio: i64, due: Value| a.ok(&al, "tasks.create", json!({"project": p, "title": title, "priority": prio, "due": due, "assignee": "bob"}))["id"].clone();
+    mk("low and undated", 0, Value::Null);
+    mk("urgent but far", 9, json!("2099-01-01"));
+    mk("due today", 3, json!(today));
+    mk("a week late", 3, json!(nuah_madar::util::days_before(&today, 7)));
+    for n in 0..8 {
+        mk(&format!("filler {n}"), 1, Value::Null);
+    }
+    a.ok(&al, "tasks.create", json!({"project": p, "title": "not bob's", "priority": 10}));
+    let f = a.ok(&bo, "tasks.focus", json!({}));
+    let names = |k: &str| -> Vec<String> { f[k].as_array().unwrap().iter().map(|t| t["title"].as_str().unwrap().to_string()).collect() };
+    assert_eq!(names("start").len(), 5);
+    assert_eq!(names("also").len(), 7);
+    // 3*1.5 + 7*2 = 18.5 beats 9*1.5 = 13.5, which beats due today 3*1.5 + 3 = 7.5
+    assert_eq!(&names("start")[..3], ["a week late", "urgent but far", "due today"]);
+    assert!(!names("start").iter().chain(names("also").iter()).any(|t| t == "not bob's"));
+    assert_eq!(f["open"], 12);
+}
+
+#[test]
+fn a_rich_task_description_is_checked_and_its_references_become_links() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Rich");
+    let page = a.ok(&al, "pages.create", json!({"project": p, "title": "Spec"}))["id"].as_str().unwrap().to_string();
+    assert_eq!(a.err(&al, "tasks.create", json!({"project": p, "title": "bad", "description": {"type": "paragraph"}})).category, Category::Invalid);
+    let t = a.ok(&al, "tasks.create", json!({"project": p, "title": "Implement", "description": doc_with("per the", &[("pages.page", &page)])}));
+    a.settle();
+    let links = a.ok(&al, "links.to", json!({"project": p, "kind": "pages.page", "id": page}));
+    assert_eq!(links["links"][0]["from"]["id"], t["id"]);
+    assert_eq!(links["links"][0]["title"], "Implement");
+}

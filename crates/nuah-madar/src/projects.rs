@@ -27,7 +27,7 @@ fn level_of(tx: &Tx, project: &str, subject: &str) -> Result<Option<String>> {
 }
 
 fn project_view(d: &Doc, level: &str) -> Value {
-    json!({"id": d.id, "rev": d.rev, "name": d.body["name"], "statuses": d.body["statuses"], "created_by": d.body["created_by"], "level": level})
+    json!({"id": d.id, "rev": d.rev, "name": d.body["name"], "statuses": d.body["statuses"], "attributes": d.body.get("attributes").cloned().unwrap_or_else(|| json!([])), "created_by": d.body["created_by"], "level": level})
 }
 
 fn check_statuses(v: &Value) -> Result<()> {
@@ -45,12 +45,35 @@ fn check_statuses(v: &Value) -> Result<()> {
     Ok(())
 }
 
+/// The custom attributes a project's tasks may carry (ADR 0024): unique lowercase keys, typed.
+pub fn check_attributes(v: &Value) -> Result<()> {
+    let mut seen = std::collections::BTreeSet::new();
+    for (n, a) in v.as_array().cloned().unwrap_or_default().iter().enumerate() {
+        let key = text(a, "key");
+        if key.is_empty() || !key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+            return Err(Error::invalid(&format!("attributes[{n}].key"), "use lowercase letters, digits and _"));
+        }
+        if !seen.insert(key.to_string()) {
+            return Err(Error::invalid(&format!("attributes[{n}].key"), "is used twice"));
+        }
+        let is_choice = text(a, "type") == "choice";
+        let has = a["choices"].as_array().is_some_and(|c| !c.is_empty());
+        if is_choice != has {
+            return Err(Error::invalid(&format!("attributes[{n}].choices"), "a choice attribute needs choices, and only a choice attribute has them"));
+        }
+    }
+    Ok(())
+}
+
 pub struct Projects;
 
 impl Plugin for Projects {
     fn manifest(&self) -> Manifest {
-        let status = json!({"type":"object","required":["id","name"],"properties":{"id":{"type":"string","minLength":1,"maxLength":40},"name":{"type":"string","minLength":1,"maxLength":60}},"additionalProperties":false});
+        let status = json!({"type":"object","required":["id","name"],"properties":{"id":{"type":"string","minLength":1,"maxLength":40},"name":{"type":"string","minLength":1,"maxLength":60},"color":{"type":"string","maxLength":20}},"additionalProperties":false});
         let statuses = json!({"type":"array","minItems":2,"maxItems":12,"items":status});
+        let attrs = json!({"type":"array","maxItems":30,"items":{"type":"object","required":["key","label","type"],"properties":{
+            "key":{"type":"string","minLength":1,"maxLength":30},"label":{"type":"string","minLength":1,"maxLength":60},
+            "type":{"enum":["text","number","date","boolean","choice"]},"choices":{"type":"array","maxItems":30,"items":{"type":"string","minLength":1,"maxLength":40}}},"additionalProperties":false}});
         let project_out = json!({"type":"object","required":["id","rev","name","statuses","level"]});
         manifest(json!({
             "id": "projects", "version": "0.3.0", "name": "Projects", "namespaces": ["projects"],
@@ -73,7 +96,7 @@ impl Plugin for Projects {
             "operations": {
                 "projects.create": {"kind": "command", "permission": "projects.create",
                     "description": "Start a project; you become its owner",
-                    "input": {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":100},"statuses":statuses},"additionalProperties":false},
+                    "input": {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":100},"statuses":statuses,"attributes":attrs},"additionalProperties":false},
                     "output": project_out, "affordances": {"type":"projects.project","id":"id"}},
                 "projects.list": {"kind": "query", "description": "The projects you belong to",
                     "output": {"type":"object","required":["projects"]}, "affordances": {"type":"projects.project","id":"id","at":"projects"}},
@@ -81,7 +104,7 @@ impl Plugin for Projects {
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"}},"additionalProperties":false},
                     "output": project_out, "affordances": {"type":"projects.project","id":"id"}},
                 "projects.update": {"kind": "command", "description": "Rename a project or change its columns", "resource": {"type":"projects.project","id":"project"}, "permission": "projects.manage",
-                                        "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"},"name":{"type":"string","minLength":1,"maxLength":100},"statuses":statuses,"expected_rev":{"type":"integer","minimum":1}},"additionalProperties":false},
+                                        "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"},"name":{"type":"string","minLength":1,"maxLength":100},"statuses":statuses,"attributes":attrs,"expected_rev":{"type":"integer","minimum":1}},"additionalProperties":false},
                     "output": project_out, "affordances": {"type":"projects.project","id":"id"}},
                 "projects.delete": {"kind": "command", "description": "Delete a project and everything in it", "resource": {"type":"projects.project","id":"project"}, "permission": "projects.manage",
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"}},"additionalProperties":false}},
@@ -120,7 +143,9 @@ impl Plugin for Projects {
             let statuses = i.get("statuses").cloned().unwrap_or_else(|| json!([{"id":"todo","name":"To do"},{"id":"doing","name":"Doing"},{"id":"done","name":"Done"}]));
             check_statuses(&statuses)?;
             let me = tx.who().subject.clone();
-            let p = tx.create(PROJECTS, json!({"name": i["name"], "statuses": statuses, "created_by": me}))?;
+            let attributes = i.get("attributes").cloned().unwrap_or_else(|| json!([]));
+            check_attributes(&attributes)?;
+            let p = tx.create(PROJECTS, json!({"name": i["name"], "statuses": statuses, "attributes": attributes, "created_by": me}))?;
             tx.put(MEMBERS, &member_id(&p.id, &me), json!({"project": p.id, "subject": me, "level": "owner", "display": tx.who().display}), Expect::Absent)?;
             tx.emit("projects.created", Audience::scope("projects.members", &p.id), json!({"project": p.id, "name": p.body["name"]}))?;
             Ok(project_view(&p, "owner"))
@@ -162,6 +187,11 @@ impl Plugin for Projects {
                 check_statuses(s)?;
                 changes.insert("statuses".into(), json!([body["statuses"], s]));
                 body["statuses"] = s.clone();
+            }
+            if let Some(a) = i.get("attributes") {
+                check_attributes(a)?;
+                changes.insert("attributes".into(), json!([body.get("attributes").cloned().unwrap_or_else(|| json!([])), a]));
+                body["attributes"] = a.clone();
             }
             let d = tx.put(PROJECTS, id, body, Expect::Rev(p.rev))?;
             tx.emit("projects.updated", Audience::scope("projects.members", id), json!({"project": id, "changes": changes}))?;

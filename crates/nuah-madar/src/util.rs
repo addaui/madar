@@ -63,3 +63,23 @@ pub fn stale(e: Error, reason: &str, what: &str) -> Error {
 pub fn ids_of(v: &Value) -> Vec<String> {
     v.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default()
 }
+
+/// Days from the civil date `YYYY-MM-DD` to 1970-01-01 (negative before it). `None` if it is not a date.
+pub fn day_number(date: &str) -> Option<i64> {
+    let b = date.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return None;
+    }
+    let (y, m, d): (i64, i64, i64) = (date[0..4].parse().ok()?, date[5..7].parse().ok()?, date[8..10].parse().ok()?);
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146_097 + doe - 719_468)
+}
+
+/// The date `n` days before `date`.
+pub fn days_before(date: &str, n: i64) -> String {
+    date_of((day_number(date).unwrap_or(0) - n) * 86_400_000)
+}

@@ -1,6 +1,7 @@
 //! `tasks`: the board. Tasks, subtasks, labels, order, and the Today view.
 //! Design: https://docs.addaui.com/nuah/specs/madar-v2/
 
+use crate::content::richtext;
 use crate::util::*;
 use nuah_kernel::*;
 use serde_json::{json, Value};
@@ -17,6 +18,7 @@ pub fn view(d: &Doc) -> Value {
         "due": b["due"], "assignee": b["assignee"], "labels": b["labels"], "parent": b["parent"],
         "position": b["position"], "archived": b["archived"], "created_by": b["created_by"],
         "created_at": b["created_at"], "completed_at": b["completed_at"],
+        "description": b.get("description").cloned().unwrap_or(Value::Null), "custom": b.get("custom").cloned().unwrap_or_else(|| json!({})),
     })
 }
 
@@ -60,6 +62,50 @@ fn check_labels(tx: &Tx, project: &str, v: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Values for a project's custom attributes (ADR 0024). `null` removes a value.
+fn check_custom(project: &Value, custom: &Value) -> Result<()> {
+    let schema = project["attributes"].as_array().cloned().unwrap_or_default();
+    for (k, v) in custom.as_object().cloned().unwrap_or_default() {
+        let field = format!("custom.{k}");
+        let Some(a) = schema.iter().find(|a| text(a, "key") == k) else {
+            return Err(Error::reason(Category::Invalid, "tasks.unknown_attribute", "That attribute is not defined in this project").with_params(json!({"key": k})));
+        };
+        if v.is_null() {
+            continue;
+        }
+        let ok = match text(a, "type") {
+            "text" => v.as_str().is_some_and(|s| s.len() <= 500),
+            "number" => v.is_number(),
+            "boolean" => v.is_boolean(),
+            "date" => return check_date(&field, &v),
+            "choice" => v.as_str().is_some_and(|s| a["choices"].as_array().is_some_and(|c| c.iter().any(|x| x == s))),
+            _ => false,
+        };
+        if !ok {
+            return Err(Error::invalid(&field, "does not fit the attribute's type"));
+        }
+    }
+    Ok(())
+}
+
+fn merge_custom(old: &Value, change: &Value) -> Value {
+    let mut out = old.as_object().cloned().unwrap_or_default();
+    for (k, v) in change.as_object().cloned().unwrap_or_default() {
+        if v.is_null() { out.remove(&k); } else { out.insert(k, v); }
+    }
+    Value::Object(out)
+}
+
+/// What the Face needs to order the day: higher is more urgent (ADR 0024).
+fn urgency(priority: i64, due: Option<&str>, today: &str) -> f64 {
+    let late = match (due.and_then(day_number), day_number(today)) {
+        (Some(d), Some(t)) if d < t => (t - d) as f64,
+        _ => 0.0,
+    };
+    let due_today = if due == Some(today) { 3.0 } else { 0.0 };
+    priority as f64 * 1.5 + late * 2.0 + due_today
+}
+
 fn column(tx: &Tx, project: &str, status: &str, except: Option<&str>) -> Result<Vec<Doc>> {
     let page = tx.query(TASKS, &Query::new().eq("project", project).eq("status", status).eq("archived", false).eq("parent", Value::Null).asc("position").limit(5000))?;
     Ok(page.items.into_iter().filter(|d| Some(d.id.as_str()) != except).collect())
@@ -95,7 +141,7 @@ impl Plugin for Tasks {
                     "input": {"type":"object","required":["project","title"],"properties":{
                         "project":proj,"title":{"type":"string","minLength":1,"maxLength":200},"notes":{"type":"string","maxLength":10000},
                         "status":{"type":"string"},"priority":{"type":"integer","minimum":0,"maximum":10},"due":date,
-                        "assignee":{"type":["string","null"]},"labels":{"type":"array","maxItems":20,"items":{"type":"string"}},"parent":{"type":["string","null"]}},"additionalProperties":false},
+                        "assignee":{"type":["string","null"]},"labels":{"type":"array","maxItems":20,"items":{"type":"string"}},"parent":{"type":["string","null"]},"custom":{"type":"object"},"description":{"type":["object","null"]}},"additionalProperties":false},
                     "output": task_out, "affordances": aff},
                 "tasks.get": {"kind": "query", "description": "One task", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project","id"],"properties":{"project":proj,"id":{"type":"string"}},"additionalProperties":false},
@@ -111,14 +157,26 @@ impl Plugin for Tasks {
                     "input": {"type":"object","required":["project","id"],"properties":{
                         "project":proj,"id":{"type":"string"},"expected_rev":{"type":"integer","minimum":1},"title":{"type":"string","minLength":1,"maxLength":200},
                         "notes":{"type":"string","maxLength":10000},"status":{"type":"string"},"priority":{"type":"integer","minimum":0,"maximum":10},"due":date,
-                        "assignee":{"type":["string","null"]},"labels":{"type":"array","maxItems":20,"items":{"type":"string"}},"archived":{"type":"boolean"}},"additionalProperties":false},
+                        "assignee":{"type":["string","null"]},"labels":{"type":"array","maxItems":20,"items":{"type":"string"}},"archived":{"type":"boolean"},"custom":{"type":"object"},"description":{"type":["object","null"]}},"additionalProperties":false},
                     "output": task_out, "affordances": aff},
                 "tasks.move": {"kind": "command", "description": "Move a task to a column and a place in it", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
-                    "reasons": {"tasks.bad_status": "That column does not exist", "tasks.archived": "An archived task can only be restored"},
+                    "reasons": {"tasks.bad_status": "That column does not exist", "tasks.unknown_attribute": "That attribute is not defined in this project", "tasks.archived": "An archived task can only be restored"},
                     "input": {"type":"object","required":["project","id"],"properties":{"project":proj,"id":{"type":"string"},"status":{"type":"string"},"after":{"type":["string","null"]}},"additionalProperties":false},
                     "output": task_out, "affordances": aff},
                 "tasks.remove": {"kind": "command", "description": "Delete a task and its subtasks", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project","id"],"properties":{"project":proj,"id":{"type":"string"}},"additionalProperties":false}},
+                "tasks.query": {"kind": "query", "description": "Find tasks in a project: filter, sort (also by custom attributes), page", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
+                    "input": {"type":"object","required":["project"],"properties":{"project":proj,"status":{"type":"string"},"assignee":{"type":["string","null"]},"label":{"type":"string"},
+                        "priority_min":{"type":"integer","minimum":0,"maximum":10},"due_before":date,"due_after":date,"done":{"type":"boolean"},"archived":{"type":"boolean"},
+                        "q":{"type":"string","maxLength":100},"custom":{"type":"object"},"sort":{"type":"string","maxLength":40},"desc":{"type":"boolean"},
+                        "limit":{"type":"integer","minimum":1,"maximum":500},"after":{"type":"integer","minimum":0}},"additionalProperties":false},
+                    "output": {"type":"object","required":["tasks"]}},
+                "tasks.stats": {"kind": "query", "description": "Numbers for a project's overview: per column, per priority band, overdue, and completions per day", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
+                    "input": {"type":"object","required":["project"],"properties":{"project":proj,"days":{"type":"integer","minimum":1,"maximum":120}},"additionalProperties":false},
+                    "output": {"type":"object","required":["total","open","done","overdue","by_status","by_band","completed_per_day"]}},
+                "tasks.focus": {"kind": "query", "description": "Where to start the day: your open tasks ranked by urgency, the top few and then some more",
+                    "input": {"type":"object","properties":{"today":{"type":"string"}},"additionalProperties":false},
+                    "output": {"type":"object","required":["start","also","today"]}},
                 "tasks.my": {"kind": "query", "description": "Today: what is assigned to you, across projects",
                     "input": {"type":"object","properties":{"today":{"type":"string"}},"additionalProperties":false},
                     "output": {"type":"object","required":["tasks","today"]}, "affordances": {"type":"projects.project","id":"project","at":"tasks"}},
@@ -166,6 +224,12 @@ impl Plugin for Tasks {
                 }
             }
             let position = if parent.is_null() { end_of(tx, &project, &status)? } else { GAP };
+            let custom = i.get("custom").cloned().unwrap_or_else(|| json!({}));
+            check_custom(&p, &custom)?;
+            let description = i.get("description").cloned().unwrap_or(Value::Null);
+            if !description.is_null() {
+                richtext::check("description", &description)?;
+            }
             let me = tx.who().subject.clone();
             let now = tx.now();
             let done = status == last_status(&p);
@@ -174,9 +238,10 @@ impl Plugin for Tasks {
                 "priority": i.get("priority").cloned().unwrap_or(json!(0)), "due": i.get("due").cloned().unwrap_or(Value::Null),
                 "assignee": assignee, "labels": labels, "parent": parent, "position": position, "archived": false,
                 "created_by": me, "created_at": now, "completed_at": if done { json!(now) } else { Value::Null },
+                "custom": custom, "description": description,
             }))?;
             let aud = Audience::scope("projects.members", &project);
-            tx.emit("tasks.created", aud, json!({"project": project, "task": view(&d)}))?;
+            tx.emit("tasks.created", aud, json!({"project": project, "task": view(&d), "links": richtext::links_of("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
             notify_assigned(tx, &d)?;
             Ok(view(&d))
         });
@@ -233,6 +298,23 @@ impl Plugin for Tasks {
                 changes.insert(field.into(), json!([body[field], new]));
                 body[field] = new.clone();
             }
+            if let Some(c) = i.get("custom") {
+                check_custom(&p, c)?;
+                let merged = merge_custom(&body["custom"], c);
+                if merged != body["custom"] {
+                    changes.insert("custom".into(), json!([body["custom"], merged]));
+                    body["custom"] = merged;
+                }
+            }
+            if let Some(dsc) = i.get("description") {
+                if !dsc.is_null() {
+                    richtext::check("description", dsc)?;
+                }
+                if dsc != &body["description"] {
+                    changes.insert("description".into(), json!(true));
+                    body["description"] = dsc.clone();
+                }
+            }
             if changes.is_empty() {
                 return Ok(view(&old));
             }
@@ -248,7 +330,8 @@ impl Plugin for Tasks {
                 body["position"] = json!(end_of(tx, &project, text(&body, "status"))?);
             }
             let d = tx.put(TASKS, &old.id, body, Expect::Rev(old.rev)).map_err(|e| stale(e, "tasks.stale_revision", "The task"))?;
-            tx.emit("tasks.updated", Audience::scope("projects.members", &project), json!({"project": project, "task": view(&d), "changes": changes}))?;
+            tx.emit("tasks.updated", Audience::scope("projects.members", &project), json!({"project": project, "task": view(&d), "changes": changes,
+                "links": richtext::links_of("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
             if changes.contains_key("assignee") {
                 notify_assigned(tx, &d)?;
             }
@@ -337,6 +420,109 @@ impl Plugin for Tasks {
             tx.delete(TASKS, &t.id)?;
             tx.emit("tasks.removed", Audience::scope("projects.members", &project), json!({"project": project, "task": t.id, "subtasks": sub_ids, "title": t.body["title"]}))?;
             Ok(json!({}))
+        });
+
+
+        b.op("tasks.query", |tx, i| {
+            let project = text(&i, "project").to_string();
+            let mut q = Query::new().eq("project", project.as_str()).eq("archived", i["archived"] == true);
+            if let Some(s) = i.get("status") { q = q.eq("status", s.clone()); }
+            if let Some(a) = i.get("assignee") { q = q.eq("assignee", a.clone()); }
+            if let Some(l) = i.get("label") { q = q.has("labels", l.clone()); }
+            if let Some(p) = i.get("priority_min") { q = q.gte("priority", p.clone()); }
+            if let Some(d) = i.get("due_before") { check_date("due_before", d)?; q = q.lte("due", d.clone()); }
+            if let Some(d) = i.get("due_after") { check_date("due_after", d)?; q = q.gte("due", d.clone()); }
+            match i.get("done").and_then(|d| d.as_bool()) {
+                Some(true) => q = q.ne("completed_at", Value::Null),
+                Some(false) => q = q.eq("completed_at", Value::Null),
+                None => {}
+            }
+            let p = project_of(tx, &project)?;
+            for (k, v) in i.get("custom").and_then(|c| c.as_object()).cloned().unwrap_or_default() {
+                check_custom(&p, &json!({ k.clone(): v.clone() }))?;
+                q = q.eq(&format!("custom.{k}"), v);
+            }
+            let sort = i.get("sort").and_then(|s| s.as_str()).unwrap_or("position");
+            let sortable = ["position", "title", "priority", "due", "created_at", "completed_at", "status"];
+            let field = if let Some(k) = sort.strip_prefix("custom.") {
+                if !p["attributes"].as_array().is_some_and(|a| a.iter().any(|x| text(x, "key") == k)) {
+                    return Err(Error::invalid("sort", "is not an attribute of this project"));
+                }
+                sort.to_string()
+            } else if sortable.contains(&sort) {
+                sort.to_string()
+            } else {
+                return Err(Error::invalid("sort", "cannot sort by that"));
+            };
+            q = if i["desc"] == true { q.desc(&field) } else { q.asc(&field) };
+            let q = q.limit(5000);
+            let needle = text(&i, "q").to_lowercase();
+            let mut rows: Vec<Doc> = tx.query(TASKS, &q)?.items;
+            if !needle.is_empty() {
+                rows.retain(|d| text(&d.body, "title").to_lowercase().contains(&needle) || text(&d.body, "notes").to_lowercase().contains(&needle));
+            }
+            let (limit, after) = (i.get("limit").and_then(|l| l.as_u64()).unwrap_or(200) as usize, i.get("after").and_then(|l| l.as_u64()).unwrap_or(0) as usize);
+            let total = rows.len();
+            let page: Vec<Value> = rows.iter().skip(after).take(limit).map(view).collect();
+            Ok(json!({"tasks": page, "total": total, "next": if after + limit < total { json!(after + limit) } else { Value::Null }}))
+        });
+
+        b.op("tasks.stats", |tx, i| {
+            let project = text(&i, "project").to_string();
+            let days = i.get("days").and_then(|d| d.as_i64()).unwrap_or(30);
+            let p = project_of(tx, &project)?;
+            let today = date_of(tx.now());
+            let last = last_status(&p);
+            let rows = tx.query(TASKS, &Query::new().eq("project", project.as_str()).eq("archived", false).limit(5000))?.items;
+            let mut by_status = serde_json::Map::new();
+            for s in p["statuses"].as_array().cloned().unwrap_or_default() {
+                by_status.insert(text(&s, "id").to_string(), json!(0));
+            }
+            let mut by_band = serde_json::Map::new();
+            for b_ in ["low", "medium", "high", "urgent"] {
+                by_band.insert(b_.into(), json!(0));
+            }
+            let (mut open, mut done, mut overdue) = (0u64, 0u64, 0u64);
+            let mut per_day: std::collections::BTreeMap<String, u64> = (0..days).map(|n| (days_before(&today, n), 0)).collect();
+            for d in &rows {
+                let st = text(&d.body, "status").to_string();
+                if let Some(n) = by_status.get_mut(&st) { *n = json!(n.as_u64().unwrap_or(0) + 1); }
+                if st == last {
+                    done += 1;
+                    if let Some(at) = d.body["completed_at"].as_i64() {
+                        if let Some(n) = per_day.get_mut(&date_of(at)) { *n += 1; }
+                    }
+                } else {
+                    open += 1;
+                    let bd = band(d.body["priority"].as_i64().unwrap_or(0));
+                    if let Some(n) = by_band.get_mut(bd) { *n = json!(n.as_u64().unwrap_or(0) + 1); }
+                    if d.body["due"].as_str().is_some_and(|x| x < today.as_str()) { overdue += 1; }
+                }
+            }
+            Ok(json!({"total": rows.len(), "open": open, "done": done, "overdue": overdue, "by_status": by_status, "by_band": by_band, "today": today,
+                "completed_per_day": per_day.into_iter().map(|(date, n)| json!({"date": date, "n": n})).collect::<Vec<_>>()}))
+        });
+
+        b.op("tasks.focus", |tx, i| {
+            let today = i.get("today").and_then(|t| t.as_str()).map(String::from).unwrap_or_else(|| date_of(tx.now()));
+            let me = tx.who().subject.clone();
+            let projects = tx.call("projects.list", json!({}))?;
+            let mut scored: Vec<(f64, Value)> = vec![];
+            for p in projects["projects"].as_array().cloned().unwrap_or_default() {
+                let pid = text(&p, "id").to_string();
+                let last = last_status(&p);
+                let page = tx.query(TASKS, &Query::new().eq("project", pid.as_str()).eq("assignee", me.as_str()).eq("archived", false).limit(1000))?;
+                for d in page.items.iter().filter(|d| text(&d.body, "status") != last) {
+                    let score = urgency(d.body["priority"].as_i64().unwrap_or(0), d.body["due"].as_str(), &today);
+                    let mut v = view(d);
+                    v["project_name"] = p["name"].clone();
+                    v["score"] = json!(score);
+                    scored.push((score, v));
+                }
+            }
+            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then_with(|| text(&a.1, "due").cmp(text(&b.1, "due"))).then_with(|| text(&a.1, "id").cmp(text(&b.1, "id"))));
+            let rows: Vec<Value> = scored.into_iter().map(|(_, v)| v).collect();
+            Ok(json!({"today": today, "start": rows.iter().take(5).cloned().collect::<Vec<_>>(), "also": rows.iter().skip(5).take(10).cloned().collect::<Vec<_>>(), "open": rows.len()}))
         });
 
         b.op("tasks.my", |tx, i| {
