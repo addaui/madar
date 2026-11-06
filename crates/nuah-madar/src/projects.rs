@@ -53,7 +53,8 @@ impl Plugin for Projects {
         let statuses = json!({"type":"array","minItems":2,"maxItems":12,"items":status});
         let project_out = json!({"type":"object","required":["id","rev","name","statuses","level"]});
         manifest(json!({
-            "id": "projects", "version": "0.2.0", "name": "Projects", "namespaces": ["projects"],
+            "id": "projects", "version": "0.3.0", "name": "Projects", "namespaces": ["projects"],
+            "provides": [{"extension_point": "prefs.item", "optional": true}],
             "description": "Projects, their members and Access levels",
             "requires": {"capabilities": ["emit"]},
             "data": {"collections": [PROJECTS, MEMBERS], "version": 1,
@@ -102,6 +103,11 @@ impl Plugin for Projects {
     }
 
     fn bind(&self, b: &mut Bindings) {
+        b.provide("prefs.item", |_tx, _i| {
+            Ok(crate::small::pref_answer(vec![json!({"key": "projects.default_tab", "group": "behaviour", "type": "choice", "default": "board",
+                "label": {"en": "Default project view", "ar": "العرض الافتراضي للمشروع"},
+                "choices": [{"value":"board","label":{"en":"Board","ar":"اللوحة"}},{"value":"list","label":{"en":"List","ar":"القائمة"}},{"value":"overview","label":{"en":"Overview","ar":"نظرة عامة"}},{"value":"pages","label":{"en":"Pages","ar":"الصفحات"}}]})]))
+        });
         b.resource("projects.project", |db, who, id| {
             if !db.get(PROJECTS, id)?.is_some_and(|d| !d.deleted) {
                 return Ok(None);

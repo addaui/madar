@@ -289,6 +289,9 @@ pub fn resolve(dist: &Distribution) -> (Vec<Problem>, Plan) {
         }
         for pr in &m.provides {
             if !plan.ext_points.contains_key(&pr.extension_point) {
+                if pr.optional {
+                    continue;
+                }
                 ps.push(problem("unknown_extension_point", &[id], format!("{id} provides {}, which no enabled plugin defines", pr.extension_point)));
             } else {
                 plan.providers.entry(pr.extension_point.clone()).or_default().push((pr.priority, id.clone()));

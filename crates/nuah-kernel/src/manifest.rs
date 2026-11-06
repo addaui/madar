@@ -96,6 +96,10 @@ pub struct Provide {
     pub extension_point: String,
     #[serde(default)]
     pub priority: i32,
+    /// When true, a Profile that does not enable the plugin defining the point is fine: this plugin
+    /// then simply offers nothing. Lets a plugin join something that may not be there (preferences).
+    #[serde(default)]
+    pub optional: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,7 +297,7 @@ impl Manifest {
     pub fn kind(&self) -> PluginKind {
         if self.fills.is_some() {
             PluginKind::Adapter
-        } else if !self.provides.is_empty() {
+        } else if self.provides.iter().any(|p| !p.optional) {
             PluginKind::Provider
         } else if self.theme.is_some()
             && self.operations.is_empty()

@@ -689,3 +689,40 @@ fn allow_all_ignores_roles_but_not_what_the_project_grants() {
     assert!(!seen["can"].as_array().unwrap().iter().any(|c| c == "projects.write"), "{}", seen["can"]);
     assert!(call(&owner, "tasks.create", json!({"project": id, "title": "ok"})).is_ok());
 }
+
+// ---- preferences (ADR 0021) -----------------------------------------------------------------------
+
+#[test]
+fn each_plugin_declares_its_own_preferences_and_the_prefs_plugin_checks_them() {
+    let a = app();
+    let al = who("alice");
+    let keys: Vec<String> = a.ok(&al, "prefs.schema", json!({}))["items"].as_array().unwrap().iter().map(|i| i["key"].as_str().unwrap().to_string()).collect();
+    for k in ["theme", "language", "density", "calendar", "confirm_before_delete", "tasks.default_priority", "tasks.due_soon_days", "projects.default_tab"] {
+        assert!(keys.contains(&k.to_string()), "{k} is declared: {keys:?}");
+    }
+    let got = a.ok(&al, "prefs.get", json!({}));
+    assert_eq!(got["tasks.default_priority"], 0);
+    assert_eq!(got["confirm_before_delete"], true);
+    a.ok(&al, "prefs.set", json!({"tasks.default_priority": 7, "calendar": "hijri", "avatar_color": "#1a2b3c"}));
+    let got = a.ok(&al, "prefs.get", json!({}));
+    assert_eq!((got["tasks.default_priority"].clone(), got["calendar"].clone(), got["avatar_color"].clone()), (json!(7), json!("hijri"), json!("#1a2b3c")));
+    // refused: unknown key, out of range, not a choice, wrong type, bad colour
+    for bad in [json!({"nope": 1}), json!({"tasks.default_priority": 11}), json!({"calendar": "lunar"}), json!({"confirm_before_delete": "yes"}), json!({"avatar_color": "red"})] {
+        assert_eq!(a.err(&al, "prefs.set", bad.clone()).category, Category::Invalid, "{bad}");
+    }
+    // one bad key means nothing is stored
+    a.err(&al, "prefs.set", json!({"density": "compact", "calendar": "lunar"}));
+    assert_eq!(a.ok(&al, "prefs.get", json!({}))["density"], "comfortable");
+    // only your own
+    assert_eq!(a.ok(&who("bob"), "prefs.get", json!({}))["tasks.default_priority"], 0);
+}
+
+#[test]
+fn a_plugin_that_offers_preferences_still_runs_when_the_prefs_plugin_is_off() {
+    let path = temp_db();
+    let core = start_file(&path, &["prefs"]).unwrap_or_else(|p| panic!("{p:#?}"));
+    let al = who("alice");
+    let p = core.call_as(&al, "projects.create", json!({"name": "Home"}), None).unwrap().output["id"].as_str().unwrap().to_string();
+    core.call_as(&al, "tasks.create", json!({"project": p, "title": "still works"}), None).unwrap();
+    assert!(core.call_as(&al, "prefs.get", json!({}), None).is_err(), "the Operation is gone with its plugin");
+}

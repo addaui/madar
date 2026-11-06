@@ -78,7 +78,8 @@ impl Plugin for Tasks {
         let date = json!({"type":["string","null"]});
         let proj = json!({"type":"string"});
         manifest(json!({
-            "id": "tasks", "version": "0.2.0", "name": "Tasks", "namespaces": ["tasks"],
+            "id": "tasks", "version": "0.3.0", "name": "Tasks", "namespaces": ["tasks"],
+            "provides": [{"extension_point": "prefs.item", "optional": true}],
             "description": "Tasks on a board: columns, order, subtasks, labels, and a Today view",
             "requires": {"plugins": ["projects"], "capabilities": ["emit", "call"]},
             "data": {"collections": [TASKS, LABELS], "version": 1,
@@ -137,6 +138,12 @@ impl Plugin for Tasks {
     }
 
     fn bind(&self, b: &mut Bindings) {
+        b.provide("prefs.item", |_tx, _i| {
+            Ok(crate::small::pref_answer(vec![
+                json!({"key": "tasks.default_priority", "group": "behaviour", "type": "integer", "default": 0, "min": 0, "max": 10, "label": {"en": "Default task priority", "ar": "أولوية المهمة الافتراضية"}}),
+                json!({"key": "tasks.due_soon_days", "group": "behaviour", "type": "integer", "default": 3, "min": 0, "max": 30, "label": {"en": "Due soon window (days)", "ar": "نافذة الاستحقاق القريب (أيام)"}}),
+            ]))
+        });
         b.op("tasks.create", |tx, i| {
             let project = text(&i, "project").to_string();
             let p = project_of(tx, &project)?;
