@@ -18,7 +18,7 @@ impl Plugin for Audit {
             "requires": {"plugins": ["projects"]},
             "data": {"collections": [ENTRIES], "version": 1, "indexes": [{"collection": ENTRIES, "field": "project"}]},
             "operations": {
-                "audit.list": {"kind": "query", "permission": "projects.manage", "resource": {"type":"projects.project","id":"project"},
+                "audit.list": {"kind": "query", "description": "The history of a project (owners only)", "permission": "projects.manage", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":500},"after":{"type":"integer","minimum":0}},"additionalProperties":false},
                     "output": {"type":"object","required":["entries"]}}
             },
@@ -96,8 +96,8 @@ impl Plugin for Prefs {
             "data": {"collections": [PREFS], "version": 1},
             "events": {"prefs.changed": {}},
             "operations": {
-                "prefs.get": {"kind": "query", "output": {"type":"object","required":["theme","language"]}},
-                "prefs.set": {"kind": "command",
+                "prefs.get": {"kind": "query", "description": "Your preferences", "output": {"type":"object","required":["theme","language"]}},
+                "prefs.set": {"kind": "command", "description": "Change your preferences",
                     "input": {"type":"object","properties":{"theme":{"type":"string","minLength":1,"maxLength":40},"language":{"enum":["ar","en"]}},"additionalProperties":false},
                     "output": {"type":"object","required":["theme","language"]}}
             }
@@ -209,9 +209,9 @@ impl Plugin for NotifyInbox {
             "data": {"collections": [MESSAGES], "version": 1, "indexes": [{"collection": MESSAGES, "field": "to"}]},
             "events": {"inbox.received": {}},
             "operations": {
-                "inbox.list": {"kind": "query", "input": {"type":"object","properties":{"unread":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200}},"additionalProperties":false},
+                "inbox.list": {"kind": "query", "description": "Your notifications", "input": {"type":"object","properties":{"unread":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200}},"additionalProperties":false},
                     "output": {"type":"object","required":["messages","unread"]}},
-                "inbox.read": {"kind": "command", "input": {"type":"object","properties":{"id":{"type":"string"}},"additionalProperties":false}}
+                "inbox.read": {"kind": "command", "description": "Mark notifications as read", "input": {"type":"object","properties":{"id":{"type":"string"}},"additionalProperties":false}}
             }
         }))
     }

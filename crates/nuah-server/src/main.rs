@@ -34,6 +34,12 @@ enum Cmd {
         /// The proxy terminates TLS: mark the session cookie Secure.
         #[arg(long)]
         secure_cookie: bool,
+        /// Directory of the web board (hosted at /faces/web).
+        #[arg(long)]
+        web: Option<std::path::PathBuf>,
+        /// Directory of the generated console (hosted at /faces/console).
+        #[arg(long)]
+        console: Option<std::path::PathBuf>,
     },
 }
 
@@ -45,7 +51,7 @@ async fn main() {
             std::io::stdin().read_to_string(&mut s).expect("read stdin");
             println!("{}", AuthPassword::hash_password(s.trim_end_matches(['\r', '\n'])));
         }
-        Cmd::Serve { db, accounts, listen, allow_host, secure_cookie } => {
+        Cmd::Serve { db, accounts, listen, allow_host, secure_cookie, web, console } => {
             let accounts: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&accounts).unwrap_or_else(|e| die(&format!("cannot read {accounts}: {e}"))))
                 .unwrap_or_else(|e| die(&format!("{accounts} is not JSON: {e}")));
             let dist = nuah_madar::distribution(nuah_madar::profile_server(&db, accounts));
@@ -56,6 +62,8 @@ async fn main() {
                 die("the profile does not resolve")
             });
             let mut cfg = nuah_server::Config { secure_cookie, ..Default::default() };
+            cfg.faces.extend(web.map(|d| ("/faces/web".to_string(), d)));
+            cfg.faces.extend(console.map(|d| ("/faces/console".to_string(), d)));
             cfg.hosts.extend(allow_host.iter().map(|h| h.to_lowercase()));
             let listener = tokio::net::TcpListener::bind(&listen).await.unwrap_or_else(|e| die(&format!("cannot listen on {listen}: {e}")));
             eprintln!("nuah-server on http://{listen} (contract {})", core.contract_hash());

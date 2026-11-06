@@ -35,11 +35,13 @@ pub struct Config {
     pub hosts: Vec<String>,
     /// Add `Secure` to the session cookie (set when a TLS proxy fronts the server).
     pub secure_cookie: bool,
+    /// Static Faces to host: (URL prefix such as `/faces/web`, directory).
+    pub faces: Vec<(String, std::path::PathBuf)>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { hosts: ["localhost", "127.0.0.1", "[::1]"].iter().map(|s| s.to_string()).collect(), secure_cookie: false }
+        Config { hosts: ["localhost", "127.0.0.1", "[::1]"].iter().map(|s| s.to_string()).collect(), secure_cookie: false, faces: vec![] }
     }
 }
 
@@ -297,7 +299,7 @@ async fn guard(State(cfg): State<Arc<Config>>, req: Request, next: Next) -> Resp
 
 pub fn router(core: Core, cfg: Config) -> Router {
     let cfg = Arc::new(cfg);
-    Router::new()
+    let mut r = Router::new()
         .route("/healthz", get(health))
         .route("/link/describe", get(describe))
         .route("/link/call/{op}", post(call))
@@ -305,8 +307,15 @@ pub fn router(core: Core, cfg: Config) -> Router {
         .route("/link/tools.json", get(tools_doc))
         .route("/link/client.ts", get(client_ts))
         .route("/pulse", get(pulse))
-        .with_state(App { core, cfg: cfg.clone() })
-        .layer(middleware::from_fn_with_state(cfg, guard))
+        .with_state(App { core, cfg: cfg.clone() });
+    for (prefix, dir) in &cfg.faces {
+        r = r.nest_service(prefix, tower_http::services::ServeDir::new(dir));
+    }
+    if let Some((prefix, _)) = cfg.faces.first() {
+        let to = format!("{prefix}/");
+        r = r.route("/", get(move || async move { axum::response::Redirect::temporary(&to) }));
+    }
+    r.layer(middleware::from_fn_with_state(cfg, guard))
 }
 
 /// Keep the Core's housekeeping going: run Listeners after commits, trim the change log. Needs a

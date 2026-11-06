@@ -23,14 +23,14 @@ impl Plugin for Discussion {
             "data": {"collections": [COMMENTS], "version": 1, "indexes": [{"collection": COMMENTS, "field": "task"}]},
             "events": {"discussion.added": {}, "discussion.removed": {}},
             "operations": {
-                "discussion.add": {"kind": "command", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
+                "discussion.add": {"kind": "command", "description": "Write a comment or an update on a task", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
                     "reasons": {"discussion.bad_parent": "Replies go to a top-level comment of the same task"},
                     "input": {"type":"object","required":["project","task","body"],"properties":{"project":pr,"task":pr,"body":{"type":"string","minLength":1,"maxLength":5000},"kind":{"enum":["comment","update"]},"parent":{"type":["string","null"]}},"additionalProperties":false},
                     "output": {"type":"object","required":["id","body"]}},
-                "discussion.list": {"kind": "query", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
+                "discussion.list": {"kind": "query", "description": "The comments on a task", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project","task"],"properties":{"project":pr,"task":pr,"limit":{"type":"integer","minimum":1,"maximum":500}},"additionalProperties":false},
                     "output": {"type":"object","required":["comments"]}},
-                "discussion.remove": {"kind": "command", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
+                "discussion.remove": {"kind": "command", "description": "Remove a comment (its author or the project's owner)", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
                     "reasons": {"discussion.not_yours": "Only the author or the project owner can remove a comment"},
                     "input": {"type":"object","required":["project","id"],"properties":{"project":pr,"id":pr},"additionalProperties":false}}
             },
