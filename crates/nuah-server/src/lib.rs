@@ -5,6 +5,7 @@
 //!   GET  /healthz                   liveness, nothing else
 //!   GET  /link/describe             public before sign-in, full after
 //!   POST /link/call/{op}            run an Operation; the JSON body is the input
+//!   GET  /files/{id}                an uploaded file, by running the Operation files.download (404 if no plugin has it)
 //!   GET  /pulse                     server-sent events; resume with ?after=<cursor> or Last-Event-ID
 //!   GET  /link/openapi.json | tools.json | client.ts   generated from the contract (sign-in required)
 //!
@@ -338,6 +339,28 @@ async fn call(State(app): State<App>, Path(op): Path<String>, headers: HeaderMap
     Ok(out)
 }
 
+/// An uploaded file. Images show inline; everything else downloads. A file never runs as a page.
+async fn file(State(app): State<App>, Path(id): Path<String>, headers: HeaderMap) -> Result<Response, ApiError> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let req = CallRequest { credential: credential(&headers), op: "files.download".into(), input: json!({"id": id}), key: None, contract: None };
+    let core = app.core.clone();
+    let out = blocking(move || core.call(req)).await??.output;
+    let bytes = STANDARD.decode(out["data"].as_str().unwrap_or("")).map_err(|_| Error::internal("stored file is not valid base64"))?;
+    let ty = out["type"].as_str().unwrap_or("application/octet-stream").to_string();
+    let name: String = out["name"].as_str().unwrap_or("file").chars().filter(|c| c.is_ascii_alphanumeric() || " ._-".contains(*c)).collect();
+    let inline = ty.starts_with("image/");
+    let disposition = format!("{}; filename=\"{}\"", if inline { "inline" } else { "attachment" }, name);
+    Ok((
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_str(&ty).unwrap_or(HeaderValue::from_static("application/octet-stream"))),
+            (header::CONTENT_DISPOSITION, HeaderValue::from_str(&disposition).unwrap_or(HeaderValue::from_static("attachment"))),
+            (header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600")),
+            (header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("sandbox; default-src 'none'")),
+        ],
+        bytes,
+    ).into_response())
+}
+
 const BATCH: usize = 200;
 
 async fn pulse(
@@ -463,7 +486,7 @@ pub(crate) async fn guard(State(cfg): State<Arc<Config>>, req: Request, next: Ne
         // Faces are small and change with every release: always ask the server whether they changed.
         h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     }
-    h.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'self'; img-src 'self' data: https:; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"));
+    if !h.contains_key(header::CONTENT_SECURITY_POLICY) { h.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'self'; img-src 'self' data: https:; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")); }
     h.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
     h.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
     h.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
@@ -475,7 +498,8 @@ pub fn router(core: Core, cfg: Config) -> Router {
     let mut r = Router::new()
         .route("/healthz", get(health))
         .route("/link/describe", get(describe))
-        .route("/link/call/{op}", post(call))
+        .route("/link/call/{op}", post(call).layer(axum::extract::DefaultBodyLimit::max(7 * 1024 * 1024)))
+        .route("/files/{id}", get(file))
         .route("/link/openapi.json", get(openapi_doc))
         .route("/link/tools.json", get(tools_doc))
         .route("/link/client.ts", get(client_ts))

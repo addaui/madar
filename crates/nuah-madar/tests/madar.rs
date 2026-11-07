@@ -1110,3 +1110,194 @@ fn leaving_or_deleting_a_project_clears_its_placement_and_the_plugin_can_be_off(
     let core = start_file(&path, &["workspaces"]).unwrap_or_else(|p| panic!("{p:#?}"));
     assert!(core.call_as(&al, "workspaces.list", json!({}), None).is_err());
 }
+
+// ---- search, versions, recurrence, page history, files (ADR 0025) ---------------------------------------------------
+
+fn rich(text: &str) -> Value {
+    json!({"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]})
+}
+
+#[test]
+fn search_finds_what_you_can_see_best_match_first() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Alpha");
+    let secret = a.project(&bo, "Bob only");
+    a.task(&al, &p, "Buy oat milk");
+    a.ok(&al, "tasks.create", json!({"project": p, "title": "Errands", "description": rich("remember the MILK and eggs")}));
+    a.task(&bo, &secret, "milk run for bob");
+    a.ok(&al, "pages.create", json!({"project": p, "title": "Milk supplier notes", "body": rich("prices of milk")}));
+    a.ok(&al, "notes.create", json!({"title": "Shopping", "body": rich("milk, bread")}));
+    let found = a.ok(&al, "search.query", json!({"q": "milk"}));
+    let items = found["items"].as_array().unwrap();
+    let titles: Vec<&str> = items.iter().map(|x| x["title"].as_str().unwrap()).collect();
+    assert_eq!(items.len(), 4, "{titles:?}");
+    assert!(!titles.contains(&"milk run for bob"), "never another person's project");
+    assert_eq!(titles[0], "Milk supplier notes", "title hit plus body hits ranks first");
+    assert!(items.iter().any(|x| x["kind"] == "note") && items.iter().any(|x| x["kind"] == "page") && items.iter().any(|x| x["kind"] == "task"));
+    let snippet = items.iter().find(|x| x["title"] == "Errands").unwrap()["snippet"].as_str().unwrap().to_lowercase();
+    assert!(snippet.contains("milk"));
+    // every word must match; kinds narrow it
+    assert!(a.ok(&al, "search.query", json!({"q": "milk zebra"}))["items"].as_array().unwrap().is_empty());
+    assert_eq!(a.ok(&al, "search.query", json!({"q": "milk", "kinds": ["note"]}))["items"].as_array().unwrap().len(), 1);
+    // bob's private note is invisible to alice
+    a.ok(&bo, "notes.create", json!({"title": "Bob diary", "body": rich("milk")}));
+    assert_eq!(a.ok(&al, "search.query", json!({"q": "milk"}))["items"].as_array().unwrap().len(), 4);
+    assert_eq!(a.err(&al, "search.query", json!({"q": "m"})).category, Category::Invalid);
+}
+
+#[test]
+fn a_page_keeps_pictures_of_itself_and_a_restore_can_be_undone() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Docs");
+    let page = a.ok(&al, "pages.create", json!({"project": p, "title": "Plan", "body": rich("one")}));
+    let id = page["id"].as_str().unwrap().to_string();
+    a.clock.advance(1000);
+    a.ok(&al, "pages.update", json!({"project": p, "id": id, "body": rich("two")}));
+    a.clock.advance(1000);
+    a.ok(&al, "pages.update", json!({"project": p, "id": id, "body": rich("three")}));
+    let v = a.ok(&al, "pages.versions", json!({"project": p, "id": id}));
+    assert_eq!(v["versions"].as_array().unwrap().len(), 1, "one picture per editing spell");
+    assert_eq!(v["versions"][0]["text"], "one");
+    a.clock.advance(11 * 60 * 1000);
+    a.ok(&al, "pages.update", json!({"project": p, "id": id, "body": rich("four")}));
+    let v = a.ok(&al, "pages.versions", json!({"project": p, "id": id}));
+    let list = v["versions"].as_array().unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0]["text"], "three", "newest first");
+    let vid = list[1]["id"].as_str().unwrap().to_string();
+    assert_eq!(a.ok(&al, "pages.version", json!({"project": p, "id": id, "version": vid}))["body"], rich("one"));
+    a.clock.advance(1000);
+    let back = a.ok(&al, "pages.restore", json!({"project": p, "id": id, "version": vid}));
+    assert_eq!(back["body"], rich("one"));
+    let v = a.ok(&al, "pages.versions", json!({"project": p, "id": id}));
+    assert_eq!(v["versions"][0]["text"], "four", "the page as it was before the restore is kept");
+    // a viewer reads versions but cannot restore; a stranger sees nothing
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "vera", "level": "viewer"}));
+    let vera = viewer("vera");
+    assert_eq!(a.ok(&vera, "pages.versions", json!({"project": p, "id": id}))["versions"].as_array().unwrap().len(), 3);
+    assert_eq!(a.err(&vera, "pages.restore", json!({"project": p, "id": id, "version": vid})).category, Category::Denied);
+    assert_eq!(a.err(&who("mallory"), "pages.versions", json!({"project": p, "id": id})).category, Category::NotFound);
+    // notes keep versions too, and deleting the page deletes them
+    let n = a.ok(&al, "notes.create", json!({"title": "N", "body": rich("a")}));
+    a.ok(&al, "notes.update", json!({"id": n["id"], "body": rich("b")}));
+    assert_eq!(a.ok(&al, "notes.versions", json!({"id": n["id"]}))["versions"].as_array().unwrap().len(), 1);
+    a.ok(&al, "pages.delete", json!({"project": p, "id": id}));
+    assert_eq!(a.err(&al, "pages.versions", json!({"project": p, "id": id})).category, Category::NotFound);
+}
+
+#[test]
+fn the_history_records_page_changes_but_autosave_is_one_entry() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Docs");
+    let page = a.ok(&al, "pages.create", json!({"project": p, "title": "Plan"}));
+    let id = page["id"].as_str().unwrap().to_string();
+    for n in 0..5 {
+        a.clock.advance(2000);
+        a.ok(&al, "pages.update", json!({"project": p, "id": id, "body": rich(&format!("v{n}"))}));
+    }
+    a.ok(&al, "notes.create", json!({"title": "Private"}));
+    a.settle();
+    let h = a.ok(&al, "audit.list", json!({"project": p}));
+    let kinds: Vec<&str> = h["entries"].as_array().unwrap().iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds.iter().filter(|k| **k == "pages.updated").count(), 1, "{kinds:?}");
+    assert!(kinds.contains(&"pages.created"));
+    assert!(!kinds.iter().any(|k| k.starts_with("notes")), "private notes are never recorded");
+}
+
+#[test]
+fn a_repeating_task_leaves_the_next_one_when_it_is_finished_and_only_once() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let pr = a.ok(&al, "projects.get", json!({"project": p}));
+    let (first, last) = (pr["statuses"][0]["id"].as_str().unwrap().to_string(), pr["statuses"][2]["id"].as_str().unwrap().to_string());
+    let t = a.ok(&al, "tasks.create", json!({"project": p, "title": "Water plants", "due": "2023-11-20", "priority": 4,
+        "repeat": {"every": 1, "unit": "week"}, "labels": []}));
+    assert_eq!(t["repeat"]["unit"], "week");
+    let id = t["id"].as_str().unwrap().to_string();
+    a.ok(&al, "tasks.move", json!({"project": p, "id": id, "status": last}));
+    let open = a.ok(&al, "tasks.list", json!({"project": p, "status": first}))["tasks"].clone();
+    assert_eq!(open.as_array().unwrap().len(), 1);
+    assert_eq!(open[0]["title"], "Water plants");
+    assert_eq!(open[0]["due"], "2023-11-27", "a week after the old due date, which is still ahead");
+    assert_eq!(open[0]["priority"], 4);
+    assert_eq!(open[0]["repeat"]["every"], 1);
+    // finishing it again (move out and back) does not make a second copy
+    a.ok(&al, "tasks.move", json!({"project": p, "id": id, "status": first}));
+    a.ok(&al, "tasks.update", json!({"project": p, "id": id, "status": last}));
+    assert_eq!(a.ok(&al, "tasks.list", json!({"project": p, "status": first}))["tasks"].as_array().unwrap().len(), 1, "only the one copy, finishing again made no second");
+    // the new one repeats too, and a monthly step lands on the month's last day when needed
+    let nid = open[0]["id"].as_str().unwrap().to_string();
+    a.ok(&al, "tasks.update", json!({"project": p, "id": nid, "due": "2023-01-31", "repeat": {"every": 1, "unit": "month"}}));
+    a.ok(&al, "tasks.update", json!({"project": p, "id": nid, "status": last}));
+    let dues: Vec<String> = a.ok(&al, "tasks.list", json!({"project": p, "status": first}))["tasks"].as_array().unwrap().iter().filter_map(|t| t["due"].as_str().map(String::from)).collect();
+    assert!(dues.contains(&"2023-12-14".to_string()) || dues.iter().any(|d| d.starts_with("2023-12")), "{dues:?}");
+    // a bad repeat is refused
+    assert!(a.call(&al, "tasks.create", json!({"project": p, "title": "x", "repeat": {"every": 0, "unit": "day"}})).is_err());
+    assert!(a.call(&al, "tasks.create", json!({"project": p, "title": "x", "repeat": {"every": 2, "unit": "year"}})).is_err());
+}
+
+#[test]
+fn intervals_step_over_short_months() {
+    assert_eq!(add_interval_for_test("2024-01-31", 1, "month"), "2024-02-29");
+    assert_eq!(add_interval_for_test("2023-12-15", 2, "month"), "2024-02-15");
+    assert_eq!(add_interval_for_test("2023-12-30", 1, "day"), "2023-12-31");
+    assert_eq!(add_interval_for_test("2023-12-30", 2, "week"), "2024-01-13");
+}
+fn add_interval_for_test(d: &str, n: i64, u: &str) -> String {
+    nuah_madar::add_interval(d, n, u)
+}
+
+const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+#[test]
+fn files_are_sniffed_limited_and_only_shown_to_who_may_see_them() {
+    let a = app();
+    let (al, bo, vera) = (who("alice"), who("bob"), viewer("vera"));
+    let p = a.project(&al, "Shots");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "vera", "level": "viewer"}));
+    let up = a.ok(&bo, "files.upload", json!({"name": "../../etc/shot.png", "data": PNG, "project": p}));
+    assert_eq!(up["type"], "image/png");
+    assert_eq!(up["name"], "shot.png", "a path in the name is dropped");
+    let id = up["id"].as_str().unwrap().to_string();
+    assert_eq!(up["url"], format!("/files/{id}"));
+    assert_eq!(a.ok(&al, "files.download", json!({"id": id}))["data"], PNG, "members read it");
+    assert_eq!(a.ok(&vera, "files.download", json!({"id": id}))["type"], "image/png");
+    assert_eq!(a.err(&who("mallory"), "files.download", json!({"id": id})).category, Category::NotFound);
+    // a viewer cannot add to the project; the declared name cannot change what a file is
+    assert_eq!(a.err(&vera, "files.upload", json!({"name": "x.png", "data": PNG, "project": p})).category, Category::Denied);
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let script = STANDARD.encode(b"<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>");
+    let svg = a.ok(&al, "files.upload", json!({"name": "evil.png", "data": script}));
+    assert_eq!(svg["type"], "text/plain", "markup is never served as an image");
+    let bin = STANDARD.encode([0u8, 1, 2, 3, 255]);
+    assert_eq!(a.err(&al, "files.upload", json!({"name": "a.bin", "data": bin})).reason.as_deref(), Some("files.bad_type"));
+    let big = STANDARD.encode(vec![b'a'; 4 * 1024 * 1024 + 1]);
+    assert_eq!(a.err(&al, "files.upload", json!({"name": "big.txt", "data": big})).reason.as_deref(), Some("files.too_big"));
+    assert_eq!(a.err(&al, "files.upload", json!({"name": "x", "data": "***"})).category, Category::Invalid);
+    // a personal file is its uploader's alone
+    let mine = a.ok(&al, "files.upload", json!({"name": "me.png", "data": PNG}));
+    assert_eq!(a.err(&bo, "files.download", json!({"id": mine["id"]})).category, Category::NotFound);
+    // only the uploader or a project owner removes it
+    assert_eq!(a.err(&vera, "files.remove", json!({"id": id})).category, Category::NotFound);
+    a.ok(&al, "files.remove", json!({"id": id}));
+    assert_eq!(a.err(&al, "files.download", json!({"id": id})).category, Category::NotFound);
+}
+
+#[test]
+fn search_and_files_can_be_switched_off_without_touching_the_rest() {
+    let mut p = profile_test(&[]);
+    p.enabled.retain(|e| e != "search" && e != "files" && e != "files-db");
+    p.grants.remove("search");
+    p.grants.remove("files");
+    let dist = distribution_with(p, vec![Arc::new(TestClock(FixedClock::at(1_700_000_000_000))), Arc::new(TestIds)]);
+    let core = Core::start(&dist).unwrap_or_else(|p| panic!("{p:#?}"));
+    let al = who("alice");
+    let t = core.call_as(&al, "projects.create", json!({"name": "P"}), None).unwrap().output;
+    core.call_as(&al, "tasks.create", json!({"project": t["id"], "title": "still works"}), None).unwrap();
+    assert!(core.call_as(&al, "search.query", json!({"q": "still"}), None).is_err());
+}

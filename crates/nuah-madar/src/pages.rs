@@ -7,6 +7,10 @@ use nuah_kernel::*;
 use serde_json::{json, Value};
 
 pub const PAGES: &str = "pages.pages";
+pub const VERSIONS: &str = "pages.versions";
+/// A page keeps a picture of itself from before an editing spell, at most one per ten minutes, the last forty (ADR 0025).
+const SPELL_MS: i64 = 600_000;
+const KEEP: usize = 40;
 const GAP: f64 = 1024.0;
 const MAX_DEPTH: usize = 12;
 const KIND: &str = "pages.page";
@@ -150,6 +154,54 @@ fn list(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     Ok(json!({"pages": page.items.iter().map(|d| view(d, false)).collect::<Vec<_>>()}))
 }
 
+fn snapshot(tx: &mut Tx, old: &Doc, force: bool) -> Result<()> {
+    let latest = tx.query(VERSIONS, &Query::new().eq("page", old.id.as_str()).desc("at").limit(KEEP + 1))?.items;
+    let now = tx.now();
+    if !force && latest.first().is_some_and(|v| now - v.body["at"].as_i64().unwrap_or(0) < SPELL_MS) {
+        return Ok(());
+    }
+    if old.body["body"].is_null() && old.body["title"] == "" {
+        return Ok(());
+    }
+    tx.create(VERSIONS, json!({"page": old.id, "title": old.body["title"], "body": old.body["body"], "at": now,
+        "by": tx.who().subject, "edited_at": old.body["updated_at"]}))?;
+    for v in latest.iter().skip(KEEP - 1) {
+        tx.delete(VERSIONS, &v.id)?;
+    }
+    Ok(())
+}
+
+fn versions(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let rows = tx.query(VERSIONS, &Query::new().eq("page", page.id.as_str()).desc("at").limit(KEEP))?.items;
+    Ok(json!({"versions": rows.iter().map(|v| json!({"id": v.id, "at": v.body["at"], "by": v.body["by"], "title": v.body["title"],
+        "edited_at": v.body["edited_at"], "text": richtext::text_of(&v.body["body"]).chars().take(160).collect::<String>()})).collect::<Vec<_>>()}))
+}
+
+fn version(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let v = tx.get(VERSIONS, text(i, "version"))?.filter(|v| !v.deleted && text(&v.body, "page") == page.id).ok_or_else(|| Error::not_found("version"))?;
+    Ok(json!({"id": v.id, "at": v.body["at"], "by": v.body["by"], "title": v.body["title"], "body": v.body["body"]}))
+}
+
+/// Put an old picture back. The page as it is now is kept first, so a restore can itself be undone.
+fn restore(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let v = tx.get(VERSIONS, text(i, "version"))?.filter(|v| !v.deleted && text(&v.body, "page") == page.id).ok_or_else(|| Error::not_found("version"))?;
+    snapshot(tx, &page, true)?;
+    let mut b = page.body.clone();
+    b["title"] = v.body["title"].clone();
+    b["body"] = v.body["body"].clone();
+    b["updated_at"] = json!(tx.now());
+    let d = tx.put(PAGES, &page.id, b, Expect::Rev(page.rev))?;
+    tx.emit("pages.updated", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": {"body": true, "restored": v.body["at"]},
+        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &d.body["body"])})))?;
+    Ok(view(&d, true))
+}
+
 fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let old = get(tx, &s, text(i, "id"))?;
@@ -175,6 +227,9 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
         return Ok(view(&old, true));
     }
     b["updated_at"] = json!(tx.now());
+    if changes.contains_key("body") || changes.contains_key("title") {
+        snapshot(tx, &old, false)?;
+    }
     let expect = Expect::Rev(i.get("expected_rev").and_then(|r| r.as_u64()).unwrap_or(old.rev));
     let d = tx.put(PAGES, &old.id, b, expect).map_err(|e| stale(e, "pages.stale_revision", "The page"))?;
     let aud = s.audience();
@@ -245,6 +300,9 @@ fn remove(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let all = subtree(tx, &s, &page)?;
     for d in all.iter().rev() {
         tx.delete(PAGES, &d.id)?;
+        for v in tx.query(VERSIONS, &Query::new().eq("page", d.id.as_str()).limit(100))?.items {
+            tx.delete(VERSIONS, &v.id)?;
+        }
         let aud = s.audience();
         tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "refs": richtext::refs_for(KIND, &d.id, "", &Value::Null)})))?;
     }
@@ -286,6 +344,9 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
     add("update", "command", true, "Change a page's title, body or icon", json!({"id": id, "title": title, "body": doc, "icon": nullable, "expected_rev": {"type":"integer","minimum":1}}), vec!["id"]);
     add("move", "command", true, "Move a page under another (or to the top), before a sibling", json!({"id": id, "parent": nullable, "before": nullable}), vec!["id"]);
     add("delete", "command", true, "Delete a page and everything under it", json!({"id": id}), vec!["id"]);
+    add("versions", "query", false, "The saved earlier pictures of a page, newest first", json!({"id": id}), vec!["id"]);
+    add("version", "query", false, "One earlier picture of a page, with its body", json!({"id": id, "version": id}), vec!["id", "version"]);
+    add("restore", "command", true, "Put an earlier picture back", json!({"id": id, "version": id}), vec!["id", "version"]);
     add("search", "query", false, &format!("Find pages in {scope} by title"), json!({"q": {"type":"string","minLength":1,"maxLength":100}}), vec!["q"]);
     Value::Object(m)
 }
@@ -298,16 +359,41 @@ impl Plugin for Pages {
         manifest(json!({
             "id": "pages", "version": "0.1.0", "name": "Pages", "namespaces": ["pages", "notes"],
             "description": "A tree of rich-text pages: a project's knowledge base (pages.*) and your own notes (notes.*)",
-            "requires": {"plugins": ["projects"], "capabilities": ["emit"]},
-            "data": {"collections": [PAGES], "version": 1,
-                     "indexes": [{"collection": PAGES, "field": "project"}, {"collection": PAGES, "field": "owner"}, {"collection": PAGES, "field": "parent"}]},
+            "requires": {"plugins": ["projects"], "capabilities": ["emit", "call"]},
+            "provides": [{"extension_point": "search.source", "optional": true}],
+            "data": {"collections": [PAGES, VERSIONS], "version": 1,
+                     "indexes": [{"collection": PAGES, "field": "project"}, {"collection": PAGES, "field": "owner"}, {"collection": PAGES, "field": "parent"}, {"collection": VERSIONS, "field": "page"}]},
             "events": {"pages.created": {}, "pages.updated": {}, "pages.moved": {}, "pages.removed": {}},
             "operations": ops
         }))
     }
     fn bind(&self, b: &mut Bindings) {
+        b.provide("search.source", |tx, i| {
+            let q = text(&i, "q").to_string();
+            let projects = tx.call("projects.list", json!({}))?;
+            let me = tx.who().subject.clone();
+            let mut items = vec![];
+            let mut hit = |d: &Doc, kind: &str, project: Option<&Value>| {
+                let body = richtext::text_of(&d.body["body"]);
+                if let Some((score, snippet)) = crate::search::score(&q, text(&d.body, "title"), &body) {
+                    items.push(json!({"kind": kind, "id": d.id, "title": d.body["title"], "snippet": snippet, "score": score,
+                        "project": project.map(|p| p["id"].clone()).unwrap_or(Value::Null), "project_name": project.map(|p| p["name"].clone()).unwrap_or(Value::Null)}));
+                }
+            };
+            for p in projects["projects"].as_array().cloned().unwrap_or_default() {
+                for d in tx.query(PAGES, &Query::new().eq("project", text(&p, "id")).limit(2000))?.items {
+                    hit(&d, "page", Some(&p));
+                }
+            }
+            for d in tx.query(PAGES, &Query::new().eq("owner", me.as_str()).eq("project", Value::Null).limit(2000))?.items {
+                hit(&d, "note", None);
+            }
+            items.sort_by(|a, b| b["score"].as_f64().partial_cmp(&a["score"].as_f64()).unwrap_or(std::cmp::Ordering::Equal));
+            items.truncate(50);
+            Ok(json!({"items": items}))
+        });
         type H = fn(&mut Tx, &Value, bool) -> Result<Value>;
-        let all: [(&str, H); 7] = [("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search)];
+        let all: [(&str, H); 10] = [("versions", versions), ("version", version), ("restore", restore), ("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search)];
         for (prefix, personal) in [("pages", false), ("notes", true)] {
             for (name, f) in all {
                 b.op(&format!("{prefix}.{name}"), move |tx, i| f(tx, &i, personal));

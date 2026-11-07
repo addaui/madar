@@ -83,3 +83,21 @@ pub fn day_number(date: &str) -> Option<i64> {
 pub fn days_before(date: &str, n: i64) -> String {
     date_of((day_number(date).unwrap_or(0) - n) * 86_400_000)
 }
+
+/// `date` plus `every` days, weeks or months. A month step keeps the day, or the month's last day if it is shorter.
+pub fn add_interval(date: &str, every: i64, unit: &str) -> String {
+    let Some(n) = day_number(date) else { return date.to_string() };
+    match unit {
+        "day" => date_of((n + every) * 86_400_000),
+        "week" => date_of((n + 7 * every) * 86_400_000),
+        _ => {
+            let (y, m, d): (i64, i64, i64) = (date[0..4].parse().unwrap_or(1970), date[5..7].parse().unwrap_or(1), date[8..10].parse().unwrap_or(1));
+            let t = y * 12 + (m - 1) + every;
+            let (ny, nm) = (t.div_euclid(12), t.rem_euclid(12) + 1);
+            let first = format!("{ny:04}-{nm:02}-01");
+            let next_first = if nm == 12 { format!("{:04}-01-01", ny + 1) } else { format!("{ny:04}-{:02}-01", nm + 1) };
+            let len = day_number(&next_first).unwrap_or(0) - day_number(&first).unwrap_or(0);
+            format!("{ny:04}-{nm:02}-{:02}", d.min(len))
+        }
+    }
+}

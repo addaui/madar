@@ -10,3 +10,4 @@ nuah-kernel = { path = "../nuah-kernel" }
 nuah-adapters = { path = "../nuah-adapters" }
 serde_json = "1.0.154"
 sha2 = "0.10"
+base64 = "0.23"

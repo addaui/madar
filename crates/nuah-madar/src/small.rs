@@ -23,7 +23,7 @@ impl Plugin for Audit {
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":500},"after":{"type":"integer","minimum":0}},"additionalProperties":false},
                     "output": {"type":"object","required":["entries"]}}
             },
-            "listeners": [{"id": "audit.record", "on": ["projects.*", "tasks.*", "discussion.*"], "handler": "audit.record"}]
+            "listeners": [{"id": "audit.record", "on": ["projects.*", "tasks.*", "discussion.*", "pages.*"], "handler": "audit.record"}]
         }))
     }
     fn bind(&self, b: &mut Bindings) {
@@ -68,6 +68,18 @@ impl Plugin for Audit {
                 }
             }
             let digest = format!("{:x}", Sha256::digest(d.event.data.to_string().as_bytes()));
+            // Autosave edits one page many times a minute: one entry per person, page and ten minutes (ADR 0025).
+            if d.event.kind == "pages.updated" {
+                let id = format!("{:012}-pages.updated-{}-{}", d.at / 600_000, text(&d.event.data, "page"), &format!("{:x}", Sha256::digest(d.actor.as_bytes()))[..8]);
+                let mut data = d.event.data.clone();
+                if let Some(old) = tx.get(ENTRIES, &id)? {
+                    let mut ch = old.body["data"]["changes"].as_object().cloned().unwrap_or_default();
+                    for (k, v) in data["changes"].as_object().cloned().unwrap_or_default() { ch.insert(k, v); }
+                    data["changes"] = Value::Object(ch);
+                }
+                tx.put(ENTRIES, &id, json!({"project": project, "kind": d.event.kind, "actor": d.actor, "at": d.at, "data": data}), Expect::Any)?;
+                return Ok(());
+            }
             let id = format!("{:012}-{}-{}", d.seq, d.event.kind, &digest[..8]);
             tx.put(ENTRIES, &id, json!({"project": project, "kind": d.event.kind, "actor": d.actor, "at": d.at, "data": d.event.data}), Expect::Any)?;
             Ok(())
