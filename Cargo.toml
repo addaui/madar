@@ -11,7 +11,10 @@ publish = false
 # Nuah is a dependency, pinned by tag. Madar never edits it; to take an update change this tag (the
 # `nuah-update` workflow opens that pull request when a new tag appears).
 [workspace.dependencies]
-nuah-kernel = { git = "https://github.com/addaui/nuah", tag = "v0.3.0" }
-nuah-adapters = { git = "https://github.com/addaui/nuah", tag = "v0.3.0" }
-nuah-http = { git = "https://github.com/addaui/nuah", tag = "v0.3.0" }
-nuah-host = { git = "https://github.com/addaui/nuah", tag = "v0.3.0" }
+nuah-kernel = { git = "https://github.com/addaui/nuah", tag = "v0.4.0" }
+nuah-adapters = { git = "https://github.com/addaui/nuah", tag = "v0.4.0" }
+nuah-http = { git = "https://github.com/addaui/nuah", tag = "v0.4.0" }
+nuah-host = { git = "https://github.com/addaui/nuah", tag = "v0.4.0" }
+nuah-prefs = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.1.0" }
+nuah-appearance = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.1.0" }
+nuah-metric-prometheus = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.1.0" }

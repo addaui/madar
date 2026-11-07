@@ -253,7 +253,7 @@ impl Plugin for Tasks {
     }
     fn bind(&self, b: &mut Bindings) {
         b.provide("prefs.item", |_tx, _i| {
-            Ok(crate::small::pref_answer(vec![
+            Ok(nuah_prefs::pref_answer(vec![
                 json!({"key": "tasks.default_priority", "group": "behaviour", "type": "integer", "default": 0, "min": 0, "max": 10, "label": {"en": "Default task priority", "ar": "أولوية المهمة الافتراضية"}}),
                 json!({"key": "tasks.due_soon_days", "group": "behaviour", "type": "integer", "default": 3, "min": 0, "max": 30, "label": {"en": "Due soon window (days)", "ar": "نافذة الاستحقاق القريب (أيام)"}}),
             ]))

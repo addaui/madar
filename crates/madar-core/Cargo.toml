@@ -8,6 +8,9 @@ publish.workspace = true
 [dependencies]
 nuah-kernel = { workspace = true }
 nuah-adapters = { workspace = true }
+nuah-prefs = { workspace = true }
+nuah-appearance = { workspace = true }
+nuah-metric-prometheus = { workspace = true }
 serde_json = "1.0.154"
 sha2 = "0.10"
 base64 = "0.23"

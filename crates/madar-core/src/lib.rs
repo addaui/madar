@@ -2,7 +2,6 @@
 //! Design: <https://docs.addaui.com/nuah/specs/madar-v2/>
 
 #![recursion_limit = "512"]
-pub mod appearance;
 pub mod content;
 pub mod discussion;
 pub mod pages;
@@ -27,11 +26,11 @@ pub fn catalog() -> Catalog {
         Arc::new(AdapterMemory), Arc::new(AdapterSqlite), Arc::new(AuthLocal), Arc::new(AuthPassword),
         Arc::new(PolicyAllowAll), Arc::new(PolicyRoles), Arc::new(StdClock), Arc::new(StdIds),
         Arc::new(projects::Projects), Arc::new(tasks::Tasks), Arc::new(discussion::Discussion),
-        Arc::new(small::Audit), Arc::new(small::Quota), Arc::new(small::Prefs), Arc::new(small::Export),
+        Arc::new(small::Audit), Arc::new(small::Quota), Arc::new(nuah_prefs::Prefs), Arc::new(nuah_appearance::Appearance), Arc::new(nuah_metric_prometheus::MetricPrometheus), Arc::new(LogConsole), Arc::new(LogFile), Arc::new(small::Export),
         Arc::new(small::Notify), Arc::new(small::NotifyInbox),
-        Arc::new(content::Editor), Arc::new(content::EditorBasic), Arc::new(content::Refs), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(previews::Previews), Arc::new(workspaces::Workspaces), Arc::new(appearance::Appearance),
+        Arc::new(content::Editor), Arc::new(content::EditorBasic), Arc::new(content::Refs), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(previews::Previews), Arc::new(workspaces::Workspaces),
     ];
-    for t in small::themes() {
+    for t in nuah_appearance::themes() {
         list.push(Arc::new(t));
     }
     Catalog(list)
@@ -42,7 +41,7 @@ const FEATURES: [&str; 20] = ["projects", "tasks", "discussion", "audit", "quota
 fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     let mut enabled: Vec<String> = adapters.iter().map(|s| s.to_string()).collect();
     enabled.extend(FEATURES.iter().map(|s| s.to_string()));
-    enabled.extend(small::theme_ids());
+    enabled.extend(nuah_appearance::theme_ids());
     let mut p = Profile { name: name.into(), enabled, ..Default::default() };
     p.grants.insert("projects".into(), vec!["emit".into()]);
     p.grants.insert("tasks".into(), vec!["emit".into(), "call".into()]);

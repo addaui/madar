@@ -169,7 +169,7 @@ impl Plugin for Projects {
     }
     fn bind(&self, b: &mut Bindings) {
         b.provide("prefs.item", |_tx, _i| {
-            Ok(crate::small::pref_answer(vec![json!({"key": "projects.default_tab", "group": "behaviour", "type": "choice", "default": "board",
+            Ok(nuah_prefs::pref_answer(vec![json!({"key": "projects.default_tab", "group": "behaviour", "type": "choice", "default": "board",
                 "label": {"en": "Default project view", "ar": "العرض الافتراضي للمشروع"},
                 "choices": [{"value":"board","label":{"en":"Board","ar":"اللوحة"}},{"value":"list","label":{"en":"List","ar":"القائمة"}},{"value":"overview","label":{"en":"Overview","ar":"نظرة عامة"}},{"value":"pages","label":{"en":"Pages","ar":"الصفحات"}}]})]))
         });
