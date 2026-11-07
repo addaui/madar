@@ -1,8 +1,8 @@
 # Madar (مدار)
 
 A task manager: projects, tasks, pages and notes, live updates, an editor that never traps you, a customizable look.
-It is a **product built on [Nu'ah](https://github.com/addaui/nuah)**: Madar is plugins, a web face and a command line
-around Nu'ah's kernel. It never edits Nu'ah; Nu'ah is a dependency pinned by tag in `Cargo.toml`.
+It is a **product built on [Nuah](https://github.com/addaui/nuah)**: Madar is plugins, a web face and a command line
+around Nuah's kernel. It never edits Nuah; Nuah is a dependency pinned by tag in `Cargo.toml`.
 
 Documentation (PRD, ADRs, specs, plans, tasks, glossary) lives in docmd, not here: https://docs.addaui.com/nuah/ .
 Working rules for contributors and agents are in `the contributor notes`.
@@ -12,7 +12,7 @@ Working rules for contributors and agents are in `the contributor notes`.
 | Path | What it is |
 |---|---|
 | `crates/madar-core` | Madar's plugins (projects, tasks, pages, discussion, appearance, files, search, previews, …), its catalog and Profiles. |
-| `crates/madar-server` | `madar-server`: Madar's `main` on the Nu'ah host, plus Madar's own routes for the `http` Projection (file downloads, link previews). |
+| `crates/madar-server` | `madar-server`: Madar's `main` on the Nuah host, plus Madar's own routes for the `http` Projection (file downloads, link previews). |
 | `crates/madar-cli` | The `madar` command line, over HTTP or directly on a database file. |
 | `faces/web` | The web board (vanilla JS, no build). The one built file is the rich-text editor, `faces/web/vendor/editor.js`. |
 | `faces/editor-src` | Source of that editor (Tiptap on ProseMirror). Rebuild with `bun install && bun run build`; the built file is committed. |
@@ -29,7 +29,7 @@ cargo run -p madar-server -- serve --db madar.db --accounts accounts.json --web 
 `accounts.json` is `[{"name": "...", "password_hash": "...", "roles": ["admin"]}]`; make a hash with
 `madar-server hash-password < password.txt`. It stays outside git.
 
-To try a Nu'ah change before it has a tag, add a local, uncommitted `.cargo/config.toml`:
+To try a Nuah change before it has a tag, add a local, uncommitted `.cargo/config.toml`:
 
 ```toml
 [patch."https://github.com/addaui/nuah"]
@@ -42,7 +42,7 @@ nuah-host = { path = "../nuah/crates/nuah-host" }
 ## Release and deploy
 
 - Every push to `main` runs the tests and builds `ghcr.io/addaui/madar` (tags `latest` and the short commit); a `vX.Y.Z` tag adds that version.
-- When Nu'ah publishes a tag, the `nuah-update` workflow opens a pull request that moves the pin. Merging it deploys the update.
+- When Nuah publishes a tag, the `nuah-update` workflow opens a pull request that moves the pin. Merging it deploys the update.
 - The image holds the binary and faces only. Data lives in the `/data` volume (`madar.db`, `accounts.json`); settings come from environment variables:
 
 | Variable | Meaning |
@@ -65,5 +65,5 @@ The container stops cleanly on `docker stop` (SIGTERM). Reads use a pool of SQLi
 
 ### Repository secrets (GitHub)
 
-- `NUAH_READ_TOKEN`: only if the Nu'ah repository is private: a fine-grained token with read access to it.
+- `NUAH_READ_TOKEN`: only if the Nuah repository is private: a fine-grained token with read access to it.
 - `NUAH_UPDATE_TOKEN` (optional): lets the update pull request trigger the tests; without it, run the `ci` workflow on that branch by hand.

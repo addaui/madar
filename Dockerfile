@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
-# Madar's image: the madar-server binary, the web face, and Nu'ah's generic faces (console, setup).
-# Nu'ah is a git dependency pinned by tag in Cargo.toml; if it is a private repository pass a read token:
+# Madar's image: the madar-server binary, the web face, and Nuah's generic faces (console, setup).
+# Nuah is a git dependency pinned by tag in Cargo.toml; if it is a private repository pass a read token:
 #   docker build --secret id=nuah_token,env=NUAH_READ_TOKEN .
 
 FROM rust:1-bookworm AS build

@@ -1,6 +1,6 @@
 name: nuah-update
-# When Nu'ah publishes a new tag, open a pull request that moves Madar to it. The pull request runs the
-# tests (and builds the image on merge), so taking a Nu'ah update is reviewing one diff of four lines.
+# When Nuah publishes a new tag, open a pull request that moves Madar to it. The pull request runs the
+# tests (and builds the image on merge), so taking a Nuah update is reviewing one diff of four lines.
 on:
   schedule:
     - cron: "17 6 * * *"
@@ -22,18 +22,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Let cargo and git fetch Nu'ah
+      - name: Let cargo and git fetch Nuah
         run: |
           if [ -n "$NUAH_READ_TOKEN" ]; then git config --global url."https://x-access-token:${NUAH_READ_TOKEN}@github.com/".insteadOf "https://github.com/"; fi
       - uses: dtolnay/rust-toolchain@stable
-      - name: Find the newest Nu'ah tag
+      - name: Find the newest Nuah tag
         id: tag
         run: |
           latest=$(git ls-remote --tags --refs "https://github.com/${NUAH_REPO}" 'v*' | sed 's|.*refs/tags/||' | sort -V | tail -1)
           current=$(grep -m1 '^nuah-kernel' Cargo.toml | sed 's/.*tag = "\(.*\)".*/\1/')
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "current=$current" >> "$GITHUB_OUTPUT"
-          echo "Nu'ah: pinned $current, newest $latest"
+          echo "Nuah: pinned $current, newest $latest"
       - name: Move the pin
         if: steps.tag.outputs.latest != '' && steps.tag.outputs.latest != steps.tag.outputs.current
         run: |
@@ -43,11 +43,11 @@ jobs:
         if: steps.tag.outputs.latest != '' && steps.tag.outputs.latest != steps.tag.outputs.current
         with:
           branch: nuah-${{ steps.tag.outputs.latest }}
-          title: "Take Nu'ah ${{ steps.tag.outputs.latest }}"
-          commit-message: "Take Nu'ah ${{ steps.tag.outputs.latest }} (was ${{ steps.tag.outputs.current }})"
+          title: "Take Nuah ${{ steps.tag.outputs.latest }}"
+          commit-message: "Take Nuah ${{ steps.tag.outputs.latest }} (was ${{ steps.tag.outputs.current }})"
           body: |
-            Moves the pinned Nu'ah tag from `${{ steps.tag.outputs.current }}` to `${{ steps.tag.outputs.latest }}`.
+            Moves the pinned Nuah tag from `${{ steps.tag.outputs.current }}` to `${{ steps.tag.outputs.latest }}`.
             Release notes: https://github.com/${{ env.NUAH_REPO }}/releases/tag/${{ steps.tag.outputs.latest }}
 
-            Nothing in Madar edits Nu'ah; if the tests fail here, the fix is a plugin or a Madar change, or a pull request to Nu'ah.
+            Nothing in Madar edits Nuah; if the tests fail here, the fix is a plugin or a Madar change, or a pull request to Nuah.
           token: ${{ secrets.NUAH_UPDATE_TOKEN || github.token }}

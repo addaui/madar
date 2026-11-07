@@ -8,7 +8,7 @@ version = "0.3.0"
 license = "UNLICENSED"
 publish = false
 
-# Nu'ah is a dependency, pinned by tag. Madar never edits it; to take an update change this tag (the
+# Nuah is a dependency, pinned by tag. Madar never edits it; to take an update change this tag (the
 # `nuah-update` workflow opens that pull request when a new tag appears).
 [workspace.dependencies]
 nuah-kernel = { git = "https://github.com/addaui/nuah", tag = "v0.3.0" }

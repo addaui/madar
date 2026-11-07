@@ -1,4 +1,4 @@
-//! Madar v2: a task manager built as plugins on the Nu'ah kernel.
+//! Madar v2: a task manager built as plugins on the Nuah kernel.
 //! Design: <https://docs.addaui.com/nuah/specs/madar-v2/>
 
 #![recursion_limit = "512"]

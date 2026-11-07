@@ -1,5 +1,5 @@
 //! Madar's server: the Madar plugins, the `http` Projection with Madar's own routes (file downloads, link
-//! previews), and the product description the host needs. Nothing here edits Nu'ah.
+//! previews), and the product description the host needs. Nothing here edits Nuah.
 
 use axum::extract::{Path, State};
 use axum::http::{header, HeaderMap, HeaderValue};

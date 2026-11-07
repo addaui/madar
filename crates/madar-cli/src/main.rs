@@ -17,7 +17,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "madar", about = "Madar on the command line")]
 struct Args {
-    /// A Nu'ah server to talk to.
+    /// A Nuah server to talk to.
     #[arg(long, env = "MADAR_SERVER", default_value = "http://127.0.0.1:3000")]
     server: String,
     /// Open this database file in this process instead (one person, always signed in).
