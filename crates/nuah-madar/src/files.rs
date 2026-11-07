@@ -8,6 +8,8 @@ use serde_json::{json, Value};
 
 pub const FILES: &str = "files.files";
 pub const BLOBS: &str = "files-db.blobs";
+pub const USES: &str = "files.uses";
+const DAY_MS: i64 = 86_400_000;
 pub const MAX_BYTES: usize = 4 * 1024 * 1024;
 
 /// What the bytes really are, by their first bytes. The declared type is never trusted.
@@ -59,7 +61,9 @@ impl Plugin for Files {
             "defines": {"extension_points": {"files.store": {"policy": "single",
                 "description": "Keep and return bytes. {action: put|get|delete, id, data (base64, for put)}; get answers {data}.",
                 "input": {"type":"object","required":["action","id"]}}}},
-            "data": {"collections": [FILES], "version": 1, "indexes": [{"collection": FILES, "field": "owner"}, {"collection": FILES, "field": "project"}]},
+            "data": {"collections": [FILES, USES], "version": 1, "indexes": [{"collection": FILES, "field": "owner"}, {"collection": FILES, "field": "project"}, {"collection": USES, "field": "from_key"}, {"collection": USES, "field": "file"}]},
+            "listeners": [{"id": "files.track", "on": ["pages.*", "notes.*", "tasks.*", "discussion.*"], "handler": "files.track"},
+                           {"id": "files.project_gone", "on": ["projects.deleted"], "handler": "files.project_gone"}],
             "operations": {
                 "files.upload": {"kind": "command", "description": "Upload a file (base64, at most 4 MiB): an image, a PDF or plain text. With `project` it is shared with the project's members.",
                     "reasons": {"files.too_big": "That file is larger than 4 MiB", "files.bad_type": "Only images (PNG, JPEG, GIF, WebP), PDFs and plain text can be uploaded", "files.not_allowed": "You cannot add files to that project"},
@@ -69,6 +73,9 @@ impl Plugin for Files {
                     "input": {"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false}, "output": {"type":"object","required":["id"]}},
                 "files.download": {"kind": "query", "description": "A file's bytes (base64) with its type; the server turns this into GET /files/{id}",
                     "input": {"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false}, "output": {"type":"object","required":["data","type"]}},
+                "files.sweep": {"kind": "command", "description": "Delete your own uploads that no page, task or comment shows (older than `older_than_days`, default 1)",
+                    "input": {"type":"object","properties":{"older_than_days":{"type":"integer","minimum":0,"maximum":365}},"additionalProperties":false},
+                    "output": {"type":"object","required":["removed"]}},
                 "files.remove": {"kind": "command", "description": "Delete a file (its uploader, or a project owner)",
                     "input": {"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false}}
             }
@@ -104,6 +111,68 @@ impl Plugin for Files {
             if !allowed(tx, &d, false) { return Err(Error::not_found("file")); }
             let got = tx.extension_call("files.store", json!({"action": "get", "id": d.id}))?;
             Ok(json!({"name": d.body["name"], "type": d.body["type"], "size": d.body["size"], "data": got["data"]}))
+        });
+        // Keeps `files.uses` (which item shows which file) and, when an item is deleted, deletes the files
+        // only it showed (ADR 0026). Safe to repeat: row ids come from both ends.
+        b.listener("files.track", |tx, d| {
+            let l = &d.event.data["refs"];
+            let (kind, id) = (text(&l["from"], "type"), text(&l["from"], "id"));
+            if l.is_null() || kind.is_empty() || id.is_empty() {
+                return Ok(());
+            }
+            let from_key = format!("{kind}:{id}");
+            let now_used: Vec<String> = l["to"].as_array().into_iter().flatten().filter(|t| text(t, "type") == "files.file").map(|t| text(t, "id").to_string()).collect();
+            loop {
+                let old = tx.query(USES, &Query::new().eq("from_key", from_key.as_str()).limit(200))?;
+                if old.items.is_empty() { break; }
+                for o in old.items { tx.delete(USES, &o.id)?; }
+            }
+            for f in &now_used {
+                tx.put(USES, &format!("{from_key}>{f}"), json!({"from_key": from_key, "file": f}), Expect::Any)?;
+            }
+            if !d.event.kind.ends_with(".removed") {
+                return Ok(());
+            }
+            // The item is gone. Its files go too, unless another item still shows them.
+            for f in d.event.data["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str()) {
+                if !tx.query(USES, &Query::new().eq("file", f).limit(1))?.items.is_empty() { continue; }
+                let Some(meta) = tx.get(FILES, f)?.filter(|m| !m.deleted) else { continue };
+                let same_place = match d.event.data["project"].as_str() {
+                    Some(p) => meta.body["project"].as_str() == Some(p),
+                    None => meta.body["project"].is_null() && text(&meta.body, "owner") == d.actor,
+                };
+                if same_place {
+                    tx.extension_call("files.store", json!({"action": "delete", "id": meta.id}))?;
+                    tx.delete(FILES, &meta.id)?;
+                }
+            }
+            Ok(())
+        });
+        // A deleted project takes its uploads with it.
+        b.listener("files.project_gone", |tx, d| {
+            let project = text(&d.event.data, "project").to_string();
+            loop {
+                let page = tx.query(FILES, &Query::new().eq("project", project.as_str()).limit(100))?;
+                let live: Vec<Doc> = page.items.into_iter().filter(|m| !m.deleted).collect();
+                if live.is_empty() { return Ok(()); }
+                for m in live {
+                    tx.extension_call("files.store", json!({"action": "delete", "id": m.id}))?;
+                    tx.delete(FILES, &m.id)?;
+                }
+            }
+        });
+        b.op("files.sweep", |tx, i| {
+            let me = tx.who().subject.clone();
+            let cutoff = tx.now() - i.get("older_than_days").and_then(|v| v.as_i64()).unwrap_or(1) * DAY_MS;
+            let mut removed = 0;
+            for m in tx.query(FILES, &Query::new().eq("owner", me.as_str()).limit(500))?.items {
+                if m.deleted || m.body["created_at"].as_i64().unwrap_or(0) > cutoff { continue; }
+                if !tx.query(USES, &Query::new().eq("file", m.id.as_str()).limit(1))?.items.is_empty() { continue; }
+                tx.extension_call("files.store", json!({"action": "delete", "id": m.id}))?;
+                tx.delete(FILES, &m.id)?;
+                removed += 1;
+            }
+            Ok(json!({"removed": removed}))
         });
         b.op("files.remove", |tx, i| {
             let d = tx.get(FILES, text(&i, "id"))?.filter(|d| !d.deleted).ok_or_else(|| Error::not_found("file"))?;

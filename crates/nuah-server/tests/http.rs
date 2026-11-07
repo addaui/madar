@@ -64,6 +64,13 @@ impl Server {
         }
         read(req.send(input.to_string()).unwrap())
     }
+    fn post(&self, path: &str, body: Value, extra: &[(&str, &str)]) -> Reply {
+        let mut req = agent().post(&format!("{}{path}", self.base)).header("Content-Type", "application/json").header("X-Nuah-Face", "test");
+        for (k, v) in extra {
+            req = req.header(*k, *v);
+        }
+        read(req.send(body.to_string()).unwrap())
+    }
     fn get(&self, path: &str, extra: &[(&str, &str)]) -> Reply {
         let mut req = agent().get(&format!("{}{path}", self.base));
         for (k, v) in extra {
@@ -386,4 +393,69 @@ fn an_uploaded_image_is_served_to_its_owner_as_an_inert_inline_image_and_to_nobo
     let txt = s.call("files.upload", json!({"name": "n.txt", "data": "aGVsbG8="}), &[("Authorization", &ah)]);
     let r = agent().get(&format!("{}{}", s.base, txt.body["output"]["url"].as_str().unwrap())).header("Authorization", &ah).call().unwrap();
     assert!(r.headers()["content-disposition"].to_str().unwrap().starts_with("attachment"));
+}
+
+/// A tiny site on loopback: `/page` has a preview, `/hop` redirects to it, `/img` is not a page, `/slow` never ends.
+fn tiny_site() -> String {
+    use std::io::{Read, Write};
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = l.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(mut s) = s else { continue };
+            std::thread::spawn(move || {
+                let mut buf = [0u8; 2048];
+                let n = s.read(&mut buf).unwrap_or(0);
+                let first = String::from_utf8_lossy(&buf[..n]).lines().next().unwrap_or("").to_string();
+                let reply = if first.contains("/page") {
+                    let body = "<title>Fallback</title><meta property=\"og:title\" content=\"The Big Page\"><meta name=\"description\" content=\"About &amp; things\"><meta property=\"og:image\" content=\"https://img.example/p.png\">";
+                    format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+                } else if first.contains("/hop") {
+                    "HTTP/1.1 302 Found\r\nLocation: /page\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                } else if first.contains("/img") {
+                    "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 3\r\nConnection: close\r\n\r\nabc".to_string()
+                } else {
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                };
+                let _ = s.write_all(reply.as_bytes());
+            });
+        }
+    });
+    format!("http://{addr}")
+}
+
+#[test]
+fn link_previews_are_fetched_for_signed_in_people_and_never_from_private_addresses() {
+    // set up for the test to reach a loopback site; the same server without the fetcher answers 404
+    let site = tiny_site();
+    let on = start_with(nuah_server::Config { previews: Some(std::sync::Arc::new(nuah_madar::previews::Fetcher::new(true, 4))), ..Default::default() });
+    let a = on.sign_in("alice");
+    let ah = format!("Bearer {a}");
+    let ask = |url: &str, h: &[(&str, &str)]| on.post("/previews", json!({"url": url}), h);
+    assert_eq!(ask(&format!("{site}/page"), &[]).status, 401, "signed in only");
+    let r = ask(&format!("{site}/page"), &[("Authorization", &ah)]);
+    assert_eq!(r.status, 200, "{:?}", r.body);
+    assert_eq!(r.body["output"]["title"], "The Big Page");
+    assert_eq!(r.body["output"]["description"], "About & things");
+    assert_eq!(r.body["output"]["image"], "https://img.example/p.png");
+    assert_eq!(ask(&format!("{site}/hop"), &[("Authorization", &ah)]).body["output"]["title"], "The Big Page", "redirects are followed");
+    assert_eq!(ask(&format!("{site}/img"), &[("Authorization", &ah)]).status, 404, "not a page");
+    assert_eq!(ask(&format!("{site}/nothing"), &[("Authorization", &ah)]).status, 404);
+    assert_eq!(ask("ftp://example.com/x", &[("Authorization", &ah)]).status, 400, "only web addresses");
+    // the fourth fetch of the minute is the last (the cached /page does not count)
+    let limited = ask(&format!("{site}/other"), &[("Authorization", &ah)]);
+    assert_eq!(limited.body["error"]["reason"], "previews.rate_limited", "{:?}", limited.body);
+
+    // the real configuration: loopback and the private network are refused outright
+    let real = start_with(nuah_server::Config { previews: Some(std::sync::Arc::new(nuah_madar::previews::Fetcher::new(false, 20))), ..Default::default() });
+    let b = real.sign_in("bob");
+    let bh = format!("Bearer {b}");
+    for bad in [format!("{site}/page"), "http://127.0.0.1/".into(), "http://169.254.169.254/latest/meta-data/".into(), "http://[::1]/".into(), "http://localhost/".into()] {
+        assert_eq!(real.post("/previews", json!({"url": bad}), &[("Authorization", &bh)]).status, 400, "{bad}");
+    }
+
+    // not set up: nothing is fetched
+    let off = start();
+    let c = off.sign_in("alice");
+    assert_eq!(off.post("/previews", json!({"url": "https://example.com/"}), &[("Authorization", &format!("Bearer {c}"))]).status, 404);
 }

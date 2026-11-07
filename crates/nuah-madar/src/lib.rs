@@ -9,6 +9,7 @@ pub mod projects;
 pub mod small;
 pub mod tasks;
 pub mod files;
+pub mod previews;
 pub mod search;
 pub mod timeline;
 pub mod workspaces;
@@ -27,7 +28,7 @@ pub fn catalog() -> Catalog {
         Arc::new(projects::Projects), Arc::new(tasks::Tasks), Arc::new(discussion::Discussion),
         Arc::new(small::Audit), Arc::new(small::Quota), Arc::new(small::Prefs), Arc::new(small::Export),
         Arc::new(small::Notify), Arc::new(small::NotifyInbox),
-        Arc::new(content::Editor), Arc::new(content::EditorBasic), Arc::new(content::Refs), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(workspaces::Workspaces),
+        Arc::new(content::Editor), Arc::new(content::EditorBasic), Arc::new(content::Refs), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(previews::Previews), Arc::new(workspaces::Workspaces),
     ];
     for t in small::themes() {
         list.push(Arc::new(t));
@@ -35,7 +36,7 @@ pub fn catalog() -> Catalog {
     Catalog(list)
 }
 
-const FEATURES: [&str; 19] = ["projects", "tasks", "discussion", "audit", "quota", "prefs", "export", "notify", "notify-inbox", "theme-paper", "editor", "editor-basic", "refs", "pages", "timeline", "workspaces", "search", "files", "files-db"];
+const FEATURES: [&str; 20] = ["projects", "tasks", "discussion", "audit", "quota", "prefs", "export", "notify", "notify-inbox", "theme-paper", "editor", "editor-basic", "refs", "pages", "timeline", "workspaces", "search", "files", "files-db", "previews"];
 
 fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     let mut enabled: Vec<String> = adapters.iter().map(|s| s.to_string()).collect();

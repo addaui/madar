@@ -304,7 +304,7 @@ fn remove(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
             tx.delete(VERSIONS, &v.id)?;
         }
         let aud = s.audience();
-        tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "refs": richtext::refs_for(KIND, &d.id, "", &Value::Null)})))?;
+        tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "files": richtext::files_of(&d.body["body"]), "refs": richtext::refs_for(KIND, &d.id, "", &Value::Null)})))?;
     }
     Ok(json!({"removed": all.len()}))
 }

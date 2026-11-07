@@ -11,7 +11,7 @@ const pageWriter = () => personal() || can(S.project, "projects.write");
 function makeEditor(host, doc, editable, onChange) {
   if (!window.MadarEditor) { host.textContent = "The editor could not be loaded."; return { json: () => doc, set() {}, setEditable() {}, destroy() {}, focus() {}, isEmpty: () => true }; }
   return window.MadarEditor.create(host, { content: doc, editable, lang, blocks: S.blocks, placeholder: t("writeHere"), onChange,
-    askUrl: (label) => (label === "Image address" ? askImage(label) : askText(label)), pickRef: pickItem, onOpenRef: openRef });
+    askUrl: (label) => (label === "Image address" ? askImage(label) : askText(label)), preview: hasOp("previews.get") ? fetchPreview : undefined, pickRef: pickItem, onOpenRef: openRef });
 }
 function editorFocusToken() { const a = document.activeElement; return pageCache && pageCache.ed && a && a.closest && a.closest(".madar-editor") ? pageCache : (S.drawerEd && a && a.closest && a.closest(".madar-editor") ? S.drawerEd : null); }
 function refocusEditor(tok) { try { tok.ed.focus(false); } catch (e) { /* editor was replaced */ } }

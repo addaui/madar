@@ -50,6 +50,8 @@ pub struct Config {
     pub pulse_streams_per_person: usize,
     /// Open Pulse streams the whole server serves; past it a new stream is refused with 429.
     pub pulse_streams_total: usize,
+    /// Fetches link previews (ADR 0026). `None`: previews are not set up and `/previews` answers 404.
+    pub previews: Option<Arc<nuah_madar::previews::Fetcher>>,
 }
 
 impl Default for Config {
@@ -63,6 +65,7 @@ impl Default for Config {
             throttle_window: Duration::from_secs(300),
             pulse_streams_per_person: 8,
             pulse_streams_total: 1000,
+            previews: None,
         }
     }
 }
@@ -72,6 +75,7 @@ struct App {
     core: Core,
     cfg: Arc<Config>,
     throttle: Arc<Mutex<Throttle>>,
+    previews: Option<Arc<nuah_madar::previews::Fetcher>>,
     streams: Arc<Mutex<Streams>>,
 }
 
@@ -361,6 +365,31 @@ async fn file(State(app): State<App>, Path(id): Path<String>, headers: HeaderMap
     ).into_response())
 }
 
+/// A link preview: `previews.get` first (who may ask, is the plugin on), then the fetch, off the async threads
+/// and outside any transaction (ADR 0026). 404 when the server was not set up to fetch.
+async fn preview(State(app): State<App>, headers: HeaderMap, Json(body): Json<Value>) -> Result<Response, ApiError> {
+    use nuah_madar::previews::Refusal;
+    let Some(fetcher) = app.previews.clone() else {
+        return Err(Error::reason(Category::NotFound, "previews.unavailable", "Link previews are not set up on this server").into());
+    };
+    let cred = credential(&headers);
+    let core = app.core.clone();
+    let url = body["url"].as_str().unwrap_or("").to_string();
+    let (who, plain) = blocking(move || -> nuah_kernel::Result<(String, Value)> {
+        let who = core.authenticate(cred.as_deref())?.subject;
+        let plain = core.call(CallRequest { credential: cred, op: "previews.get".into(), input: json!({"url": url}), key: None, contract: None })?.output;
+        Ok((who, plain))
+    }).await??;
+    let target = plain["url"].as_str().unwrap_or("").to_string();
+    let got = blocking(move || fetcher.get(&who, &target)).await?;
+    match got {
+        Ok(v) => Ok(no_store(Json(json!({"ok": true, "output": v}))).into_response()),
+        Err(Refusal::RateLimited) => Err(Error::reason(Category::Denied, "previews.rate_limited", "Too many previews just now, try again in a minute").into()),
+        Err(Refusal::Invalid) => Err(Error::invalid("url", "is not a public web address").into()),
+        Err(_) => Err(Error::reason(Category::NotFound, "previews.unavailable", "No preview could be made for that address").into()),
+    }
+}
+
 const BATCH: usize = 200;
 
 async fn pulse(
@@ -500,11 +529,12 @@ pub fn router(core: Core, cfg: Config) -> Router {
         .route("/link/describe", get(describe))
         .route("/link/call/{op}", post(call).layer(axum::extract::DefaultBodyLimit::max(7 * 1024 * 1024)))
         .route("/files/{id}", get(file))
+        .route("/previews", post(preview).layer(axum::extract::DefaultBodyLimit::max(4 * 1024)))
         .route("/link/openapi.json", get(openapi_doc))
         .route("/link/tools.json", get(tools_doc))
         .route("/link/client.ts", get(client_ts))
         .route("/pulse", get(pulse))
-        .with_state(App { core, cfg: cfg.clone(), throttle: Default::default(), streams: Default::default() });
+        .with_state(App { core, cfg: cfg.clone(), throttle: Default::default(), previews: cfg.previews.clone(), streams: Default::default() });
     for (prefix, dir) in &cfg.faces {
         r = r.nest_service(prefix, tower_http::services::ServeDir::new(dir));
     }

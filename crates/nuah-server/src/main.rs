@@ -56,6 +56,9 @@ enum Cmd {
         /// Directory of the generated console (hosted at /faces/console).
         #[arg(long)]
         console: Option<std::path::PathBuf>,
+        /// Let the server fetch link previews from public web addresses (ADR 0026). Off unless asked for.
+        #[arg(long)]
+        previews: bool,
     },
 }
 
@@ -87,7 +90,7 @@ async fn main() {
             eprintln!("nuah setup on http://{listen}/\nsetup code: {code}   (type it into the wizard; it changes every start)");
             axum::serve(listener, nuah_server::setup::setup_router(cfg)).with_graceful_shutdown(async { let _ = tokio::signal::ctrl_c().await; }).await.expect("serve");
         }
-        Cmd::Serve { profile, db, accounts, listen, allow_host, secure_cookie, web, console } => {
+        Cmd::Serve { profile, db, accounts, listen, allow_host, secure_cookie, web, console, previews } => {
             let dist = match (profile, db, accounts) {
                 (Some(path), _, _) => {
                     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| die(&format!("cannot read {}: {e}", path.display())));
@@ -111,6 +114,9 @@ async fn main() {
                 die("the profile does not resolve")
             });
             let mut cfg = nuah_server::Config { secure_cookie, ..Default::default() };
+            if previews {
+                cfg.previews = Some(std::sync::Arc::new(nuah_madar::previews::Fetcher::new(false, 20)));
+            }
             cfg.faces.extend(web.map(|d| ("/faces/web".to_string(), d)));
             cfg.faces.extend(console.map(|d| ("/faces/console".to_string(), d)));
             cfg.hosts.extend(allow_host.iter().map(|h| h.to_lowercase()));

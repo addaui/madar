@@ -105,6 +105,13 @@ pub mod richtext {
                     out.push((k.to_string(), i.to_string()));
                 }
             }
+            // An image or file block that shows an uploaded file refers to it (ADR 0026).
+            if let Some(id) = n["attrs"]["src"].as_str().or_else(|| n["attrs"]["url"].as_str()).and_then(file_id) {
+                let k = "files.file";
+                if !out.iter().any(|(a, b)| a == k && b == id) {
+                    out.push((k.to_string(), id.to_string()));
+                }
+            }
             for k in n["content"].as_array().into_iter().flatten() {
                 go(k, out);
             }
@@ -112,6 +119,17 @@ pub mod richtext {
         let mut out = vec![];
         go(v, &mut out);
         out
+    }
+
+    /// The id in an address of an uploaded file (`/files/<id>`), when it is one.
+    pub fn file_id(url: &str) -> Option<&str> {
+        let id = url.strip_prefix("/files/")?;
+        (!id.is_empty() && id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).then_some(id)
+    }
+
+    /// The uploaded files a document shows.
+    pub fn files_of(v: &Value) -> Vec<String> {
+        refs_of(v).into_iter().filter(|(k, _)| k == "files.file").map(|(_, i)| i).collect()
     }
 
     /// The `refs` part of an event's data: what `from` now refers to (ADR 0019).

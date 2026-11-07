@@ -91,9 +91,18 @@ const ImageBlock = Node.create({
 
 const LinkPreview = Node.create({
   name: 'linkPreview', group: 'block', atom: true, selectable: true, draggable: true,
-  addAttributes() { return { url: { default: '' }, title: { default: '' } } },
+  addAttributes() { return { url: { default: '' }, title: { default: '' }, description: { default: '' }, site: { default: '' }, image: { default: '' } } },
   parseHTML() { return [{ tag: 'a.link-card' }] },
-  renderHTML({ node }) { const u = safeUrl(node.attrs.url) ? node.attrs.url : '#'; return ['a', { class: 'link-card', href: u, target: '_blank', rel: 'noopener noreferrer' }, node.attrs.title || node.attrs.url] },
+  // Everything shown is checked here: a saved document is not trusted. The picture only from https, and without telling its site where we are.
+  renderHTML({ node }) {
+    const a = node.attrs, u = safeUrl(a.url) ? a.url : '#'
+    const body: any[] = ['span', { class: 'lc-body' }, ['strong', { class: 'lc-title' }, String(a.title || a.url).slice(0, 200)]]
+    if (a.description) body.push(['span', { class: 'lc-desc' }, String(a.description).slice(0, 300)])
+    body.push(['span', { class: 'lc-site' }, String(a.site || a.url).slice(0, 100)])
+    const kids: any[] = [body]
+    if (typeof a.image === 'string' && /^https:\/\//i.test(a.image)) kids.push(['img', { class: 'lc-img', src: a.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }])
+    return ['a', { class: 'link-card', href: u, target: '_blank', rel: 'noopener noreferrer' }, ...kids]
+  },
 })
 
 // A block this editor cannot draw is kept as it was (the plugin that made it may be switched off).
@@ -161,7 +170,17 @@ const COMMANDS: Record<string, Cmd> = {
   calloutDanger: (e) => e.chain().focus().insertContent({ type: 'callout', attrs: { tone: 'danger' }, content: [{ type: 'paragraph' }] }).run(),
   image: async (e, o) => { const u = await o.askUrl?.('Image address'); if (u && safeUrl(u)) e.chain().focus().insertContent({ type: 'image', attrs: { src: u } }).run() },
   youtube: async (e, o) => { const u = await o.askUrl?.('YouTube address'); if (u && embedUrl(u)) e.chain().focus().insertContent({ type: 'youtube', attrs: { src: u } }).run() },
-  linkPreview: async (e, o) => { const u = await o.askUrl?.('Link address'); if (u && safeUrl(u)) e.chain().focus().insertContent({ type: 'linkPreview', attrs: { url: u, title: u } }).run() },
+  linkPreview: async (e, o) => {
+    const u = await o.askUrl?.('Link address')
+    if (!u || !safeUrl(u)) return
+    e.chain().focus().insertContent({ type: 'linkPreview', attrs: { url: u, title: u } }).run()
+    // The card appears at once; the page's own title, summary and picture are filled in when they arrive.
+    const p = o.preview && /^https?:\/\//i.test(u) ? await o.preview(u).catch(() => null) : null
+    if (!p) return
+    let at = -1
+    e.state.doc.descendants((n: any, pos: number) => { if (at < 0 && n.type.name === 'linkPreview' && n.attrs.url === u && n.attrs.title === u && !n.attrs.site) at = pos; return at < 0 })
+    if (at >= 0) e.view.dispatch(e.state.tr.setNodeMarkup(at, undefined, { url: u, title: p.title || u, description: p.description || '', site: p.site || '', image: p.image || '' }))
+  },
   entityRef: async (e, o) => { const r = await o.pickRef?.(); if (r) e.chain().focus().insertContent([{ type: 'entityRef', attrs: r }, { type: 'text', text: ' ' }]).run() },
 }
 
@@ -170,6 +189,7 @@ export interface Opts {
   blocks?: { id: string; label: Json; group: string; keywords?: string }[]
   onChange?: (doc: Json) => void
   askUrl?: (label: string) => Promise<string | null>
+  preview?: (url: string) => Promise<{ title?: string; description?: string | null; site?: string | null; image?: string | null } | null>
   pickRef?: () => Promise<{ kind: string; id: string; title: string } | null>
   onOpenRef?: (kind: string, id: string) => void
   toolbar?: boolean

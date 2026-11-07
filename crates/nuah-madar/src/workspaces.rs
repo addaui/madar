@@ -3,7 +3,7 @@
 
 use crate::util::*;
 use nuah_kernel::*;
-use serde_json::{json, Value};
+use serde_json::json;
 
 pub const WORKSPACES: &str = "workspaces.workspaces";
 pub const PLACEMENTS: &str = "workspaces.placements";

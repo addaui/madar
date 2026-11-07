@@ -104,3 +104,12 @@ function askImage(label) {
     url.focus();
   });
 }
+
+// The page's own title, summary and picture for a link card. Quiet on failure: the card keeps the plain address.
+async function fetchPreview(url) {
+  try {
+    const res = await fetch("/previews", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-Nuah-Face": "web" }, body: JSON.stringify({ url }) });
+    const body = await res.json();
+    return body.ok ? body.output : null;
+  } catch (e) { return null; }
+}

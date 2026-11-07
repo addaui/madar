@@ -1301,3 +1301,78 @@ fn search_and_files_can_be_switched_off_without_touching_the_rest() {
     core.call_as(&al, "tasks.create", json!({"project": t["id"], "title": "still works"}), None).unwrap();
     assert!(core.call_as(&al, "search.query", json!({"q": "still"}), None).is_err());
 }
+
+fn image_doc(urls: &[&str]) -> Value {
+    let mut c: Vec<Value> = vec![json!({"type": "paragraph"})];
+    for u in urls {
+        c.push(json!({"type": "image", "attrs": {"src": u, "alt": ""}}));
+    }
+    json!({"type": "doc", "content": c})
+}
+
+#[test]
+fn deleting_a_page_deletes_the_files_only_it_showed() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let p = a.project(&al, "Shots");
+    let q = a.project(&al, "Other");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let up = |who: &Identity, project: Option<&str>| {
+        let mut i = json!({"name": "s.png", "data": PNG});
+        if let Some(pr) = project { i["project"] = json!(pr); }
+        a.ok(who, "files.upload", i)["id"].as_str().unwrap().to_string()
+    };
+    let (only, shared, elsewhere, stray) = (up(&bo, Some(&p)), up(&bo, Some(&p)), up(&al, Some(&q)), up(&bo, Some(&p)));
+    let (u_only, u_shared, u_else) = (format!("/files/{only}"), format!("/files/{shared}"), format!("/files/{elsewhere}"));
+    let one = a.ok(&bo, "pages.create", json!({"project": p, "title": "One", "body": image_doc(&[&u_only, &u_shared, &u_else, "https://example.com/x.png"])}))["id"].as_str().unwrap().to_string();
+    let two = a.ok(&bo, "pages.create", json!({"project": p, "title": "Two", "body": image_doc(&[&u_shared])}))["id"].as_str().unwrap().to_string();
+    a.settle();
+    // editing the picture out does not delete it: an undo or a restored version can bring it back
+    a.ok(&bo, "pages.update", json!({"project": p, "id": two, "body": image_doc(&[])}));
+    a.settle();
+    assert!(a.ok(&bo, "files.info", json!({"id": shared}))["id"].is_string());
+    a.ok(&bo, "pages.update", json!({"project": p, "id": two, "body": image_doc(&[&u_shared])}));
+    a.settle();
+    a.ok(&bo, "pages.delete", json!({"project": p, "id": one}));
+    a.settle();
+    assert_eq!(a.err(&bo, "files.info", json!({"id": only})).category, Category::NotFound, "only that page showed it");
+    assert!(a.ok(&bo, "files.info", json!({"id": shared}))["id"].is_string(), "another page still shows it");
+    assert!(a.ok(&al, "files.info", json!({"id": elsewhere}))["id"].is_string(), "a file from another project is never touched");
+    assert!(a.ok(&bo, "files.info", json!({"id": stray}))["id"].is_string());
+    a.ok(&bo, "pages.delete", json!({"project": p, "id": two}));
+    a.settle();
+    assert_eq!(a.err(&bo, "files.download", json!({"id": shared})).category, Category::NotFound, "the last page that showed it is gone");
+    // the bytes went too, not only the record
+    assert_eq!(a.err(&al, "files.info", json!({"id": shared})).category, Category::NotFound);
+}
+
+#[test]
+fn deleting_a_note_deletes_its_files_and_the_sweep_removes_strays() {
+    let a = app();
+    let al = who("alice");
+    let f = a.ok(&al, "files.upload", json!({"name": "n.png", "data": PNG}))["id"].as_str().unwrap().to_string();
+    let n = a.ok(&al, "notes.create", json!({"title": "Diary", "body": image_doc(&[&format!("/files/{f}")])}))["id"].as_str().unwrap().to_string();
+    let stray = a.ok(&al, "files.upload", json!({"name": "s.png", "data": PNG}))["id"].as_str().unwrap().to_string();
+    a.settle();
+    a.ok(&al, "notes.delete", json!({"id": n}));
+    a.settle();
+    assert_eq!(a.err(&al, "files.info", json!({"id": f})).category, Category::NotFound);
+    // a stray is young: kept; after a day it goes
+    assert_eq!(a.ok(&al, "files.sweep", json!({}))["removed"], 0);
+    a.clock.advance(2 * 86_400_000);
+    assert_eq!(a.ok(&al, "files.sweep", json!({}))["removed"], 1);
+    assert_eq!(a.err(&al, "files.info", json!({"id": stray})).category, Category::NotFound);
+}
+
+#[test]
+fn deleting_a_project_deletes_its_uploads() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Gone");
+    let f = a.ok(&al, "files.upload", json!({"name": "g.png", "data": PNG, "project": p}))["id"].as_str().unwrap().to_string();
+    let mine = a.ok(&al, "files.upload", json!({"name": "m.png", "data": PNG}))["id"].as_str().unwrap().to_string();
+    a.ok(&al, "projects.delete", json!({"project": p}));
+    a.settle();
+    assert_eq!(a.err(&al, "files.info", json!({"id": f})).category, Category::NotFound);
+    assert!(a.ok(&al, "files.info", json!({"id": mine}))["id"].is_string());
+}
