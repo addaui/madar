@@ -81,25 +81,39 @@ function avatarStack(list, max = 4) {
 }
 
 // ---------- the popup menu ----------
-// items: [{label, icon, onclick, danger, disabled, checked}] or "-" for a rule. Opens next to `anchor`, flips to stay on screen.
+// items: [{label, icon, onclick, danger, disabled, checked, sub}] or "-" for a rule or {heading}. Opens next to `anchor`, flips to stay on screen.
+// `sub: () => items` makes a row that opens a second level in the same menu (a Back row returns), which works with a finger too.
+// A context menu opens at a point: pass pointAnchor(x, y).
+function pointAnchor(x, y) { return { point: true, getBoundingClientRect: () => ({ left: x, right: x, top: y, bottom: y, width: 0, height: 0 }), contains: () => false, focus() {}, setAttribute() {}, removeAttribute() {} }; }
 function openMenu(anchor, items, { align = "end" } = {}) {
   closeMenu();
-  const menu = h("div", { class: "menu", role: "menu" });
-  const rows = items.filter(Boolean);
-  for (const it of rows) {
-    if (it.heading) { menu.append(h("div", { class: "menu-head" }, it.heading)); continue; }
-    if (it === "-") { menu.append(h("div", { class: "menu-rule", role: "separator" })); continue; }
-    menu.append(h("button", { class: "menu-item" + (it.danger ? " danger" : ""), role: it.checked !== undefined ? "menuitemradio" : "menuitem", "aria-checked": it.checked !== undefined ? String(!!it.checked) : null, disabled: !!it.disabled, type: "button",
-      onclick: () => { closeMenu(); it.onclick && it.onclick(); } },
-      it.icon ? ico(it.icon) : h("span", { class: "ico-gap" }), h("span", { class: "grow" }, it.label), it.checked ? ico("check", "tick") : null));
-  }
+  const menu = h("div", { class: "menu", role: "menu" }), stack = [], rtl = document.documentElement.dir === "rtl";
+  const place = () => {
+    const r = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect();
+    let x, y;
+    if (anchor.point) { x = r.left; y = r.top; if (rtl) x -= m.width; }
+    else { const endEdge = align === "end" ? (rtl ? r.left : r.right) : (rtl ? r.right : r.left); x = (align === "end") !== rtl ? endEdge - m.width : endEdge; y = r.bottom + 6; if (y + m.height > innerHeight - 8) y = Math.max(8, r.top - m.height - 6); }
+    x = Math.max(8, Math.min(innerWidth - m.width - 8, x)); y = Math.max(8, Math.min(innerHeight - m.height - 8, y));
+    menu.style.left = x + "px"; menu.style.top = y + "px";
+  };
+  const render = (rows) => {
+    menu.replaceChildren();
+    for (const it of rows.filter(Boolean)) {
+      if (it.heading) { menu.append(h("div", { class: "menu-head" }, it.heading)); continue; }
+      if (it === "-") { menu.append(h("div", { class: "menu-rule", role: "separator" })); continue; }
+      menu.append(h("button", { class: "menu-item" + (it.danger ? " danger" : ""), role: it.checked !== undefined ? "menuitemradio" : "menuitem", "aria-checked": it.checked !== undefined ? String(!!it.checked) : null, "aria-haspopup": it.sub ? "menu" : null, disabled: !!it.disabled, type: "button",
+        onclick: () => {
+          if (it.sub) { stack.push(rows); render([{ label: (rtl ? "→ " : "← ") + it.label, keep: true, onclick: () => { render(stack.pop()); place(); focusFirst(); } }, "-", ...it.sub()]); place(); focusFirst(); return; }
+          if (it.keep) { it.onclick && it.onclick(); return; }
+          closeMenu(); it.onclick && it.onclick();
+        } },
+        it.icon ? ico(it.icon) : h("span", { class: "ico-gap" }), h("span", { class: "grow" }, it.label), it.checked ? ico("check", "tick") : null, it.sub ? ico("chevron", "sub-caret") : null));
+    }
+  };
+  const focusFirst = () => { const first = menu.querySelector(".menu-item:not(:disabled)"); if (first) first.focus(); };
+  render(items);
   document.body.append(menu);
-  const r = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect(), rtl = document.documentElement.dir === "rtl";
-  const endEdge = align === "end" ? (rtl ? r.left : r.right) : (rtl ? r.right : r.left);
-  let x = (align === "end") !== rtl ? endEdge - m.width : endEdge;
-  x = Math.max(8, Math.min(innerWidth - m.width - 8, x));
-  let y = r.bottom + 6; if (y + m.height > innerHeight - 8) y = Math.max(8, r.top - m.height - 6);
-  menu.style.left = x + "px"; menu.style.top = y + "px";
+  place();
   const focusables = () => [...menu.querySelectorAll(".menu-item:not(:disabled)")];
   const onKey = (e) => {
     const f = focusables(), i = f.indexOf(document.activeElement);
@@ -109,16 +123,37 @@ function openMenu(anchor, items, { align = "end" } = {}) {
     else if (e.key === "Tab") closeMenu();
   };
   const onDown = (e) => { if (!menu.contains(e.target) && !anchor.contains(e.target)) closeMenu(); };
-  document.addEventListener("keydown", onKey, true); document.addEventListener("mousedown", onDown, true);
-  openMenu.cur = { menu, off: () => { document.removeEventListener("keydown", onKey, true); document.removeEventListener("mousedown", onDown, true); } };
+  document.addEventListener("keydown", onKey, true); document.addEventListener("mousedown", onDown, true); document.addEventListener("touchstart", onDown, true);
+  openMenu.cur = { menu, off: () => { document.removeEventListener("keydown", onKey, true); document.removeEventListener("mousedown", onDown, true); document.removeEventListener("touchstart", onDown, true); } };
   anchor.setAttribute("aria-expanded", "true");
-  const first = focusables()[0]; if (first) first.focus();
+  focusFirst();
   openMenu.anchor = anchor;
 }
 function closeMenu() {
   const c = openMenu.cur; if (!c) return;
   c.off(); c.menu.remove(); openMenu.cur = null;
   if (openMenu.anchor) { openMenu.anchor.removeAttribute("aria-expanded"); openMenu.anchor = null; }
+}
+// Right click, a long press, or the Menu key opens a context menu built from the same items as the row's ⋯ button.
+// Shift + right click keeps the browser's own menu. `items` is a function, called when the menu opens.
+function bindContext(el, items, { stop = true } = {}) {
+  let timer, at = { x: 0, y: 0 }, fired = 0;
+  const open = (x, y) => { const list = items(); if (list && list.length) openMenu(pointAnchor(x, y), list); };
+  el.addEventListener("contextmenu", (e) => {
+    if (e.shiftKey || e.target.closest("input, textarea, select, [contenteditable='true'], .madar-editor")) return;
+    e.preventDefault(); if (stop) e.stopPropagation();
+    if (Date.now() - fired < 900) return;
+    open(e.clientX, e.clientY);
+  });
+  el.addEventListener("keydown", (e) => { if (e.target === el && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) { e.preventDefault(); const r = el.getBoundingClientRect(); open(r.left + 24, r.top + r.height / 2); } });
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" || e.target.closest("input, textarea, select, .madar-editor")) return;
+    at = { x: e.clientX, y: e.clientY }; timer = setTimeout(() => { fired = Date.now(); open(at.x, at.y); }, 450);
+  });
+  const stopTimer = () => clearTimeout(timer);
+  el.addEventListener("pointermove", (e) => { if (timer && Math.hypot(e.clientX - at.x, e.clientY - at.y) > 10) stopTimer(); });
+  el.addEventListener("pointerup", stopTimer); el.addEventListener("pointercancel", stopTimer);
+  el.classList.add("has-context");
 }
 function menuBtn(label, itemsFn, icon = "more") {
   const b = iconBtn(icon, label, (e) => { e.stopPropagation(); openMenu(b, itemsFn()); }, { attrs: { "aria-haspopup": "menu" } });

@@ -11,7 +11,7 @@ const pageWriter = () => personal() || can(S.project, "projects.write");
 function makeEditor(host, doc, editable, onChange) {
   if (!window.MadarEditor) { host.textContent = "The editor could not be loaded."; return { json: () => doc, set() {}, setEditable() {}, destroy() {}, focus() {}, isEmpty: () => true }; }
   return window.MadarEditor.create(host, { content: doc, editable, lang, blocks: S.blocks, placeholder: t("writeHere"), onChange,
-    askUrl: (label) => (label === "Image address" ? askImage(label) : askText(label)), preview: hasOp("previews.get") ? fetchPreview : undefined, pickRef: pickItem, onOpenRef: openRef });
+    askUrl: (label) => (label === "Image address" ? askImage(label) : askText(label)), askText: (label, initial) => askText(label, initial || ""), menu: (x, y, items) => openMenu(pointAnchor(x, y), items), preview: hasOp("previews.get") ? fetchPreview : undefined, pickRef: pickItem, onOpenRef: openRef });
 }
 function editorFocusToken() { const a = document.activeElement; return pageCache && pageCache.ed && a && a.closest && a.closest(".madar-editor") ? pageCache : (S.drawerEd && a && a.closest && a.closest(".madar-editor") ? S.drawerEd : null); }
 function refocusEditor(tok) { try { tok.ed.focus(false); } catch (e) { /* editor was replaced */ } }
@@ -46,6 +46,18 @@ function toggleOpen(id) { const s = openSet(); s.has(id) ? s.delete(id) : s.add(
 function childrenOf(parent) { return S.pagesList.filter((x) => (x.parent || null) === parent).sort((a, b) => a.position - b.position); }
 async function movePage(id, parent, before) { const out = await attempt(() => call(pgOp("move"), pgIn({ id, parent, before }))); if (out) { await loadPagesData(); render(); } }
 function zoneOf(e, row) { const r = row.getBoundingClientRect(), y = (e.clientY - r.top) / r.height; return y < 0.28 ? "before" : y > 0.72 ? "after" : "child"; }
+function pageItems(pg) {
+  const sibs = childrenOf(pg.parent || null), i = sibs.findIndex((x) => x.id === pg.id), par = pg.parent ? S.pagesList.find((x) => x.id === pg.parent) : null,
+    parSibs = par ? childrenOf(par.parent || null) : [], pi = par ? parSibs.findIndex((x) => x.id === par.id) : -1;
+  return [{ label: t("addChild"), icon: "plus", onclick: () => newPage(pg.id) }, { label: t("rename"), icon: "edit", onclick: () => renamePage(pg) }, "-",
+    { label: t("pgUp"), icon: "up", disabled: i <= 0, onclick: () => movePage(pg.id, pg.parent || null, sibs[i - 1].id) },
+    { label: t("pgDown"), icon: "down", disabled: i < 0 || i >= sibs.length - 1, onclick: () => movePage(pg.id, pg.parent || null, sibs[i + 2] ? sibs[i + 2].id : null) },
+    { label: t("pgIndent"), icon: "move", disabled: i <= 0, onclick: () => movePage(pg.id, sibs[i - 1].id, null) },
+    { label: t("pgOutdent"), icon: "up", disabled: !par, onclick: () => movePage(pg.id, par.parent || null, parSibs[pi + 1] ? parSibs[pi + 1].id : null) }, "-",
+    { label: t("delete"), icon: "trash", danger: true, onclick: () => deletePage(pg) }];
+}
+async function renamePage(pg) { const v = await askText(t("rename"), pg.title || ""); if (!v || !v.trim() || v.trim() === pg.title) return; if (S.openPage && S.openPage.id === pg.id && pageCache) { await savePage({ title: v.trim() }); await loadPagesData(); render(); return; } const out = await attempt(() => call(pgOp("update"), pgIn({ id: pg.id, title: v.trim() }))); if (out) { await loadPagesData(); render(); } }
+async function deletePage(pg) { if (!(await confirmDelete())) return; await attempt(() => call(pgOp("delete"), pgIn({ id: pg.id }))); if (S.openPage && S.openPage.id === pg.id) { dropPageCache(); S.openPage = null; } await loadPagesData(); setHash(); render(); }
 function treeRow(pg, depth, writer) {
   const kids = childrenOf(pg.id), open = !openSet().has("c:" + pg.id), cur = S.openPage && S.openPage.id === pg.id;
   const row = h("div", { class: "tree-row" + (cur ? " cur" : ""), style: `padding-inline-start:${8 + depth * 14}px`, draggable: writer, "data-id": pg.id,
@@ -58,13 +70,9 @@ function treeRow(pg, depth, writer) {
       if (z === "child") movePage(id, pg.id, null); else if (z === "before") movePage(id, pg.parent || null, pg.id); else movePage(id, pg.parent || null, sibs[i + 1] ? sibs[i + 1].id : null);
     } },
     kids.length ? h("button", { class: "chev" + (open ? " open" : ""), "aria-label": open ? t("collapse") : t("expand"), "aria-expanded": String(open), onclick: (e) => { e.stopPropagation(); toggleOpen("c:" + pg.id); } }, ico("chevron")) : h("span", { class: "chev" }),
-    h("button", { class: "grow title-btn", onclick: () => selectPage(pg.id), "aria-current": cur ? "page" : null }, pg.icon ? h("span", {}, pg.icon) : ico("page"), h("span", { class: "grow", dir: "auto", style: "overflow:hidden;text-overflow:ellipsis" }, pg.title || t("untitled"))),
-    writer ? h("span", { class: "row-actions" }, iconBtn("plus", t("addChild"), (e) => { e.stopPropagation(); newPage(pg.id); }, { class: "sm" }),
-      menuBtn(t("more"), () => { const sibs = childrenOf(pg.parent || null), i = sibs.findIndex((x) => x.id === pg.id), par = pg.parent ? S.pagesList.find((x) => x.id === pg.parent) : null, parSibs = par ? childrenOf(par.parent || null) : [], pi = par ? parSibs.findIndex((x) => x.id === par.id) : -1;
-        return [{ label: t("pgUp"), icon: "up", disabled: i <= 0, onclick: () => movePage(pg.id, pg.parent || null, sibs[i - 1].id) },
-          { label: t("pgDown"), icon: "down", disabled: i < 0 || i >= sibs.length - 1, onclick: () => movePage(pg.id, pg.parent || null, sibs[i + 2] ? sibs[i + 2].id : null) },
-          { label: t("pgIndent"), icon: "move", disabled: i <= 0, onclick: () => movePage(pg.id, sibs[i - 1].id, null) },
-          { label: t("pgOutdent"), icon: "up", disabled: !par, onclick: () => movePage(pg.id, par.parent || null, parSibs[pi + 1] ? parSibs[pi + 1].id : null) }]; }, "more")) : null);
+    h("button", { class: "grow title-btn", onclick: () => selectPage(pg.id), "aria-current": cur ? "page" : null }, pg.icon ? h("span", {}, pg.icon) : ico("page"), h("span", { class: "grow", dir: "auto", style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:start" }, pg.title || t("untitled"))),
+    writer ? h("span", { class: "row-actions" }, iconBtn("plus", t("addChild"), (e) => { e.stopPropagation(); newPage(pg.id); }, { class: "sm" }), menuBtn(t("more"), () => pageItems(pg), "more")) : null);
+  if (writer) bindContext(row, () => pageItems(pg));
   return [row, ...(open ? kids.flatMap((k) => treeRow(k, depth + 1, writer)) : [])];
 }
 async function newPage(parent) {
@@ -92,7 +100,9 @@ async function selectPage(id) { flushPage(); await openPageNow(id); setHash(); r
 
 // Edits are sent a moment after typing stops; leaving the page sends them at once (flushPage).
 function flushPage() { const c = pageCache; if (c && c.dirty && c.timer) { clearTimeout(c.timer); c.timer = null; savePage({ body: c.ed.json() }); } }
-async function savePage(patch) {
+// Saves go one after another, so two quick changes never race on the same revision.
+function savePage(patch) { const c = pageCache; if (!c) return Promise.resolve(); c.queue = (c.queue || Promise.resolve()).then(() => savePageNow(patch)); return c.queue; }
+async function savePageNow(patch) {
   const c = pageCache, pg = S.openPage; if (!c || !pg) return;   // the page can change while the answer is on its way, so keep these two
   c.status = t("saving"); paintSave();
   const out = await attempt(() => call(pgOp("update"), pgIn({ id: pg.id, expected_rev: c.rev, ...patch })));
@@ -109,25 +119,67 @@ async function savePage(patch) {
 function paintSave() { const el = document.querySelector(".save-state"); if (el && pageCache) el.textContent = pageCache.status || ""; }
 
 // ---------- the page ----------
+Object.assign(STR.en, { words: "words", minRead: "min read", toggleInfo: "Show or hide the side panel", infoTab: "Info", pageTab: "Page", activityTab: "Activity", created: "Created", updatedAt: "Last updated", createdBy: "Created by",
+  fontLbl: "Font", sizeLbl: "Text size", widthLbl: "Page width", fDefault: "Default", fSerif: "Serif", fMono: "Mono", wNarrow: "Narrow", wNormal: "Normal", wWide: "Wide", resetPage: "Reset to default" });
+Object.assign(STR.ar, { words: "كلمة", minRead: "د للقراءة", toggleInfo: "إظهار اللوحة الجانبية أو إخفاؤها", infoTab: "معلومات", pageTab: "الصفحة", activityTab: "النشاط", created: "أُنشئت", updatedAt: "آخر تحديث", createdBy: "أنشأها",
+  fontLbl: "الخط", sizeLbl: "حجم النص", widthLbl: "عرض الصفحة", fDefault: "الافتراضي", fSerif: "بخط ذي زوائد", fMono: "أحادي المسافة", wNarrow: "ضيق", wNormal: "عادي", wWide: "عريض", resetPage: "العودة للافتراضي" });
+S.pageSide = ls.get("madar.pageside", "1") === "1"; S.pageTab = "activity";
+const PAGE_FONTS = { serif: 'Fraunces, Georgia, "Times New Roman", serif', mono: 'var(--mono)' }, PAGE_WIDTHS = { narrow: "640px", normal: "820px", wide: "1120px" };
+/** A page's own font, text size and width (ADR 0030): set as variables on the page, so a theme still decides the rest. */
+function applyPageSettings(el, st) {
+  st = st || {};
+  const set = (k, v) => (v ? el.style.setProperty(k, v) : el.style.removeProperty(k));
+  set("--page-font", PAGE_FONTS[st.font]); set("--page-size", st.size ? st.size + "px" : ""); set("--page-w", PAGE_WIDTHS[st.width]);
+}
+const pageStats = (c) => { const txt = window.MadarEditor ? window.MadarEditor.text(c.ed.json()) : "", words = (txt.match(/[\p{L}\p{N}]+/gu) || []).length; return { words, mins: Math.max(1, Math.ceil(words / 200)) }; };
+function paintStats() { const el = document.querySelector(".page-stats"); if (el && pageCache) { const s = pageStats(pageCache); el.textContent = `${s.words} ${t("words")} · ${s.mins} ${t("minRead")}`; } }
 function pageView(writer) {
   const pg = S.openPage;
   if (!pageCache || pageCache.id !== pg.id) {
     dropPageCache();
     const host = h("div", { class: "ed-host" });
     const c = { id: pg.id, el: host, rev: pg.rev, dirty: false, timer: null, status: "" };
-    c.ed = makeEditor(host, pg.body, writer, () => { c.dirty = true; clearTimeout(c.timer); c.status = ""; c.timer = setTimeout(async () => { c.timer = null; await savePage({ body: c.ed.json() }); }, 800); });
+    c.ed = makeEditor(host, pg.body, writer, () => { c.dirty = true; clearTimeout(c.timer); c.status = ""; clearTimeout(c.statsTimer); c.statsTimer = setTimeout(paintStats, 400); c.timer = setTimeout(async () => { c.timer = null; await savePage({ body: c.ed.json() }); }, 800); });
     pageCache = c;
   }
   const c = pageCache;
   const title = h("input", { type: "text", class: "page-title", value: pg.title, disabled: !writer, maxlength: 200, "aria-label": t("title"), "data-keep": "pgtitle", dir: "auto",
     onchange: (e) => { const v = e.target.value.trim(); if (v && v !== S.openPage.title) savePage({ title: v }); } });
   c.titleEl = title;
-  const back = h("div", { class: "backlinks" });
-  loadBacklinks(pg, back);
-  return h("article", { class: "page" }, h("div", { class: "page-head" }, codeChip(pageCode(pg), true), title, h("span", { class: "muted save-state" }, c.status || ""),
+  const head = h("div", { class: "page-head" }, codeChip(pageCode(pg), true), h("span", { class: "grow" }),
     hasOp(pgOp("versions")) ? btn(t("pageHistory"), { kind: "ghost", icon: "history", onclick: () => openHistory(writer) }) : null,
-    writer ? iconBtn("trash", t("delete"), async () => { if (!(await confirmDelete())) return; await attempt(() => call(pgOp("delete"), pgIn({ id: pg.id }))); dropPageCache(); S.openPage = null; await loadPagesData(); setHash(); render(); }, { class: "danger" }) : null),
-    c.el, back, personal() ? null : [h("h3", {}, t("timeline")), timelineBox(S.project.id, { type: "pages.page", id: pg.id }, writer)]);
+    writer ? iconBtn("trash", t("delete"), () => deletePage(pg), { class: "danger" }) : null,
+    iconBtn("side", t("toggleInfo"), () => { S.pageSide = !S.pageSide; ls.set("madar.pageside", S.pageSide ? "1" : "0"); render(); }, { attrs: { "aria-pressed": String(S.pageSide) } }));
+  const art = h("article", { class: "page", dir: null }, head, h("div", { class: "page-scroll" }, h("div", { class: "page-col" }, title, c.el)),
+    h("div", { class: "page-status" }, h("span", { class: "page-stats" }), h("span", { class: "grow" }), h("span", { class: "muted save-state" }, c.status || "")));
+  applyPageSettings(art, pg.settings);
+  setTimeout(paintStats, 0);
+  return art;
+}
+/** The right-hand side of a page: Activity (comments and history), Info, and how this page is shown. */
+function pageSide(pg, writer) {
+  const tabs = personal() ? ["info", "page"] : ["activity", "info", "page"];
+  if (!tabs.includes(S.pageTab)) S.pageTab = tabs[0];
+  const body = h("div", { class: "pside-body" });
+  if (S.pageTab === "activity") body.append(h("h3", {}, ico("message"), t("timeline")), timelineBox(S.project.id, { type: "pages.page", id: pg.id }, writer));
+  else if (S.pageTab === "info") {
+    const back = h("div", { class: "backlinks" }); loadBacklinks(pg, back);
+    body.append(h("div", { class: "props" },
+      prop("calendar", t("created"), h("span", {}, fmtTime(pg.created_at))), prop("history", t("updatedAt"), h("span", {}, fmtTime(pg.updated_at))),
+      pg.created_by ? prop("user", t("createdBy"), h("span", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, avatar(pg.created_by, personName(pg.created_by), "sm"), personName(pg.created_by))) : null), back);
+  } else {
+    const st = { ...(pg.settings || {}) }, c = pageCache;
+    const save = (k, v) => { if (v === undefined) delete st[k]; else st[k] = v; pg.settings = { ...st }; const art = document.querySelector(".page"); if (art) applyPageSettings(art, st); if (writer) savePage({ settings: { ...st } }); };
+    const sel = (key, opts) => h("select", { "aria-label": t(key + "Lbl"), disabled: !writer, onchange: (e) => save(key, e.target.value === "" ? undefined : e.target.value) }, ...opts.map(([v, l]) => h("option", { value: v, selected: (st[key] || "") === v }, t(l))));
+    const out = h("output", { dir: "ltr" }, String(st.size || 16));
+    body.append(h("div", { class: "props" },
+      prop("page", t("fontLbl"), sel("font", [["", "fDefault"], ["serif", "fSerif"], ["mono", "fMono"]])),
+      prop("edit", t("sizeLbl"), h("span", { class: "row", style: "gap:8px;flex-wrap:nowrap" }, h("input", { type: "range", min: 12, max: 24, step: 1, value: st.size || 16, disabled: !writer, "aria-label": t("sizeLbl"), oninput: (e) => { out.textContent = e.target.value; const art = document.querySelector(".page"); if (art) applyPageSettings(art, { ...st, size: Number(e.target.value) }); }, onchange: (e) => save("size", Number(e.target.value)) }), out)),
+      prop("move", t("widthLbl"), sel("width", [["", "wNormal"], ["narrow", "wNarrow"], ["wide", "wWide"]]))),
+      writer ? btn(t("resetPage"), { kind: "ghost", onclick: () => { for (const k of Object.keys(st)) delete st[k]; pg.settings = {}; savePage({ settings: {} }); render(); } }) : null);
+  }
+  return h("aside", { class: "page-side", "aria-label": t("toggleInfo") },
+    h("div", { class: "ptabs on", role: "tablist" }, ...tabs.map((k) => h("button", { type: "button", role: "tab", "aria-selected": String(S.pageTab === k), onclick: () => { S.pageTab = k; render(); } }, t(k === "activity" ? "activityTab" : k === "info" ? "infoTab" : "pageTab")))), body);
 }
 async function loadBacklinks(pg, box) {
   if (!hasOp("refs.to")) return;
@@ -136,13 +188,15 @@ async function loadBacklinks(pg, box) {
   box.replaceChildren(h("h3", {}, ico("link"), t("linkedFrom")), ...(out.links.length ? out.links.map((l) => h("button", { class: "found", type: "button", onclick: () => openRef(l.from.type, l.from.id) }, h("span", { class: "kind" }, ico(l.from.type === "tasks.task" ? "task" : "page")), h("span", { class: "grow" }, h("strong", { dir: "auto" }, l.title || l.from.id)))) : [h("div", { class: "muted" }, t("noLinks"))]));
 }
 function pagesLayout(writer) {
-  const roots = childrenOf(null);
+  const roots = childrenOf(null), pg = S.openPage, side = !!pg && S.pageSide;
   const tree = h("nav", { class: "tree", "aria-label": t("pages"),
     ondragover: (e) => { if (writer) e.preventDefault(); },
     ondrop: (e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) movePage(id, null, null); } },
     writer ? btn(personal() ? t("newNote") : t("newPage"), { kind: "primary", icon: "plus", onclick: () => newPage(null) }) : null,
     ...(roots.length ? roots.flatMap((r) => treeRow(r, 0, writer)) : [h("div", { class: "muted", style: "padding:8px" }, t("noPages"))]));
-  return h("div", { class: "pages-layout" }, tree, h("div", { class: "page-pane" }, S.openPage ? pageView(writer) : h("div", { class: "empty", style: "margin:8vh auto" }, ico("book"), h("b", {}, t("noPages")), h("span", {}, t("noPagesHint")))));
+  return h("div", { class: "pages-layout", "data-side": side ? "1" : "0" }, tree,
+    h("div", { class: "page-pane" }, pg ? pageView(writer) : h("div", { class: "empty", style: "margin:8vh auto" }, ico("book"), h("b", {}, t("noPages")), h("span", {}, t("noPagesHint")))),
+    side ? pageSide(pg, writer) : null);
 }
 function pagesTab(p, writer) { return pagesLayout(writer); }
 function notesView() { return h("div", {}, h("div", { class: "head" }, h("h1", {}, t("notes")), h("span", { class: "sub" }, t("notesHint"))), pagesLayout(true)); }

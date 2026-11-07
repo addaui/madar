@@ -140,6 +140,9 @@ function crumbs() {
   }
   return out;
 }
+/** With the customizer's icon rail on, "closed" means icons only, not hidden. */
+const railOn = () => document.documentElement.classList.contains("sig-r_icons") && !narrow();
+const sideHidden = () => narrow() || (S.side === "closed" && !railOn());
 function toggleSide() {
   S.side = S.side === "open" ? "closed" : "open";
   if (!narrow()) ls.set("madar.side", S.side);
@@ -148,10 +151,10 @@ function toggleSide() {
 function topbar() {
   const cs = crumbs();
   return h("header", { class: "topbar" },
-    S.side === "closed" || narrow() ? iconBtn("side", t("toggleSide"), toggleSide) : null,
+    sideHidden() ? iconBtn("side", t("toggleSide"), toggleSide) : null,
     h("nav", { class: "crumbs", "aria-label": "breadcrumb" }, ...cs.flatMap(([label, fn], i) => [i ? h("span", { class: "sep", "aria-hidden": "true" }, ico("chevron")) : null, fn ? h("button", { onclick: fn, dir: "auto" }, label) : h("span", { "aria-current": i === cs.length - 1 ? "page" : null, dir: "auto" }, label)])),
     h("span", { class: "grow" }),
-    hasOp("search.query") && (S.side === "closed" || narrow()) ? iconBtn("search", t("search").replace("…", "") + " (/)", openSearch) : null,
+    hasOp("search.query") && (sideHidden()) ? iconBtn("search", t("search").replace("…", "") + " (/)", openSearch) : null,
     iconBtn("focus", t("focusMode") + " (Ctrl+\\)", toggleFocus), iconBtn("help", t("kHelp") + " (?)", openShortcuts));
 }
 function toggleFocus() { S.focus = !S.focus; ls.set("madar.focus", S.focus ? "1" : "0"); render(); }
@@ -168,7 +171,11 @@ document.addEventListener("keydown", (e) => {
 function navItem(label, view, badge, icon, tab) {
   return h("button", { class: "nav", title: label, "aria-current": String(S.view === view), onclick: () => go(view, tab) }, icon ? ico(icon) : h("span", { class: "dot-nav", "aria-hidden": "true" }), h("span", { class: "label", dir: "auto" }, label), badge ? h("span", { class: "badge" }, badge) : null);
 }
-function projectItems(list) { return list.map((p) => navItem(p.name, p.id)); }
+const wsItems = (w) => [{ label: t("renameWs"), icon: "edit", onclick: () => renameWorkspace(w) }, { label: t("deleteWs"), icon: "trash", danger: true, onclick: () => deleteWorkspace(w) }];
+/** Gives a row a context menu (right click, long press) and returns the row. */
+function withContext(el, items) { if (items) bindContext(el, items); return el; }
+const projectContext = (p) => () => [{ label: t("open"), icon: "board", onclick: () => go(p.id, "board") }, { label: t("pages"), icon: "page", onclick: () => go(p.id, "pages") }, { label: t("overview"), icon: "chart", onclick: () => go(p.id, "overview") }, p.key ? "-" : null, p.key ? { label: t("copyId") + " · " + p.key, icon: "link", onclick: () => copyText(p.key) } : null];
+function projectItems(list) { return list.map((p) => withContext(navItem(p.name, p.id), projectContext(p))); }
 function sidebar() {
   const canCreate = S.desc.operations["projects.create"] && S.desc.operations["projects.create"].allowed;
   let projects;
@@ -178,10 +185,10 @@ function sidebar() {
       const mine = S.projects.filter((p) => (place.get(p.id) || "default") === w.id);
       const open = ls.get("madar.ws." + w.id, "1") === "1";
       const name = w.builtin ? t("defaultWs") : w.name;
-      return [h("div", { class: "group-title" },
+      return [withContext(h("div", { class: "group-title" },
         h("button", { class: "t" + (open ? "" : " closed"), "aria-expanded": String(open), onclick: () => { ls.set("madar.ws." + w.id, open ? "0" : "1"); render(); } }, ico("down", "caret"), h("span", { dir: "auto" }, name)),
-        w.builtin ? null : menuBtn(name, () => [{ label: t("renameWs"), icon: "edit", onclick: () => renameWorkspace(w) }, { label: t("deleteWs"), icon: "trash", danger: true, onclick: () => deleteWorkspace(w) }]),
-      ), ...(open ? projectItems(mine) : [])];
+        w.builtin ? null : menuBtn(name, () => wsItems(w)),
+      ), w.builtin ? null : () => wsItems(w)), ...(open ? projectItems(mine) : [])];
     });
     projects.unshift(h("div", { class: "group-title" }, h("span", { class: "t" }, t("projects")),
       canCreate ? menuBtn(t("newProject"), () => [{ label: t("newProject"), icon: "plus", onclick: newProject }, hasOp("workspaces.create") ? { label: t("newWorkspace"), icon: "folder", onclick: newWorkspace } : null], "plus") : null));
@@ -194,13 +201,15 @@ function sidebar() {
     h("div", { class: "side-foot" }, h("div", { class: "me" }, avatar(S.who.subject, S.who.display), h("div", { class: "who" }, h("b", { dir: "auto" }, S.who.display), h("small", {}, h("span", { class: "live", "data-state": S.live }), h("span", { class: "live-label" }, S.live === "live" ? t("live") : t("offline"))))),
       iconBtn("gear", t("settings"), openSettings), iconBtn("logout", t("signOut"), signOut)));
 }
+/** Pages and notes use the whole height: the tree, the page and its side panel each scroll on their own (ADR 0030). */
+const pagesMode = () => S.view === "notes" || (!!S.project && S.view !== "today" && S.view !== "inbox" && S.view !== "notes" && tabsAvailable().includes(S.tab) && S.tab === "pages");
 function shell() {
   let body;
   if (S.view === "today") body = todayView(); else if (S.view === "inbox") body = inboxView(); else if (S.view === "notes") body = notesView(); else body = projectView();
   const pane = S.openTask && S.project && !["today", "inbox", "notes"].includes(S.view) ? cachedDrawer() : null;
   return h("div", { class: "app", "data-side": S.side, "data-focus": S.focus ? "1" : "0", "data-pane": pane ? "1" : "0" }, sidebar(),
     h("div", { class: "scrim", onclick: toggleSide }),
-    h("div", { class: "main-panel" }, topbar(), h("main", { class: "content", id: "main" }, body)), S.focus ? h("button", { class: "btn focus-exit", onclick: toggleFocus }, ico("focus"), t("exitFocus")) : null, pane);
+    h("div", { class: "main-panel" }, topbar(), h("main", { class: "content" + (pagesMode() ? " pages-mode" : ""), id: "main" }, body)), S.focus ? h("button", { class: "btn focus-exit", onclick: toggleFocus }, ico("focus"), t("exitFocus")) : null, pane);
 }
 
 async function newProject() {

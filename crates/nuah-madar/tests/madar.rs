@@ -1465,3 +1465,22 @@ fn tasks_and_pages_are_numbered_per_project_and_numbers_are_never_reused() {
     assert_eq!((pg["number"].clone(), pg2["number"].clone()), (json!(1), json!(2)));
     assert!(a.ok(&al, "notes.create", json!({"title": "mine"}))["number"].is_null());
 }
+
+#[test]
+fn a_page_remembers_how_it_is_shown_and_refuses_anything_else() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "docs");
+    let pg = a.ok(&al, "pages.create", json!({"project": p, "title": "Guide"}));
+    assert_eq!(pg["settings"], json!({}));
+    let id = pg["id"].as_str().unwrap();
+    let out = a.ok(&al, "pages.update", json!({"project": p, "id": id, "settings": {"font": "serif", "size": 18, "width": "wide"}}));
+    assert_eq!(out["settings"], json!({"font": "serif", "size": 18, "width": "wide"}));
+    assert_eq!(a.ok(&al, "pages.get", json!({"project": p, "id": id}))["settings"]["size"], 18);
+    for bad in [json!({"font": "comic"}), json!({"size": 99}), json!({"width": "huge"}), json!({"colour": "red"}), json!("x")] {
+        assert_eq!(a.err(&al, "pages.update", json!({"project": p, "id": id, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
+    }
+    // notes keep settings too
+    let n = a.ok(&al, "notes.create", json!({"title": "mine"}));
+    assert_eq!(a.ok(&al, "notes.update", json!({"id": n["id"], "settings": {"font": "mono"}}))["settings"]["font"], "mono");
+}

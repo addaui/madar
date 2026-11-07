@@ -174,6 +174,15 @@ function inboxView() {
       : h("div", { class: "empty" }, ico("inbox"), h("b", {}, t("nothingNew")), h("span", {}, t("nothingNewHint"))));
 }
 
+// What can be done to a card: the ⋯ button and the context menu show the same list.
+function cardItems(task, isDone, writer) {
+  const cols = S.project.statuses, code = taskCode(task);
+  return [{ label: t("open"), icon: "task", onclick: () => openCard(task) }, code ? { label: t("copyId") + " · " + code, icon: "link", onclick: () => copyText(code) } : null,
+    writer && !task.parent ? { label: t(isDone ? "reopen" : "markDone"), icon: "check", onclick: () => quickDone(task, isDone) } : null,
+    writer ? { label: t("moveTo"), icon: "move", sub: () => cols.map((c) => ({ label: c.name, icon: "move", checked: c.id === task.status, onclick: () => c.id !== task.status && dropOn(task.id, c.id, null) })) } : null,
+    writer ? "-" : null,
+    writer ? { label: t("delete"), icon: "trash", danger: true, onclick: async () => { if (!(await confirmDelete())) return; await attempt(() => call("tasks.remove", { project: S.project.id, id: task.id })); if (S.openTask && S.openTask.id === task.id) { S.openTask = null; drawerCache = null; } refreshAll(); } } : null];
+}
 function openCard(task) { S.openTask = task; setHash(); render(); }
 function card(task, subtasks, writer) {
   const done = subtasks.filter((s) => s.completed_at).length, isDone = !!task.completed_at, lab = task.labels.map((id) => S.labels.find((x) => x.id === id)).filter(Boolean);
@@ -187,10 +196,11 @@ function card(task, subtasks, writer) {
     // quick action on hover or focus: finish (or reopen) without opening the card
     writer && !task.parent ? iconBtn("check", t(isDone ? "reopen" : "markDone"), (e) => { e.stopPropagation(); quickDone(task, isDone); }, { class: "card-quick sm" }) : null,
     // Every drag has a click: the same move, from a menu (WCAG 2.5.7)
-    writer ? ((m) => { m.classList.add("card-menu", "sm"); return m; })(menuBtn(t("moveTo") + ": " + task.title, () => [{ heading: t("moveTo") }, ...cols.map((c) => ({ label: c.name, icon: "move", checked: c.id === task.status, onclick: () => c.id !== task.status && dropOn(task.id, c.id, null) })), "-", { label: t("open"), icon: "task", onclick: () => openCard(task) }])) : null,
+    writer ? ((m) => { m.classList.add("card-menu", "sm"); return m; })(menuBtn(t("moveTo") + ": " + task.title, () => cardItems(task, isDone, writer))) : null,
     (task.due || task.repeat || subtasks.length || task.assignee) ? h("div", { class: "meta" }, dueChip(task),
       subtasks.length ? h("span", { class: "mini-progress", title: t("subtasks") }, h("i", {}, h("b", { style: "width:" + Math.round((done / subtasks.length) * 100) + "%" })), `${done}/${subtasks.length}`) : null,
       h("span", { class: "grow" }), task.assignee ? h("span", { class: "ring", style: "--p:" + (subtasks.length ? Math.round((done / subtasks.length) * 100) : 0) }, avatar(task.assignee, personName(task.assignee), "sm")) : null) : null);
+  bindContext(el, () => cardItems(task, isDone, writer));
   return el;
 }
 async function quickDone(task, isDone) {

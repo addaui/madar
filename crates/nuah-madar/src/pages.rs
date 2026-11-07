@@ -20,7 +20,7 @@ fn view(d: &Doc, with_body: bool) -> Value {
     let b = &d.body;
     let mut v = json!({
         "id": d.id, "rev": d.rev, "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"], "icon": b["icon"], "parent": b["parent"], "position": b["position"],
-        "project": b["project"], "created_by": b["created_by"], "created_at": b["created_at"], "updated_at": b["updated_at"],
+        "project": b["project"], "created_by": b["created_by"], "created_at": b["created_at"], "updated_at": b["updated_at"], "settings": b.get("settings").cloned().unwrap_or_else(|| json!({})),
     });
     if with_body {
         v["body"] = b["body"].clone();
@@ -207,6 +207,21 @@ fn restore(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     Ok(view(&d, true))
 }
 
+/// How this page is shown (old Madar had these as "document settings"): font, text size, line width.
+fn check_settings(v: &Value) -> Result<()> {
+    let o = v.as_object().ok_or_else(|| Error::invalid("settings", "must be an object"))?;
+    for (k, x) in o {
+        match k.as_str() {
+            "font" if matches!(x.as_str(), Some("default" | "serif" | "mono")) => {}
+            "width" if matches!(x.as_str(), Some("narrow" | "normal" | "wide")) => {}
+            "size" if x.as_f64().is_some_and(|n| (12.0..=24.0).contains(&n)) => {}
+            "font" | "width" | "size" => return Err(Error::invalid(&format!("settings.{k}"), "is not an allowed value")),
+            _ => return Err(Error::invalid(&format!("settings.{k}"), "is not a page setting")),
+        }
+    }
+    Ok(())
+}
+
 fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let old = get(tx, &s, text(i, "id"))?;
@@ -227,6 +242,13 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     if let Some(icon) = i.get("icon") {
         b["icon"] = icon.clone();
         changes.insert("icon".into(), json!([old.body["icon"], icon]));
+    }
+    if let Some(st) = i.get("settings") {
+        check_settings(st)?;
+        if st != &old.body.get("settings").cloned().unwrap_or_else(|| json!({})) {
+            b["settings"] = st.clone();
+            changes.insert("settings".into(), json!(true));
+        }
     }
     if changes.is_empty() {
         return Ok(view(&old, true));
@@ -346,7 +368,7 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
     add("create", "command", true, &format!("Add a page to {scope}"), json!({"title": title, "body": doc, "parent": nullable, "icon": nullable}), vec!["title"]);
     add("get", "query", false, "One page with its body", json!({"id": id}), vec!["id"]);
     add("list", "query", false, &format!("The tree of {scope}, without bodies"), json!({}), vec![]);
-    add("update", "command", true, "Change a page's title, body or icon", json!({"id": id, "title": title, "body": doc, "icon": nullable, "expected_rev": {"type":"integer","minimum":1}}), vec!["id"]);
+    add("update", "command", true, "Change a page's title, body or icon", json!({"id": id, "title": title, "body": doc, "icon": nullable, "settings": {"type":"object"}, "expected_rev": {"type":"integer","minimum":1}}), vec!["id"]);
     add("move", "command", true, "Move a page under another (or to the top), before a sibling", json!({"id": id, "parent": nullable, "before": nullable}), vec!["id"]);
     add("delete", "command", true, "Delete a page and everything under it", json!({"id": id}), vec!["id"]);
     add("versions", "query", false, "The saved earlier pictures of a page, newest first", json!({"id": id}), vec!["id"]);
