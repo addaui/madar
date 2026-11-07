@@ -130,3 +130,16 @@ function openShortcuts() {
   const rows = [["/  ·  Ctrl K", t("kSearch")], ["N", t("kNewTask")], ["Esc", t("kClose")], ["Ctrl \\", t("focusMode")], ["?", t("kHelp")]];
   openModal(t("kHelp"), h("div", { class: "kbd-list" }, ...rows.map(([k, d]) => h("div", { class: "kbd-row" }, h("span", { class: "grow" }, d), h("span", { class: "kbd-keys", dir: "ltr" }, ...k.split("  ·  ").map((x) => h("kbd", {}, x)))))));
 }
+
+// ---------- readable identifiers (ADR 0029): MDR-12 for a task, MDR-P3 for a page ----------
+Object.assign(STR.en, { copyId: "Copy ID", copied: "Copied", markDone: "Mark done", reopen: "Reopen", changeKey: "Change project key…", keyLabel: "Project key (2–6 capital letters or digits)", tabDetails: "Details", tabActivity: "Activity" });
+Object.assign(STR.ar, { copyId: "نسخ المعرّف", copied: "تم النسخ", markDone: "إنهاء", reopen: "إعادة فتح", changeKey: "تغيير مفتاح المشروع…", keyLabel: "مفتاح المشروع (٢–٦ أحرف لاتينية كبيرة أو أرقام)", tabDetails: "التفاصيل", tabActivity: "النشاط" });
+const projectKeyOf = (projectId) => { const p = (S.projects || []).find((x) => x.id === projectId) || (S.project && S.project.id === projectId ? S.project : null); return p && p.key ? p.key : null; };
+const taskCode = (task) => { const k = projectKeyOf(task.project); return k && task.number ? k + "-" + task.number : null; };
+const pageCode = (pg) => { const k = pg.project ? projectKeyOf(pg.project) : null; return k && pg.number ? k + "-P" + pg.number : null; };
+async function copyText(text) { try { await navigator.clipboard.writeText(text); toast(t("copied") + ": " + text); } catch (e) { toast(text); } }
+/** The code as a small button that copies it. Cards show it only when the theme's "mono IDs" element is on. */
+function codeChip(code, always) {
+  if (!code) return null;
+  return h("button", { type: "button", class: "id" + (always ? " always" : ""), dir: "ltr", title: t("copyId"), "aria-label": t("copyId") + ": " + code, onclick: (e) => { e.stopPropagation(); copyText(code); } }, code);
+}

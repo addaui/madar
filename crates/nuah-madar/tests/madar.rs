@@ -420,7 +420,8 @@ fn a_retried_create_runs_once() {
 fn prefs_default_and_change_and_tell_only_their_owner() {
     let a = app();
     let (al, bo) = (who("alice"), who("bob"));
-    assert_eq!(a.ok(&al, "prefs.get", json!({}))["theme"], "system");
+    assert_eq!(a.ok(&al, "prefs.get", json!({}))["theme"], "phantom-onyx");
+    assert_eq!(a.ok(&al, "prefs.get", json!({}))["scheme"], "auto");
     let (ca, cb) = (a.core.pulse_now().unwrap(), a.core.pulse_now().unwrap());
     a.ok(&al, "prefs.set", json!({"theme": "ink", "language": "ar"}));
     assert_eq!(a.ok(&al, "prefs.get", json!({}))["language"], "ar");
@@ -476,10 +477,12 @@ fn a_viewer_role_sees_what_they_may_do_in_describe() {
     assert_eq!(d["permissions"]["projects.read"]["held"], true);
     let kinds: std::collections::BTreeMap<String, String> = d["plugins"].as_array().unwrap().iter().filter(|p| p["state"] == "active").map(|p| (p["id"].as_str().unwrap().to_string(), p["kind"].as_str().unwrap().to_string())).collect();
     assert_eq!(kinds["notify-inbox"], "provider");
-    assert_eq!(kinds["theme-ink"], "theme");
+    assert_eq!(kinds["theme-phantom-onyx"], "theme");
     assert_eq!(kinds["db-memory"], "adapter");
     assert_eq!(kinds["tasks"], "feature");
-    assert_eq!(d["themes"].as_array().unwrap().len(), 3);
+    assert_eq!(d["themes"].as_array().unwrap().len(), 9);
+    let onyx = d["themes"].as_array().unwrap().iter().find(|t| t["id"] == "theme-phantom-onyx").expect("the default preset is there");
+    assert_eq!(onyx["tokens"]["schema"], "theme/1");
     assert_eq!(d["extension_points"]["notify.channel"]["providers"], json!(["notify-inbox"]));
 }
 
@@ -1375,4 +1378,90 @@ fn deleting_a_project_deletes_its_uploads() {
     a.settle();
     assert_eq!(a.err(&al, "files.info", json!({"id": f})).category, Category::NotFound);
     assert!(a.ok(&al, "files.info", json!({"id": mine}))["id"].is_string());
+}
+
+#[test]
+fn a_person_changes_the_look_with_checked_overrides_and_only_they_are_told() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let schema = a.ok(&al, "appearance.schema", json!({}));
+    assert_eq!(schema["version"], "theme/1");
+    let keys: Vec<&str> = schema["items"].as_array().unwrap().iter().map(|i| i["key"].as_str().unwrap()).collect();
+    for k in ["accent", "r", "rcard", "rbtn", "rchip", "material", "sig.r_rail", "texture"] {
+        assert!(keys.contains(&k), "{k} is a token: {keys:?}");
+    }
+    assert_eq!(a.ok(&al, "appearance.get", json!({}))["overrides"], json!({}));
+    let (ca, cb) = (a.core.pulse_now().unwrap(), a.core.pulse_now().unwrap());
+    let saved = a.ok(&al, "appearance.save", json!({"overrides": {"r": 5, "rbtn": 5, "rcard": "auto", "dark:accent": "#D9D9D9", "sig.r_rail": true}}));
+    assert_eq!(saved["overrides"]["dark:accent"], "#d9d9d9", "colours are stored in lower case");
+    assert_eq!(a.ok(&al, "appearance.get", json!({}))["overrides"]["r"], 5);
+    assert_eq!(a.ok(&bo, "appearance.get", json!({}))["overrides"], json!({}), "only your own");
+    assert_eq!(a.core.pulse(&al, Some(&ca), 10).unwrap().events.len(), 1);
+    assert!(a.core.pulse(&bo, Some(&cb), 10).unwrap().events.is_empty());
+    // a bad value changes nothing
+    for bad in [json!({"r": 99}), json!({"dark:accent": "red"}), json!({"nope": 1}), json!({"font": "Comic Sans"})] {
+        assert_eq!(a.err(&al, "appearance.save", json!({"overrides": bad.clone()})).category, Category::Invalid, "{bad}");
+    }
+    assert_eq!(a.ok(&al, "appearance.get", json!({}))["overrides"]["r"], 5);
+    // saving replaces; reset returns to the preset
+    a.ok(&al, "appearance.save", json!({"overrides": {"gap": 4}}));
+    assert_eq!(a.ok(&al, "appearance.get", json!({}))["overrides"], json!({"gap": 4}));
+    a.ok(&al, "appearance.reset", json!({}));
+    assert_eq!(a.ok(&al, "appearance.get", json!({}))["overrides"], json!({}));
+}
+
+#[test]
+fn projects_get_a_latin_key_even_from_an_arabic_name_and_keys_stay_unique() {
+    let a = app();
+    let al = who("alice");
+    let one = a.ok(&al, "projects.create", json!({"name": "madar"}));
+    assert_eq!(one["key"], "MDR");
+    let two = a.ok(&al, "projects.create", json!({"name": "مدار"}));
+    assert_eq!(two["key"], "MDR2", "a clash adds a number, and the Arabic name still gives Latin letters");
+    let three = a.ok(&al, "projects.create", json!({"name": "خطة الإطلاق"}));
+    assert_eq!(three["key"], "KA");
+    assert!(three["key"].as_str().unwrap().is_ascii());
+    // a chosen key must be well formed and free
+    assert_eq!(a.ok(&al, "projects.create", json!({"name": "x", "key": "OPS"}))["key"], "OPS");
+    assert_eq!(a.err(&al, "projects.create", json!({"name": "y", "key": "OPS"})).category, Category::Conflict);
+    for bad in ["o", "ops", "1AB", "TOOLONGKEY", "مدار"] {
+        assert_eq!(a.err(&al, "projects.create", json!({"name": "z", "key": bad})).category, Category::Invalid, "{bad}");
+    }
+    // renaming does not change the key; editing the key does, and cannot take another project's
+    let id = one["id"].as_str().unwrap();
+    assert_eq!(a.ok(&al, "projects.update", json!({"project": id, "name": "Orbit"}))["key"], "MDR");
+    assert_eq!(a.ok(&al, "projects.update", json!({"project": id, "key": "ORB"}))["key"], "ORB");
+    assert!(a.call(&al, "projects.update", json!({"project": id, "key": "OPS"})).is_err());
+    assert_eq!(a.ok(&al, "projects.get", json!({"project": id}))["key"], "ORB");
+}
+
+#[test]
+fn tasks_and_pages_are_numbered_per_project_and_numbers_are_never_reused() {
+    let a = app();
+    let al = who("alice");
+    let (p, q) = (a.project(&al, "alpha"), a.project(&al, "beta"));
+    let t1 = a.task(&al, &p, "one");
+    let t2 = a.task(&al, &p, "two");
+    let q1 = a.task(&al, &q, "other project");
+    assert_eq!((t1["number"].clone(), t2["number"].clone(), q1["number"].clone()), (json!(1), json!(2), json!(1)));
+    let sub = a.ok(&al, "tasks.create", json!({"project": p, "title": "a subtask", "parent": t1["id"]}));
+    assert_eq!(sub["number"], 3, "subtasks count too");
+    // deleting the last one does not hand its number out again
+    a.ok(&al, "tasks.remove", json!({"project": p, "id": sub["id"]}));
+    assert_eq!(a.task(&al, &p, "three")["number"], 4);
+    assert_eq!(a.ok(&al, "tasks.get", json!({"project": p, "id": t2["id"]}))["number"], 2);
+    // a repeat leaves a new number too
+    let r = a.ok(&al, "tasks.create", json!({"project": p, "title": "weekly", "due": "2023-01-01", "repeat": {"every": 1, "unit": "week"}}));
+    a.ok(&al, "tasks.move", json!({"project": p, "id": r["id"], "status": "done"}));
+    let numbers: Vec<i64> = a.ok(&al, "tasks.list", json!({"project": p, "limit": 100}))["tasks"].as_array().unwrap().iter().map(|t| t["number"].as_i64().unwrap()).collect();
+    let mut sorted = numbers.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(numbers.len(), 5, "the repeat left its next task: {numbers:?}");
+    assert_eq!(sorted.len(), numbers.len(), "no number is used twice: {numbers:?}");
+    // pages: numbered inside a project, none for personal notes
+    let pg = a.ok(&al, "pages.create", json!({"project": p, "title": "Plan"}));
+    let pg2 = a.ok(&al, "pages.create", json!({"project": p, "title": "Notes"}));
+    assert_eq!((pg["number"].clone(), pg2["number"].clone()), (json!(1), json!(2)));
+    assert!(a.ok(&al, "notes.create", json!({"title": "mine"}))["number"].is_null());
 }

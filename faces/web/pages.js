@@ -124,7 +124,7 @@ function pageView(writer) {
   c.titleEl = title;
   const back = h("div", { class: "backlinks" });
   loadBacklinks(pg, back);
-  return h("article", { class: "page" }, h("div", { class: "page-head" }, title, h("span", { class: "muted save-state" }, c.status || ""),
+  return h("article", { class: "page" }, h("div", { class: "page-head" }, codeChip(pageCode(pg), true), title, h("span", { class: "muted save-state" }, c.status || ""),
     hasOp(pgOp("versions")) ? btn(t("pageHistory"), { kind: "ghost", icon: "history", onclick: () => openHistory(writer) }) : null,
     writer ? iconBtn("trash", t("delete"), async () => { if (!(await confirmDelete())) return; await attempt(() => call(pgOp("delete"), pgIn({ id: pg.id }))); dropPageCache(); S.openPage = null; await loadPagesData(); setHash(); render(); }, { class: "danger" }) : null),
     c.el, back, personal() ? null : [h("h3", {}, t("timeline")), timelineBox(S.project.id, { type: "pages.page", id: pg.id }, writer)]);

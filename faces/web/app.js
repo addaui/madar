@@ -70,33 +70,19 @@ async function attempt(fn) {
 async function boot() {
   S.desc = await (await fetch("/link/describe", { credentials: "same-origin" })).json();
   S.who = S.desc.who || null;
-  applyTheme(S.prefs.theme || "system");
+  applyTheme();
   const r = routeFromHash(); S.view = r.view; S.wantTask = r.task || null; S.tab = r.tab || null; S.wantPage = r.page || null;
   if (S.who) { await afterSignIn(); } else render();
 }
 window.addEventListener("hashchange", () => { const r = routeFromHash(); if (S.who && (r.view !== S.view || (r.tab || null) !== (S.tab || null) || (r.page || null) !== (S.openPage && S.openPage.id || null) || (r.task || null) !== (S.openTask && S.openTask.id))) { S.view = r.view; S.wantTask = r.task || null; S.tab = r.tab || null; S.wantPage = r.page || null; S.openTask = null; drawerCache = null; S.openPage = null; refreshAll(); } });
 async function afterSignIn() {
   const prefs = await attempt(() => call("prefs.get"));
+  if (hasOp("appearance.get")) { const o = await attempt(() => call("appearance.get")); S.overrides = o ? o.overrides : {}; }
   if (prefs) applyPrefs(prefs);
   await loadChrome();
   await refreshAll();
   start();
 }
-function applyTheme(name) {
-  const themes = S.desc.themes || [];
-  name = name || "system"; applyTheme.cur = name;
-  const th = themes.find((x) => x.id === "theme-" + name || x.id === name) || themes[0];
-  if (!th) return;
-  const k = th.tokens || {};
-  // "auto" carries a light and a dark palette and follows the device
-  const pick = k.scheme === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? k.dark : k.light) : k;
-  const r = document.documentElement.style, dark = pick.scheme === "dark";
-  for (const key of ["bg", "surface", "text", "muted", "accent", "danger"]) if (pick[key]) r.setProperty("--" + key, pick[key]);
-  r.setProperty("--on-accent", pick.on_accent || (dark ? "#04201b" : "#ffffff"));
-  document.documentElement.dataset.scheme = dark ? "dark" : "light";
-  r.colorScheme = dark ? "dark" : "light";
-}
-if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (S.desc && applyTheme.cur === "system") applyTheme("system"); });
 async function refreshAll() {
   const seq = ++loadSeq;
   const [list, inbox] = await Promise.all([attempt(() => call("projects.list")), attempt(() => call("inbox.list", { limit: 30 }))]);
@@ -138,7 +124,7 @@ function start() {
   es.addEventListener("reset", () => refreshAll());
   es.addEventListener("closed", async () => { S.who = null; stop(); render(); });
   es.onerror = () => { S.live = "down"; paintLive(); if (es.readyState === EventSource.CLOSED) setTimeout(async () => { await boot(); }, 3000); };
-  for (const kind of Object.keys(S.desc.events || {})) es.addEventListener(kind, (ev) => { S.live = "live"; paintLive(); const d = JSON.parse(ev.data); if (kind === "prefs.changed") { call("prefs.get").then((p) => { applyPrefs(p); render(); }).catch(() => {}); } onLiveEvent(kind, d); scheduleRefresh(); });
+  for (const kind of Object.keys(S.desc.events || {})) es.addEventListener(kind, (ev) => { S.live = "live"; paintLive(); const d = JSON.parse(ev.data); if (kind === "prefs.changed") { call("prefs.get").then((p) => { applyPrefs(p); render(); }).catch(() => {}); } if (kind === "appearance.changed") { call("appearance.get").then((o) => { S.overrides = o.overrides || {}; applyTheme(); }).catch(() => {}); } onLiveEvent(kind, d); scheduleRefresh(); });
 }
 function stop() { if (es) { es.close(); es = null; } }
 function paintLive() { const el = document.querySelector(".live"); if (el) { el.dataset.state = S.live; el.title = S.live === "live" ? t("live") : t("offline"); const l = el.parentNode.querySelector(".live-label"); if (l) l.textContent = el.title; } }
@@ -166,17 +152,20 @@ function signIn() {
 
 async function signOut() { await attempt(() => call("auth.sign_out", {})); S.who = null; stop(); render(); }
 
+const TH_sig = (k) => document.documentElement.classList.contains("sig-" + k);
+// "in 2 days", "yesterday": the browser formats it for the language (Intl), so it is right in Arabic too
+function relDate(due, today) { const n = Math.round((Date.parse(due) - Date.parse(today)) / 864e5); return new Intl.RelativeTimeFormat(lang, { numeric: "auto" }).format(n, "day"); }
 function dueChip(task) {
   if (!task.due) return task.repeat ? h("span", { class: "chip", title: repeatLabel(task.repeat) }, ico("repeat"), repeatLabel(task.repeat)) : null;
   const today = S.today || new Date().toISOString().slice(0, 10);
   const late = task.due < today && !task.completed_at, soon = !late && !task.completed_at && task.due <= new Date(Date.parse(today) + dueSoonDays() * 864e5).toISOString().slice(0, 10);
-  return h("span", { class: "chip" + (late ? " late" : soon ? " soon" : ""), title: task.repeat ? repeatLabel(task.repeat) : null }, ico(task.repeat ? "repeat" : "calendar"), fmtDate(task.due));
+  return h("span", { class: "chip" + (late ? " late" : soon ? " soon" : ""), title: task.repeat ? repeatLabel(task.repeat) : null }, ico(task.repeat ? "repeat" : "calendar"), TH_sig("r_due") ? relDate(task.due, today) : fmtDate(task.due));
 }
 // Priority is always a word and a flag, never colour alone. Cards show it only when it is high.
 function prioChip(task, always) {
   if (!task.band || (!always && task.band !== "high" && task.band !== "urgent")) return null;
   if (always && (task.band === "low" || task.band === "medium")) return null;
-  return h("span", { class: "chip prio", "data-b": task.band }, ico("flag"), t(task.band));
+  return h("span", { class: "chip prio", "data-b": task.band }, ico("flag"), h("span", { class: "gl", "aria-hidden": "true" }, { urgent: "▲▲", high: "▲", medium: "◆", low: "▼" }[task.band] || ""), t(task.band));
 }
 
 function inboxView() {
@@ -189,18 +178,25 @@ function openCard(task) { S.openTask = task; setHash(); render(); }
 function card(task, subtasks, writer) {
   const done = subtasks.filter((s) => s.completed_at).length, isDone = !!task.completed_at, lab = task.labels.map((id) => S.labels.find((x) => x.id === id)).filter(Boolean);
   const cols = S.project.statuses;
-  const top = [prioChip(task), ...lab.slice(0, 2).map((l) => h("span", { class: "chip tag", dir: "auto" }, l.name))].filter(Boolean);
+  const top = [codeChip(taskCode(task)), prioChip(task), ...lab.slice(0, 2).map((l) => h("span", { class: "chip tag", dir: "auto" }, l.name))].filter(Boolean);
   const el = h("div", { class: "card" + (isDone ? " done" : ""), draggable: writer, "data-id": task.id, tabindex: "0", role: "button", "aria-current": S.openTask && S.openTask.id === task.id ? "true" : null,
     onclick: () => openCard(task), onkeydown: (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); openCard(task); } },
     ondragstart: (e) => { e.dataTransfer.setData("text/plain", task.id); el.classList.add("dragging"); }, ondragend: () => el.classList.remove("dragging") },
     top.length ? h("div", { class: "card-top" }, ...top) : null,
     h("div", { class: "card-title", dir: "auto" }, task.title),
+    // quick action on hover or focus: finish (or reopen) without opening the card
+    writer && !task.parent ? iconBtn("check", t(isDone ? "reopen" : "markDone"), (e) => { e.stopPropagation(); quickDone(task, isDone); }, { class: "card-quick sm" }) : null,
     // Every drag has a click: the same move, from a menu (WCAG 2.5.7)
     writer ? ((m) => { m.classList.add("card-menu", "sm"); return m; })(menuBtn(t("moveTo") + ": " + task.title, () => [{ heading: t("moveTo") }, ...cols.map((c) => ({ label: c.name, icon: "move", checked: c.id === task.status, onclick: () => c.id !== task.status && dropOn(task.id, c.id, null) })), "-", { label: t("open"), icon: "task", onclick: () => openCard(task) }])) : null,
     (task.due || task.repeat || subtasks.length || task.assignee) ? h("div", { class: "meta" }, dueChip(task),
       subtasks.length ? h("span", { class: "mini-progress", title: t("subtasks") }, h("i", {}, h("b", { style: "width:" + Math.round((done / subtasks.length) * 100) + "%" })), `${done}/${subtasks.length}`) : null,
-      h("span", { class: "grow" }), task.assignee ? avatar(task.assignee, personName(task.assignee), "sm") : null) : null);
+      h("span", { class: "grow" }), task.assignee ? h("span", { class: "ring", style: "--p:" + (subtasks.length ? Math.round((done / subtasks.length) * 100) : 0) }, avatar(task.assignee, personName(task.assignee), "sm")) : null) : null);
   return el;
+}
+async function quickDone(task, isDone) {
+  const sts = S.project.statuses, to = isDone ? sts[0].id : sts[sts.length - 1].id;
+  await attempt(() => call("tasks.move", { project: S.project.id, id: task.id, status: to, after: null }));
+  refreshAll();
 }
 async function dropOn(id, status, overCard) {
   const siblings = S.tasks.filter((x) => !x.parent && !x.archived && x.status === status && x.id !== id).sort((a, b) => a.position - b.position);
@@ -211,6 +207,7 @@ async function dropOn(id, status, overCard) {
   refreshAll();
 }
 
+async function changeKey() { const k = await askText(t("keyLabel"), S.project.key || ""); if (k && k.trim()) { await attempt(() => call("projects.update", { project: S.project.id, key: k.trim().toUpperCase(), expected_rev: S.project.rev })); refreshAll(); } }
 async function renameProject() { const n = await askText(t("rename"), S.project.name); if (n && n.trim()) { await attempt(() => call("projects.update", { project: S.project.id, name: n.trim(), expected_rev: S.project.rev })); refreshAll(); } }
 async function deleteProject() { if (await confirmDelete()) { await attempt(() => call("projects.delete", { project: S.project.id })); S.view = "today"; refreshAll(); } }
 async function leaveProject() { if (await askConfirm(t("leave") + "?", { label: t("leave") })) { await attempt(() => call("projects.leave", { project: S.project.id })); S.view = "today"; refreshAll(); } }

@@ -14,7 +14,7 @@ function applyPrefs(p) {
   lang = S.prefs.language === "ar" ? "ar" : "en";
   document.documentElement.lang = lang; document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
   document.documentElement.dataset.density = S.prefs.density || "comfortable";
-  applyTheme(S.prefs.theme);
+  applyTheme();
   const c = S.prefs.avatar_color; if (c) document.documentElement.style.setProperty("--avatar", c); else document.documentElement.style.removeProperty("--avatar");
 }
 const defaultPriority = () => Number(S.prefs["tasks.default_priority"] ?? 0);
@@ -106,13 +106,14 @@ function openSettings() {
   const draw = () => {
     const groups = [...new Set(S.schema.map((i) => i.group || "other"))];
     body.replaceChildren(...groups.map((g) => h("section", { class: "panel settings-group" }, h("h2", {}, t("g_" + g) !== "g_" + g ? t("g_" + g) : g),
-      ...S.schema.filter((i) => (i.group || "other") === g).map(settingRow))));
+      ...S.schema.filter((i) => (i.group || "other") === g).map(settingRow),
+      g === "appearance" && hasOp("appearance.schema") ? h("div", { class: "set-row" }, h("label", {}, t("customize")), btn(t("customizeBtn"), { onclick: () => { settingsModal.close(); openAppearance(); } })) : null)));
   };
   const save = async (key, value) => { const out = await attempt(() => call("prefs.set", { [key]: value })); if (out) { applyPrefs(out); render(); draw(); } else draw(); };
   const settingRow = (it) => {
     const v = S.prefs[it.key] ?? it.default, id = "pref-" + it.key.replace(/\W/g, "-");
     let ctl;
-    if (it.key === "theme") ctl = h("select", { id, onchange: (e) => save(it.key, e.target.value) }, ...(S.desc.themes || []).map((th) => { const val = th.id.replace(/^theme-/, ""); return h("option", { value: val, selected: val === v }, th.name || val); }));
+    if (it.key === "theme") ctl = h("select", { id, onchange: (e) => save(it.key, e.target.value) }, ...presetList().map((th) => { const val = th.id.replace(/^theme-/, ""); return h("option", { value: val, selected: val === v }, th.name || val); }));
     else if (it.type === "boolean") ctl = h("input", { id, type: "checkbox", checked: !!v, onchange: (e) => save(it.key, e.target.checked) });
     else if (it.type === "integer") ctl = h("input", { id, type: "number", min: it.min, max: it.max, value: v, style: "width:90px", onchange: (e) => save(it.key, Number(e.target.value)) });
     else if (it.type === "choice") ctl = h("select", { id, onchange: (e) => save(it.key, e.target.value) }, ...it.choices.map((c) => h("option", { value: c.value, selected: c.value === v }, c.label[lang] || c.label.en)));
@@ -121,7 +122,7 @@ function openSettings() {
     return h("div", { class: "set-row" }, h("label", { for: id }, it.label[lang] || it.label.en), ctl);
   };
   draw();
-  openModal(t("settings"), body, { wide: true });
+  const settingsModal = openModal(t("settings"), body, { wide: true });
 }
 
 // ---------- the frame ----------
@@ -165,7 +166,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 function navItem(label, view, badge, icon, tab) {
-  return h("button", { class: "nav", "aria-current": String(S.view === view), onclick: () => go(view, tab) }, icon ? ico(icon) : h("span", { class: "dot-nav", "aria-hidden": "true" }), h("span", { class: "label", dir: "auto" }, label), badge ? h("span", { class: "badge" }, badge) : null);
+  return h("button", { class: "nav", title: label, "aria-current": String(S.view === view), onclick: () => go(view, tab) }, icon ? ico(icon) : h("span", { class: "dot-nav", "aria-hidden": "true" }), h("span", { class: "label", dir: "auto" }, label), badge ? h("span", { class: "badge" }, badge) : null);
 }
 function projectItems(list) { return list.map((p) => navItem(p.name, p.id)); }
 function sidebar() {
@@ -186,7 +187,7 @@ function sidebar() {
       canCreate ? menuBtn(t("newProject"), () => [{ label: t("newProject"), icon: "plus", onclick: newProject }, hasOp("workspaces.create") ? { label: t("newWorkspace"), icon: "folder", onclick: newWorkspace } : null], "plus") : null));
   } else projects = [h("div", { class: "group-title" }, h("span", { class: "t" }, t("projects")), canCreate ? iconBtn("plus", t("newProject"), newProject) : null), ...projectItems(S.projects)];
   return h("aside", { class: "side" },
-    h("div", { class: "side-top" }, h("div", { class: "brand" }, ico("logo"), "Madar"), h("span", { class: "grow" }), iconBtn("side", t("toggleSide"), toggleSide)),
+    h("div", { class: "side-top" }, h("div", { class: "brand" }, ico("logo"), h("span", { class: "brand-text" }, "Madar")), h("span", { class: "grow" }), iconBtn("side", t("toggleSide"), toggleSide)),
     hasOp("search.query") ? h("button", { class: "search-pill", onclick: openSearch }, ico("search"), h("span", {}, t("search").replace("…", "")), h("kbd", { dir: "ltr" }, "/")) : null,
     h("nav", { class: "side-scroll", "aria-label": t("projects") },
       navItem(t("today"), "today", null, "today"), navItem(t("inbox"), "inbox", S.inbox.unread, "inbox"), hasOp("notes.list") ? navItem(t("notes"), "notes", null, "notes") : null, ...projects),

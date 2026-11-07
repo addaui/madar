@@ -158,7 +158,8 @@ impl Plugin for Prefs {
     fn bind(&self, b: &mut Bindings) {
         b.provide("prefs.item", |_tx, _i| {
             Ok(pref_answer(vec![
-                json!({"key": "theme", "group": "appearance", "type": "string", "default": "system", "label": lbl("Theme", "المظهر")}),
+                json!({"key": "theme", "group": "appearance", "type": "string", "default": "phantom-onyx", "label": lbl("Theme", "السمة")}),
+                json!({"key": "scheme", "group": "appearance", "type": "choice", "default": "auto", "label": lbl("Mode", "الوضع"), "choices": choices(&[("auto", "Follow the device", "حسب الجهاز"), ("light", "Light", "فاتح"), ("dark", "Dark", "داكن")])}),
                 json!({"key": "language", "group": "appearance", "type": "choice", "default": "en", "label": lbl("Language", "اللغة"), "choices": choices(&[("en", "English", "English"), ("ar", "Arabic", "العربية")])}),
                 json!({"key": "density", "group": "appearance", "type": "choice", "default": "comfortable", "label": lbl("Density", "الكثافة"), "choices": choices(&[("comfortable", "Comfortable", "مريح"), ("compact", "Compact", "مضغوط")])}),
                 json!({"key": "calendar", "group": "appearance", "type": "choice", "default": "gregorian", "label": lbl("Calendar", "التقويم"), "choices": choices(&[("gregorian", "Gregorian", "ميلادي"), ("hijri", "Hijri", "هجري"), ("both", "Both", "كلاهما")])}),
@@ -365,27 +366,23 @@ impl Plugin for NotifyInbox {
 
 // ---- themes ----------------------------------------------------------------------------------------
 
-pub struct Theme(pub &'static str, pub &'static str, pub Value);
+/// A theme preset: a data plugin holding a full token set (`theme/1`, see `appearance.rs` and `presets.json`).
+pub struct Theme(pub String, pub String, pub String, pub Value);
 impl Plugin for Theme {
     fn manifest(&self) -> Manifest {
-        manifest(json!({"id": self.0, "version": "0.2.0", "name": self.1, "runtime": "data", "theme": self.2, "description": "Colours for Faces"}))
+        manifest(json!({"id": &self.0, "version": "0.3.0", "name": &self.1, "runtime": "data", "theme": &self.3, "description": &self.2}))
     }
 }
 
-/// The two palettes every theme is built from. A theme names six colours; the Face derives every other shade
-/// from them (ADR 0027), so a new theme is six colours.
-fn daylight() -> Value {
-    json!({"scheme": "light", "bg": "#e4eae8", "surface": "#ffffff", "text": "#12201d", "muted": "#566763", "accent": "#0b7a70", "danger": "#c23b28"})
-}
-fn night() -> Value {
-    json!({"scheme": "dark", "bg": "#0a1110", "surface": "#131c1b", "text": "#e6eeec", "muted": "#94a6a2", "accent": "#3fd0bc", "danger": "#ff8672"})
+/// The presets that ship with Madar. The first is the default.
+pub fn themes() -> Vec<Theme> {
+    let all: Vec<Value> = serde_json::from_str(include_str!("presets.json")).expect("presets.json is valid");
+    all.into_iter()
+        .map(|p| Theme(format!("theme-{}", p["id"].as_str().unwrap_or("")), p["name"].as_str().unwrap_or("").to_string(), p["tagline"].as_str().unwrap_or("").to_string(), p["theme"].clone()))
+        .collect()
 }
 
-pub fn themes() -> Vec<Theme> {
-    vec![
-        Theme("theme-paper", "Daylight", daylight()),
-        Theme("theme-ink", "Night", night()),
-        // follows the device: carries both palettes
-        Theme("theme-system", "System", json!({"scheme": "auto", "light": daylight(), "dark": night()})),
-    ]
+/// Plugin ids of the presets, for profiles.
+pub fn theme_ids() -> Vec<String> {
+    themes().into_iter().map(|t| t.0).collect()
 }

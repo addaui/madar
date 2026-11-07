@@ -1,5 +1,5 @@
 use nuah_kernel::*;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 pub fn manifest(v: Value) -> Manifest {
     serde_json::from_value(v).expect("madar manifest")
@@ -99,5 +99,134 @@ pub fn add_interval(date: &str, every: i64, unit: &str) -> String {
             let len = day_number(&next_first).unwrap_or(0) - day_number(&first).unwrap_or(0);
             format!("{ny:04}-{nm:02}-{:02}", d.min(len))
         }
+    }
+}
+
+// ---- readable identifiers (ADR 0029) ------------------------------------------------------------------
+
+/// Latin letters for a name. Arabic (and Persian) letters go through a fixed table, so a code never holds Arabic
+/// letters; diacritics are dropped, Arabic-Indic digits become 0-9, and any other non-ASCII character separates words.
+pub fn translit(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        let t: &str = match c {
+            'ا' | 'أ' | 'آ' | 'ٱ' | 'ى' | 'ة' | 'ع' => "a",
+            'إ' => "i",
+            'ب' => "b",
+            'پ' => "p",
+            'ت' | 'ط' => "t",
+            'ث' => "th",
+            'ج' => "j",
+            'چ' => "ch",
+            'ح' | 'ه' => "h",
+            'خ' => "kh",
+            'د' | 'ض' => "d",
+            'ذ' => "dh",
+            'ر' => "r",
+            'ز' | 'ظ' => "z",
+            'ژ' => "zh",
+            'س' | 'ص' => "s",
+            'ش' => "sh",
+            'غ' => "gh",
+            'ف' => "f",
+            'ڤ' => "v",
+            'ق' => "q",
+            'ك' | 'ک' => "k",
+            'گ' => "g",
+            'ل' => "l",
+            'م' => "m",
+            'ن' => "n",
+            'و' | 'ؤ' => "w",
+            'ي' | 'ئ' | 'ی' => "y",
+            'ء' | 'ـ' | '\u{064B}'..='\u{065F}' | '\u{0670}' => "",
+            '\u{0660}'..='\u{0669}' => {
+                out.push(char::from(b'0' + (c as u32 - 0x0660) as u8));
+                continue;
+            }
+            '\u{06F0}'..='\u{06F9}' => {
+                out.push(char::from(b'0' + (c as u32 - 0x06F0) as u8));
+                continue;
+            }
+            c if c.is_ascii_alphanumeric() => {
+                out.push(c);
+                continue;
+            }
+            _ => " ",
+        };
+        out.push_str(t);
+    }
+    out
+}
+
+/// A project key made from its name: `madar` and `مدار` both give `MDR`. 2 to 6 characters, a letter first.
+pub fn project_key(name: &str) -> String {
+    let t = translit(name).to_ascii_uppercase();
+    let words: Vec<&str> = t.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let mut key = String::new();
+    if words.len() >= 2 {
+        for w in words.iter().take(4) {
+            key.extend(w.chars().next());
+        }
+    } else if let Some(w) = words.first() {
+        let mut cs = w.chars();
+        key.extend(cs.next());
+        for c in cs {
+            if !"AEIOU".contains(c) && key.len() < 3 {
+                key.push(c);
+            }
+        }
+    }
+    if key.len() < 2 {
+        key = words.concat().chars().take(3).collect();
+    }
+    let key: String = key.trim_start_matches(|c: char| c.is_ascii_digit()).to_string();
+    if key.len() < 2 { "PRJ".into() } else { key }
+}
+
+pub fn valid_key(k: &str) -> bool {
+    (2..=6).contains(&k.len()) && k.starts_with(|c: char| c.is_ascii_uppercase()) && k.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+}
+
+/// A lower-case, hyphenated Latin name for places that need one (links, file names, the command line).
+pub fn slug(name: &str) -> String {
+    let t = translit(name).to_ascii_lowercase();
+    let words: Vec<&str> = t.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    if words.is_empty() { "x".into() } else { words.join("-") }
+}
+
+/// The next number in a per-scope counter (a project's tasks, a project's pages). Numbers are never reused.
+pub fn next_number(tx: &mut Tx, collection: &str, scope: &str) -> Result<i64> {
+    let cur = tx.get(collection, scope)?;
+    let n = cur.as_ref().and_then(|d| d.body["next"].as_i64()).unwrap_or(1);
+    tx.put(collection, scope, json!({"next": n + 1}), cur.map(|d| Expect::Rev(d.rev)).unwrap_or(Expect::Absent))?;
+    Ok(n)
+}
+
+#[cfg(test)]
+mod id_tests {
+    use super::*;
+    #[test]
+    fn arabic_names_become_latin_codes() {
+        assert_eq!(project_key("madar"), "MDR");
+        assert_eq!(project_key("مدار"), "MDR");
+        assert_eq!(project_key("Launch Plan"), "LP");
+        assert_eq!(project_key("خطة الإطلاق"), "KA");
+        assert_eq!(project_key("خطة إطلاق المنتج الجديد"), "KIAA");
+        assert_eq!(project_key("Go"), "GO");
+        assert_eq!(project_key("٢٠٢٤"), "PRJ");
+        assert_eq!(project_key("!!!"), "PRJ");
+        for name in ["مشروع المدينة", "تطبيق الهاتف", "ملاحظات", "پروژه", "خطة"] {
+            let k = project_key(name);
+            assert!(valid_key(&k), "{name} -> {k}");
+            assert!(k.is_ascii());
+        }
+    }
+    #[test]
+    fn translit_never_leaves_arabic_letters() {
+        let t = translit("السّلام عليكم ١٢٣");
+        assert!(t.is_ascii(), "{t}");
+        assert!(t.contains("123"));
+        assert_eq!(slug("خطة الإطلاق"), "khta-alitlaq");
+        assert_eq!(slug("Launch Plan!"), "launch-plan");
     }
 }

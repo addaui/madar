@@ -36,7 +36,7 @@ function projectView() {
   const tab = tabsAvailable().includes(S.tab) ? S.tab : "board";
   const place = S.ws && hasOp("workspaces.place") ? (S.ws.placements.find((x) => x.project === p.id) || { workspace: "default" }).workspace : null;
   const toggle = (name, load) => { S.panel = S.panel === name ? null : name; if (S.panel && load) load(); else render(); };
-  const head = h("div", { class: "head" }, h("h1", { dir: "auto" }, p.name),
+  const head = h("div", { class: "head" }, h("h1", { dir: "auto" }, p.name), p.key ? h("span", { class: "chip key", dir: "ltr", title: t("keyLabel") }, p.key) : null,
     h("button", { class: "btn ghost", onclick: () => toggle("members"), title: t("members"), "aria-label": t("members") + " (" + S.members.length + ")" }, avatarStack(S.members, 4), h("span", {}, String(S.members.length))),
     writer && tab !== "pages" ? btn(t("newTask"), { kind: "primary", icon: "plus", onclick: newTaskHere }) : null,
     menuBtn(t("more"), () => [
@@ -48,6 +48,7 @@ function projectView() {
       manager ? { label: t("audit"), icon: "history", onclick: () => toggle("audit", loadAudit) } : null,
       manager ? { label: t("projectSettings"), icon: "gear", onclick: openProjectSettings } : null,
       manager ? { label: t("rename"), icon: "edit", onclick: renameProject } : null,
+      manager ? { label: t("changeKey"), icon: "tag", onclick: changeKey } : null,
       "-",
       manager ? { label: t("delete"), icon: "trash", danger: true, onclick: deleteProject } : { label: t("leave"), icon: "logout", danger: true, onclick: leaveProject },
     ]));

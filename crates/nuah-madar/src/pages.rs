@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 
 pub const PAGES: &str = "pages.pages";
 pub const VERSIONS: &str = "pages.versions";
+pub const COUNTERS: &str = "pages.counters";
 /// A page keeps a picture of itself from before an editing spell, at most one per ten minutes, the last forty (ADR 0025).
 const SPELL_MS: i64 = 600_000;
 const KEEP: usize = 40;
@@ -18,7 +19,7 @@ const KIND: &str = "pages.page";
 fn view(d: &Doc, with_body: bool) -> Value {
     let b = &d.body;
     let mut v = json!({
-        "id": d.id, "rev": d.rev, "title": b["title"], "icon": b["icon"], "parent": b["parent"], "position": b["position"],
+        "id": d.id, "rev": d.rev, "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"], "icon": b["icon"], "parent": b["parent"], "position": b["position"],
         "project": b["project"], "created_by": b["created_by"], "created_at": b["created_at"], "updated_at": b["updated_at"],
     });
     if with_body {
@@ -133,8 +134,12 @@ fn create(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let last = children(tx, &s, &parent.clone().map(Value::from).unwrap_or(Value::Null))?.last().and_then(|d| d.body["position"].as_f64()).unwrap_or(0.0);
     let now = tx.now();
     let me = s.me.clone();
+    let number = match &s.project {
+        Some(p) => json!(next_number(tx, COUNTERS, p)?),
+        None => Value::Null,
+    };
     let d = tx.create(PAGES, json!({
-        "title": i["title"].as_str().unwrap_or("").trim(), "body": body, "icon": i.get("icon").cloned().unwrap_or(Value::Null),
+        "number": number, "title": i["title"].as_str().unwrap_or("").trim(), "body": body, "icon": i.get("icon").cloned().unwrap_or(Value::Null),
         "parent": parent, "position": last + GAP, "project": s.project, "owner": me, "created_by": me, "created_at": now, "updated_at": now
     }))?;
     let aud = s.audience();
@@ -361,11 +366,36 @@ impl Plugin for Pages {
             "description": "A tree of rich-text pages: a project's knowledge base (pages.*) and your own notes (notes.*)",
             "requires": {"plugins": ["projects"], "capabilities": ["emit", "call"]},
             "provides": [{"extension_point": "search.source", "optional": true}],
-            "data": {"collections": [PAGES, VERSIONS], "version": 1,
+            "data": {"collections": [PAGES, VERSIONS, COUNTERS], "version": 2,
                      "indexes": [{"collection": PAGES, "field": "project"}, {"collection": PAGES, "field": "owner"}, {"collection": PAGES, "field": "parent"}, {"collection": VERSIONS, "field": "page"}]},
             "events": {"pages.created": {}, "pages.updated": {}, "pages.moved": {}, "pages.removed": {}},
             "operations": ops
         }))
+    }
+    fn migrate(&self, from: u32, tx: &mut Tx) -> Result<()> {
+        if from != 1 {
+            return Ok(());
+        }
+        // version 2: number each project's pages in the order they were made (notes have no project, so no number)
+        let all = tx.query(PAGES, &Query::new().asc("created_at").limit(20000))?.items;
+        let mut last: std::collections::BTreeMap<String, i64> = Default::default();
+        for d in &all {
+            if let (Some(n), Some(p)) = (d.body["number"].as_i64(), d.body["project"].as_str()) {
+                let e = last.entry(p.to_string()).or_insert(0);
+                *e = (*e).max(n);
+            }
+        }
+        for d in all.into_iter().filter(|d| d.body["number"].is_null() && d.body["project"].is_string()) {
+            let e = last.entry(text(&d.body, "project").to_string()).or_insert(0);
+            *e += 1;
+            let mut body = d.body.clone();
+            body["number"] = json!(*e);
+            tx.put(PAGES, &d.id, body, Expect::Rev(d.rev))?;
+        }
+        for (project, n) in last {
+            tx.put(COUNTERS, &project, json!({"next": n + 1}), Expect::Any)?;
+        }
+        Ok(())
     }
     fn bind(&self, b: &mut Bindings) {
         b.provide("search.source", |tx, i| {

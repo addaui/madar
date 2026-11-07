@@ -27,7 +27,33 @@ fn level_of(tx: &Tx, project: &str, subject: &str) -> Result<Option<String>> {
 }
 
 fn project_view(d: &Doc, level: &str) -> Value {
-    json!({"id": d.id, "rev": d.rev, "name": d.body["name"], "statuses": d.body["statuses"], "attributes": d.body.get("attributes").cloned().unwrap_or_else(|| json!([])), "created_by": d.body["created_by"], "level": level})
+    json!({"id": d.id, "rev": d.rev, "name": d.body["name"], "key": d.body.get("key").cloned().unwrap_or(Value::Null), "statuses": d.body["statuses"], "attributes": d.body.get("attributes").cloned().unwrap_or_else(|| json!([])), "created_by": d.body["created_by"], "level": level})
+}
+
+/// Is this key used by a project other than `except`?
+fn key_taken(tx: &Tx, key: &str, except: &str) -> Result<bool> {
+    Ok(tx.query(PROJECTS, &Query::new().eq("key", key).limit(3))?.items.iter().any(|d| d.id != except))
+}
+/// A key a person typed: well formed and free.
+fn chosen_key(tx: &Tx, key: &str, except: &str) -> Result<String> {
+    if !valid_key(key) {
+        return Err(Error::invalid("key", "use 2 to 6 capital letters or digits, starting with a letter"));
+    }
+    if key_taken(tx, key, except)? {
+        return Err(Error::reason(Category::Conflict, "projects.key_taken", "Another project already uses that key"));
+    }
+    Ok(key.to_string())
+}
+/// A key made from the name, with a number added when it clashes (MDR, MDR2, MDR3).
+fn fresh_key(tx: &Tx, name: &str, except: &str) -> Result<String> {
+    let base = project_key(name);
+    let (mut k, mut n) = (base.clone(), 2);
+    while key_taken(tx, &k, except)? {
+        let suffix = n.to_string();
+        k = format!("{}{}", &base[..base.len().min(6 - suffix.len())], suffix);
+        n += 1;
+    }
+    Ok(k)
 }
 
 fn check_statuses(v: &Value) -> Result<()> {
@@ -80,7 +106,7 @@ impl Plugin for Projects {
             "provides": [{"extension_point": "prefs.item", "optional": true}],
             "description": "Projects, their members and Access levels",
             "requires": {"capabilities": ["emit"]},
-            "data": {"collections": [PROJECTS, MEMBERS], "version": 1,
+            "data": {"collections": [PROJECTS, MEMBERS], "version": 2,
                      "indexes": [{"collection": MEMBERS, "field": "subject"}, {"collection": MEMBERS, "field": "project"}]},
             "permissions": {
                 "projects.create": {"description": "Start a project", "default": ["admin", "member"]},
@@ -96,7 +122,8 @@ impl Plugin for Projects {
             "operations": {
                 "projects.create": {"kind": "command", "permission": "projects.create",
                     "description": "Start a project; you become its owner",
-                    "input": {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":100},"statuses":statuses,"attributes":attrs},"additionalProperties":false},
+                    "reasons": {"projects.key_taken": "Another project already uses that key"},
+                    "input": {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":100},"key":{"type":"string","maxLength":6},"statuses":statuses,"attributes":attrs},"additionalProperties":false},
                     "output": project_out, "affordances": {"type":"projects.project","id":"id"}},
                 "projects.list": {"kind": "query", "description": "The projects you belong to",
                     "output": {"type":"object","required":["projects"]}, "affordances": {"type":"projects.project","id":"id","at":"projects"}},
@@ -104,7 +131,8 @@ impl Plugin for Projects {
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"}},"additionalProperties":false},
                     "output": project_out, "affordances": {"type":"projects.project","id":"id"}},
                 "projects.update": {"kind": "command", "description": "Rename a project or change its columns", "resource": {"type":"projects.project","id":"project"}, "permission": "projects.manage",
-                                        "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"},"name":{"type":"string","minLength":1,"maxLength":100},"statuses":statuses,"attributes":attrs,"expected_rev":{"type":"integer","minimum":1}},"additionalProperties":false},
+                                        "reasons": {"projects.key_taken": "Another project already uses that key"},
+                                        "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"},"name":{"type":"string","minLength":1,"maxLength":100},"key":{"type":"string","maxLength":6},"statuses":statuses,"attributes":attrs,"expected_rev":{"type":"integer","minimum":1}},"additionalProperties":false},
                     "output": project_out, "affordances": {"type":"projects.project","id":"id"}},
                 "projects.delete": {"kind": "command", "description": "Delete a project and everything in it", "resource": {"type":"projects.project","id":"project"}, "permission": "projects.manage",
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"}},"additionalProperties":false}},
@@ -125,6 +153,20 @@ impl Plugin for Projects {
         }))
     }
 
+    fn migrate(&self, from: u32, tx: &mut Tx) -> Result<()> {
+        if from != 1 {
+            return Ok(());
+        }
+        // version 2: every project gets a key made from its name
+        let all = tx.query(PROJECTS, &Query::new().asc("name").limit(5000))?.items;
+        for d in all.into_iter().filter(|d| d.body.get("key").is_none_or(|k| k.is_null())) {
+            let key = fresh_key(tx, text(&d.body, "name"), &d.id)?;
+            let mut body = d.body.clone();
+            body["key"] = json!(key);
+            tx.put(PROJECTS, &d.id, body, Expect::Rev(d.rev))?;
+        }
+        Ok(())
+    }
     fn bind(&self, b: &mut Bindings) {
         b.provide("prefs.item", |_tx, _i| {
             Ok(crate::small::pref_answer(vec![json!({"key": "projects.default_tab", "group": "behaviour", "type": "choice", "default": "board",
@@ -145,7 +187,11 @@ impl Plugin for Projects {
             let me = tx.who().subject.clone();
             let attributes = i.get("attributes").cloned().unwrap_or_else(|| json!([]));
             check_attributes(&attributes)?;
-            let p = tx.create(PROJECTS, json!({"name": i["name"], "statuses": statuses, "attributes": attributes, "created_by": me}))?;
+            let key = match i.get("key").and_then(|k| k.as_str()) {
+                Some(k) => chosen_key(tx, k, "")?,
+                None => fresh_key(tx, text(&i, "name"), "")?,
+            };
+            let p = tx.create(PROJECTS, json!({"name": i["name"], "key": key, "statuses": statuses, "attributes": attributes, "created_by": me}))?;
             tx.put(MEMBERS, &member_id(&p.id, &me), json!({"project": p.id, "subject": me, "level": "owner", "display": tx.who().display}), Expect::Absent)?;
             tx.emit("projects.created", Audience::scope("projects.members", &p.id), json!({"project": p.id, "name": p.body["name"]}))?;
             Ok(project_view(&p, "owner"))
@@ -182,6 +228,11 @@ impl Plugin for Projects {
             if let Some(n) = i.get("name") {
                 changes.insert("name".into(), json!([body["name"], n]));
                 body["name"] = n.clone();
+            }
+            if let Some(k) = i.get("key").and_then(|k| k.as_str()) {
+                let k = chosen_key(tx, k, id)?;
+                changes.insert("key".into(), json!([body.get("key").cloned().unwrap_or(Value::Null), k]));
+                body["key"] = json!(k);
             }
             if let Some(s) = i.get("statuses") {
                 check_statuses(s)?;

@@ -65,10 +65,12 @@ function drawer() {
     { label: t("delete"), icon: "trash", danger: true, onclick: async () => { if (await confirmDelete()) { await attempt(() => call("tasks.remove", { project: p.id, id: task.id })); S.openTask = null; drawerCache = null; refreshAll(); } } },
   ]) : null;
   foot = h("div", { class: "pane-foot", hidden: true }, h("span", { class: "muted grow" }, t("unsaved")), btn(t("discard"), { kind: "ghost", onclick: () => { drawerCache = null; render(); } }), btn(t("save"), { kind: "primary", icon: "check", onclick: save }));
-  const pane = h("aside", { class: "pane", role: "dialog", "aria-label": task.title },
+  const pane = h("aside", { class: "pane", role: "dialog", "aria-label": task.title, "data-tab": S.paneTab || "d" },
     h("div", { class: "pane-head" }, f.title, menu, iconBtn("close", t("close") + " (Esc)", close)),
+    h("div", { class: "ptabs", role: "tablist" }, ...["d", "a"].map((k) => h("button", { type: "button", role: "tab", "data-tab": k, "aria-selected": String((S.paneTab || "d") === k), onclick: (e) => { S.paneTab = k; pane.dataset.tab = k; pane.querySelectorAll(".ptabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === k))); } }, t(k === "d" ? "tabDetails" : "tabActivity")))),
     h("div", { class: "pane-body" },
-      h("div", { class: "props" },
+      taskCode(task) ? h("div", { class: "pane-code" }, codeChip(taskCode(task), true)) : null,
+      h("div", { class: "tab-d" }, h("div", { class: "props" },
         prop("task", t("status"), f.status),
         prop("flag", t("priority"), h("div", { class: "prio-val" }, f.priority, prioShow)),
         prop("calendar", t("due"), f.due),
@@ -81,7 +83,7 @@ function drawer() {
         subs.length ? h("div", { class: "progress" }, h("i", {}, h("b", { style: "width:" + Math.round((subsDone / subs.length) * 100) + "%" })), h("span", {}, Math.round((subsDone / subs.length) * 100) + "%")) : null,
         ...subs.map((s) => h("div", { class: "sub-row" + (s.completed_at ? " done" : "") }, h("input", { type: "checkbox", checked: !!s.completed_at, disabled: !writer, "aria-label": s.title, onchange: async () => { const done = p.statuses[p.statuses.length - 1].id, first = p.statuses[0].id; await attempt(() => call("tasks.move", { project: p.id, id: s.id, status: s.completed_at ? first : done })); refreshAll(); } }), h("span", { class: "grow", dir: "auto" }, s.title))),
         writer ? h("form", { class: "sub-add", onsubmit: async (e) => { e.preventDefault(); const title = subIn.value.trim(); if (!title) return; subIn.value = ""; await attempt(() => call("tasks.create", { project: p.id, title, parent: task.id, priority: defaultPriority() })); refreshAll(); } }, subIn) : null],
-      h("h3", {}, ico("message"), t("timeline")), timelineBox(p.id, { type: "tasks.task", id: task.id }, writer)),
+      ), h("div", { class: "tab-a" }, h("h3", {}, ico("message"), t("timeline")), timelineBox(p.id, { type: "tasks.task", id: task.id }, writer))),
     writer ? foot : null);
   // anything typed into the fields (not subtasks or the timeline) shows the save bar
   const fieldArea = (e) => e.target.closest(".props, .pane-title");

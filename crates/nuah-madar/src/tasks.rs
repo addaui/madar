@@ -7,13 +7,14 @@ use nuah_kernel::*;
 use serde_json::{json, Value};
 
 pub const TASKS: &str = "tasks.tasks";
+pub const COUNTERS: &str = "tasks.counters";
 pub const LABELS: &str = "tasks.labels";
 const GAP: f64 = 1024.0;
 
 pub fn view(d: &Doc) -> Value {
     let b = &d.body;
     json!({
-        "id": d.id, "rev": d.rev, "project": b["project"], "title": b["title"], "notes": b["notes"],
+        "id": d.id, "rev": d.rev, "project": b["project"], "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"], "notes": b["notes"],
         "status": b["status"], "priority": b["priority"], "band": band(b["priority"].as_i64().unwrap_or(0)),
         "due": b["due"], "assignee": b["assignee"], "labels": b["labels"], "parent": b["parent"],
         "position": b["position"], "archived": b["archived"], "created_by": b["created_by"],
@@ -129,11 +130,12 @@ fn spawn_next(tx: &mut Tx, p: &Value, done: Doc) -> Result<Doc> {
     let first = p["statuses"][0]["id"].as_str().unwrap_or("").to_string();
     let b = &done.body;
     let pos = end_of(tx, text(b, "project"), &first)?;
+    let number = next_number(tx, COUNTERS, text(b, "project"))?;
     let next = tx.create(TASKS, json!({
         "project": b["project"], "title": b["title"], "notes": b["notes"], "status": first, "priority": b["priority"], "due": due,
         "assignee": b["assignee"], "labels": b["labels"], "parent": Value::Null, "position": pos, "archived": false,
         "created_by": b["created_by"], "created_at": tx.now(), "completed_at": Value::Null,
-        "custom": b["custom"], "description": b.get("description").cloned().unwrap_or(Value::Null), "repeat": r, "repeat_of": done.id,
+        "custom": b["custom"], "description": b.get("description").cloned().unwrap_or(Value::Null), "repeat": r, "repeat_of": done.id, "number": number,
     }))?;
     let mut body = done.body.clone();
     body["repeats_into"] = json!(next.id);
@@ -157,7 +159,7 @@ impl Plugin for Tasks {
             "provides": [{"extension_point": "prefs.item", "optional": true}, {"extension_point": "search.source", "optional": true}],
             "description": "Tasks on a board: columns, order, subtasks, labels, and a Today view",
             "requires": {"plugins": ["projects"], "capabilities": ["emit", "call"]},
-            "data": {"collections": [TASKS, LABELS], "version": 1,
+            "data": {"collections": [TASKS, LABELS, COUNTERS], "version": 2,
                      "indexes": [{"collection": TASKS, "field": "project"}, {"collection": TASKS, "field": "assignee"}, {"collection": TASKS, "field": "parent"}]},
             "events": {
                 "tasks.created": {}, "tasks.recurred": {}, "tasks.updated": {}, "tasks.moved": {}, "tasks.removed": {},
@@ -224,6 +226,31 @@ impl Plugin for Tasks {
         }))
     }
 
+    fn migrate(&self, from: u32, tx: &mut Tx) -> Result<()> {
+        if from != 1 {
+            return Ok(());
+        }
+        // version 2: number the tasks of each project in the order they were made
+        let all = tx.query(TASKS, &Query::new().asc("created_at").limit(20000))?.items;
+        let mut last: std::collections::BTreeMap<String, i64> = Default::default();
+        for d in &all {
+            if let Some(n) = d.body["number"].as_i64() {
+                let e = last.entry(text(&d.body, "project").to_string()).or_insert(0);
+                *e = (*e).max(n);
+            }
+        }
+        for d in all.into_iter().filter(|d| d.body["number"].is_null()) {
+            let e = last.entry(text(&d.body, "project").to_string()).or_insert(0);
+            *e += 1;
+            let mut body = d.body.clone();
+            body["number"] = json!(*e);
+            tx.put(TASKS, &d.id, body, Expect::Rev(d.rev))?;
+        }
+        for (project, n) in last {
+            tx.put(COUNTERS, &project, json!({"next": n + 1}), Expect::Any)?;
+        }
+        Ok(())
+    }
     fn bind(&self, b: &mut Bindings) {
         b.provide("prefs.item", |_tx, _i| {
             Ok(crate::small::pref_answer(vec![
@@ -281,11 +308,12 @@ impl Plugin for Tasks {
             let me = tx.who().subject.clone();
             let now = tx.now();
             let done = status == last_status(&p);
+            let number = next_number(tx, COUNTERS, &project)?;
             let d = tx.create(TASKS, json!({
                 "project": project, "title": i["title"], "notes": i.get("notes").cloned().unwrap_or(json!("")), "status": status,
                 "priority": i.get("priority").cloned().unwrap_or(json!(0)), "due": i.get("due").cloned().unwrap_or(Value::Null),
                 "assignee": assignee, "labels": labels, "parent": parent, "position": position, "archived": false,
-                "created_by": me, "created_at": now, "completed_at": if done { json!(now) } else { Value::Null },
+                "created_by": me, "created_at": now, "completed_at": if done { json!(now) } else { Value::Null }, "number": number,
                 "custom": custom, "description": description, "repeat": i.get("repeat").cloned().unwrap_or(Value::Null),
             }))?;
             let aud = Audience::scope("projects.members", &project);
