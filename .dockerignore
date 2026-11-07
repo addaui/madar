@@ -1,0 +1,11 @@
+target
+.git
+.github
+**/node_modules
+*.db
+*.db-wal
+*.db-shm
+.cargo
+deploy
+prototypes
+faces/editor-src

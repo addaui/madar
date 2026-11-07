@@ -1,0 +1,15 @@
+# Madar on a server box. Copy this folder, create ./data/accounts.json (see README), then: docker compose up -d
+# Put a reverse proxy (Nginx Proxy Manager) in front for TLS; it forwards to 127.0.0.1:3000.
+services:
+  madar:
+    image: ghcr.io/addaui/madar:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      NUAH_ALLOW_HOSTS: madar.example.com   # the name the proxy serves; more with commas
+      NUAH_SECURE_COOKIE: "true"            # the proxy terminates TLS
+      NUAH_WITH: previews                   # fetch link previews; remove to switch off
+    stop_grace_period: 15s
