@@ -134,6 +134,7 @@ function topbar() {
     h("button", { class: "quiet", onclick: () => { S.side = S.side === "open" ? "closed" : "open"; ls.set("madar.side", S.side); render(); }, title: t("toggleSide"), "aria-label": t("toggleSide") }, "☰"),
     h("nav", { class: "crumbs", "aria-label": "breadcrumb" }, ...cs.flatMap(([label, fn], i) => [i ? h("span", { class: "sep", "aria-hidden": "true" }, "›") : null, fn ? h("button", { class: "quiet", onclick: fn }, label) : h("span", { "aria-current": i === cs.length - 1 ? "page" : null }, label)])),
     h("span", { class: "grow" }),
+    hasOp("search.query") ? h("button", { class: "quiet", onclick: openSearch, title: t("search").replace("…", "") + " (/)", "aria-label": t("search").replace("…", "") }, "🔍") : null,
     h("button", { class: "quiet", onclick: toggleFocus, title: t("focusMode") + " (Ctrl+\\)", "aria-label": t("focusMode") }, "⤢"));
 }
 function toggleFocus() { S.focus = !S.focus; ls.set("madar.focus", S.focus ? "1" : "0"); render(); }

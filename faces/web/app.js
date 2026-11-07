@@ -158,10 +158,10 @@ function signIn() {
 async function signOut() { await attempt(() => call("auth.sign_out", {})); S.who = null; stop(); render(); }
 
 function dueChip(task) {
-  if (!task.due) return null;
+  if (!task.due) return task.repeat ? h("span", { class: "chip", title: repeatLabel(task.repeat) }, "↻") : null;
   const today = S.today || new Date().toISOString().slice(0, 10);
   const late = task.due < today && !task.completed_at, soon = !late && !task.completed_at && task.due <= new Date(Date.parse(today) + dueSoonDays() * 864e5).toISOString().slice(0, 10);
-  return h("span", { class: "chip" + (late ? " late" : soon ? " soon" : "") }, fmtDate(task.due));
+  return h("span", { class: "chip" + (late ? " late" : soon ? " soon" : ""), title: task.repeat ? repeatLabel(task.repeat) : null }, (task.repeat ? "↻ " : "") + fmtDate(task.due));
 }
 
 

@@ -361,3 +361,29 @@ fn the_server_refuses_new_streams_when_it_is_full_and_frees_places_when_they_end
     };
     assert!(again.is_some(), "a place is free again once a stream has ended");
 }
+
+#[test]
+fn an_uploaded_image_is_served_to_its_owner_as_an_inert_inline_image_and_to_nobody_else() {
+    let s = start();
+    let (a, b) = (s.sign_in("alice"), s.sign_in("bob"));
+    let (ah, bh) = (format!("Bearer {a}"), format!("Bearer {b}"));
+    let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    let up = s.call("files.upload", json!({"name": "dot.png", "data": png}), &[("Authorization", &ah)]);
+    assert_eq!(up.status, 200, "{:?}", up.body);
+    let url = up.body["output"]["url"].as_str().unwrap().to_string();
+    // the image itself, with headers that stop it running as a page
+    let mut r = agent().get(&format!("{}{url}", s.base)).header("Authorization", &ah).call().unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    assert_eq!(r.headers()["content-type"], "image/png");
+    assert!(r.headers()["content-disposition"].to_str().unwrap().starts_with("inline"));
+    assert!(r.headers()["content-security-policy"].to_str().unwrap().starts_with("sandbox"));
+    assert_eq!(r.headers()["x-content-type-options"], "nosniff");
+    assert_eq!(r.body_mut().read_to_vec().unwrap().len(), 70);
+    // not signed in, or someone else: nothing
+    assert_eq!(s.get(&url, &[]).status, 401);
+    assert_eq!(s.get(&url, &[("Authorization", &bh)]).status, 404);
+    // text is offered as a download, never shown inline
+    let txt = s.call("files.upload", json!({"name": "n.txt", "data": "aGVsbG8="}), &[("Authorization", &ah)]);
+    let r = agent().get(&format!("{}{}", s.base, txt.body["output"]["url"].as_str().unwrap())).header("Authorization", &ah).call().unwrap();
+    assert!(r.headers()["content-disposition"].to_str().unwrap().starts_with("attachment"));
+}

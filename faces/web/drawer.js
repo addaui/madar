@@ -34,6 +34,7 @@ function drawer() {
   const descHost = h("div", { class: "ed-host" });
   const ed = makeEditor(descHost, task.description || (task.notes ? paragraphDoc(task.notes) : null), writer, () => { descDirty = true; });
   S.drawerEd = { ed };
+  const rep = task.parent ? null : repeatControl(task, writer);
   const attrs = p.attributes || [], custom = attrs.map((a) => ({ a, ...customField(a, (task.custom || {})[a.key], writer) }));
   const chosen = new Set(task.labels);
   const labelBox = h("div", { class: "row" }, ...S.labels.map((l) => h("label", { style: "display:inline-flex;gap:4px;align-items:center;margin:0" }, h("input", { type: "checkbox", checked: chosen.has(l.id), disabled: !writer, onchange: (e) => (e.target.checked ? chosen.add(l.id) : chosen.delete(l.id)) }), l.name)));
@@ -45,6 +46,7 @@ function drawer() {
     const changed = {};
     for (const c of custom) { const v = c.read(c.el), old = (task.custom || {})[c.a.key] ?? null; if (v !== old && !(v === false && old === null)) changed[c.a.key] = v; }
     if (Object.keys(changed).length) input.custom = changed;
+    if (rep && !rep.same(rep.read())) input.repeat = rep.read();
     const out = await attempt(() => call("tasks.update", input));
     if (out === undefined) { if (!attempt.last || attempt.last.category !== "conflict") return; await refreshAll(); const fresh = S.tasks.find((x) => x.id === task.id); if (fresh) { S.openTask = fresh; toast(t("changed")); render(); } return; }
     S.openTask = null; drawerCache = null; refreshAll();
@@ -53,6 +55,7 @@ function drawer() {
     h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, task.title), h("button", { class: "quiet", onclick: () => { S.openTask = null; drawerCache = null; setHash(); render(); }, "aria-label": t("close") }, "×")),
     h("label", {}, t("title")), f.title, h("label", {}, t("description")), descHost,
     h("div", { class: "row" }, h("div", {}, h("label", {}, t("priority")), f.priority), h("div", {}, h("label", {}, t("due")), f.due)),
+    rep ? [h("label", {}, t("repeat")), rep.el] : null,
     h("div", { class: "row" }, h("div", {}, h("label", {}, t("assignee")), f.assignee), h("div", {}, h("label", {}, t("status")), f.status)),
     custom.length ? h("div", { class: "row" }, ...custom.map((c) => h("div", {}, h("label", {}, c.a.label), c.el))) : null,
     S.labels.length ? [h("label", {}, t("labels")), labelBox] : null,

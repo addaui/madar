@@ -31,3 +31,18 @@ Object.assign(STR.ar, {
   who_you: "أنت", wsNotEmpty: "انقل مشاريعها أولاً.", imageAddr: "عنوان الصورة", noPages: "لا صفحات بعد.", writeHere: "اكتب شيئاً، أو اضغط / للكتل…",
   custom: "الحقول المخصصة", body: "المحتوى", icon: "الأيقونة", sureColumn: "إزالة هذا العمود؟ يجب نقل المهام التي فيه أولاً.",
 });
+
+Object.assign(STR.en, {
+  noResults: "Nothing found.", pageHistory: "History", restoreVersion: "Restore this version", sureRestore: "Put this version back? The current page is kept in the history.", restored: "Version restored",
+  noVersions: "No earlier versions yet. They appear once you edit.", repeat: "Repeat", noRepeat: "Does not repeat", every: "Every", days: "days", weeks: "weeks", months: "months",
+  every1_day: "Every day", every1_week: "Every week", every1_month: "Every month", uploadImage: "Upload an image", uploading: "Uploading…", fileTooBig: "That file is larger than 4 MB.",
+  hPages_created: "{actor} added the page {task}", hPages_updated: "{actor} edited the page {task}", hPages_moved: "{actor} moved the page {task}", hPages_removed: "{actor} deleted the page {task}",
+  hTasks_recurred: "{task} was repeated as a new task",
+});
+Object.assign(STR.ar, {
+  noResults: "لا نتائج.", pageHistory: "السجل", restoreVersion: "استعادة هذه النسخة", sureRestore: "هل تريد إرجاع هذه النسخة؟ ستبقى الصفحة الحالية في السجل.", restored: "تمت استعادة النسخة",
+  noVersions: "لا نسخ سابقة بعد. تظهر بعد التعديل.", repeat: "التكرار", noRepeat: "لا تتكرر", every: "كل", days: "أيام", weeks: "أسابيع", months: "أشهر",
+  every1_day: "كل يوم", every1_week: "كل أسبوع", every1_month: "كل شهر", uploadImage: "رفع صورة", uploading: "جارٍ الرفع…", fileTooBig: "حجم الملف أكبر من 4 ميغابايت.",
+  hPages_created: "{actor} أضاف الصفحة {task}", hPages_updated: "{actor} عدّل الصفحة {task}", hPages_moved: "{actor} نقل الصفحة {task}", hPages_removed: "{actor} حذف الصفحة {task}",
+  hTasks_recurred: "تكررت {task} كمهمة جديدة",
+});
