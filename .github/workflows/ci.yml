@@ -7,8 +7,6 @@ on:
   workflow_dispatch:
 
 env:
-  # Nuah is a git dependency. If its repository is private, add a read-only token as the secret NUAH_READ_TOKEN.
-  NUAH_READ_TOKEN: ${{ secrets.NUAH_READ_TOKEN }}
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
@@ -16,9 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Let cargo fetch Nuah
-        run: |
-          if [ -n "$NUAH_READ_TOKEN" ]; then git config --global url."https://x-access-token:${NUAH_READ_TOKEN}@github.com/".insteadOf "https://github.com/"; fi
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --locked
@@ -53,7 +48,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          secrets: |
-            nuah_token=${{ secrets.NUAH_READ_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

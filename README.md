@@ -1,23 +1,55 @@
 # Madar (مدار)
 
-A task manager: projects, tasks, pages and notes, live updates, an editor that never traps you, a customizable look.
-It is a **product built on [Nuah](https://github.com/addaui/nuah)**: Madar is plugins, a web face and a command line
-around Nuah's kernel. It never edits Nuah; Nuah is a dependency pinned by tag in `Cargo.toml`.
+Task manager: projects, tasks, pages, live updates. Built on [Nuah](https://github.com/addaui/nuah).
 
-Documentation (PRD, ADRs, specs, plans, tasks, glossary) lives in docmd, not here: https://docs.addaui.com/nuah/ .
-Working rules for contributors and agents are in `the contributor notes`.
+## Run with Docker
 
-## Layout
+Requirements for a minimal deployment:
 
-| Path | What it is |
+- a Linux box (amd64) with Docker 24+ and the Compose plugin
+- 1 vCPU, 512 MB RAM, 1 GB of disk for the image and a small database
+- a domain and a reverse proxy for TLS (Nginx Proxy Manager, Caddy, Traefik), or use it on a LAN without TLS
+- outbound internet only for link previews and pulling the image
+
+Steps:
+
+```bash
+mkdir madar && cd madar && mkdir data
+curl -O https://raw.githubusercontent.com/addaui/madar/main/deploy/compose.yml
+```
+
+Create the first account. The password hash is made by the image itself:
+
+```bash
+HASH=$(printf '%s' 'a long password' | docker run --rm -i ghcr.io/addaui/madar hash-password)
+printf '[{"name": "admin", "password_hash": "%s", "roles": ["admin"]}]\n' "$HASH" > data/accounts.json
+```
+
+Set `NUAH_ALLOW_HOSTS` in `compose.yml` to the name your proxy serves, then:
+
+```bash
+docker compose up -d
+docker compose logs -f
+```
+
+It listens on `127.0.0.1:3000`. Point the proxy there and open the site. On a LAN without a proxy, set
+`NUAH_SECURE_COOKIE: "false"`, publish the port as `3000:3000` and add the box address to `NUAH_ALLOW_HOSTS`.
+
+Update: `docker compose pull && docker compose up -d`. Backup: stop the container and copy `data/`.
+
+| Variable | Meaning |
 |---|---|
-| `crates/madar-core` | Madar's plugins (projects, tasks, pages, discussion, appearance, files, search, previews, …), its catalog and Profiles. |
-| `crates/madar-server` | `madar-server`: Madar's `main` on the Nuah host, plus Madar's own routes for the `http` Projection (file downloads, link previews). |
-| `crates/madar-cli` | The `madar` command line, over HTTP or directly on a database file. |
-| `faces/web` | The web board (vanilla JS, no build). The one built file is the rich-text editor, `faces/web/vendor/editor.js`. |
-| `faces/editor-src` | Source of that editor (Tiptap on ProseMirror). Rebuild with `bun install && bun run build`; the built file is committed. |
-| `prototypes/design-lab.html` | The throwaway design lab the customizer's presets came from. |
-| `deploy/compose.yml` | Running the image on a server box. |
+| `NUAH_ALLOW_HOSTS` | host names it answers to, comma separated |
+| `NUAH_SECURE_COOKIE` | `true` behind a TLS proxy |
+| `NUAH_WITH` | `previews`, `metrics` |
+| `NUAH_LOG_LEVEL` | `error`, `warn`, `info`, `debug`, `trace` |
+| `NUAH_LOG_FILE` | also write JSON lines to this file |
+| `NUAH_LISTEN` | address inside the container, default `0.0.0.0:3000` |
+| `NUAH_PROFILE` | a Profile file instead of `--db` and `--accounts` |
+| `MADAR_METRICS_LISTEN` | with `metrics`, default `127.0.0.1:9464` |
+| `MADAR_METRICS_TOKEN` | bearer token for the metrics endpoint |
+
+Health: `GET /healthz` (alive) and `GET /readyz` (can read its data).
 
 ## Develop
 
@@ -26,44 +58,23 @@ cargo test --workspace
 cargo run -p madar-server -- serve --db madar.db --accounts accounts.json --web faces/web
 ```
 
-`accounts.json` is `[{"name": "...", "password_hash": "...", "roles": ["admin"]}]`; make a hash with
-`madar-server hash-password < password.txt`. It stays outside git.
+## Layout
 
-To try a Nuah change before it has a tag, add a local, uncommitted `.cargo/config.toml`:
+- `crates/madar-core`: the plugins
+- `crates/madar-server`: the server program
+- `crates/madar-cli`: the `madar` command
+- `faces/web`: the web board
+- `faces/editor-src`: editor source
+- `deploy`: compose file
 
-```toml
-[patch."https://github.com/addaui/nuah"]
-nuah-kernel = { path = "../nuah/crates/nuah-kernel" }
-nuah-adapters = { path = "../nuah/crates/nuah-adapters" }
-nuah-http = { path = "../nuah/crates/nuah-http" }
-nuah-host = { path = "../nuah/crates/nuah-host" }
-```
+## TODO
 
-## Release and deploy
-
-- Every push to `main` runs the tests and builds `ghcr.io/addaui/madar` (tags `latest` and the short commit); a `vX.Y.Z` tag adds that version.
-- When Nuah publishes a tag, the `nuah-update` workflow opens a pull request that moves the pin. Merging it deploys the update.
-- The image holds the binary and faces only. Data lives in the `/data` volume (`madar.db`, `accounts.json`); settings come from environment variables:
-
-| Variable | Meaning |
-|---|---|
-| `NUAH_LISTEN` | address inside the container, default `0.0.0.0:3000` |
-| `NUAH_ALLOW_HOSTS` | host names it answers to behind a proxy, comma separated |
-| `NUAH_SECURE_COOKIE` | `true` when the proxy terminates TLS |
-| `NUAH_WITH` | product switches; `previews` turns link previews on |
-| `NUAH_PROFILE` | a Profile file instead of `--db`/`--accounts` (what the setup wizard saves) |
-
-First run on a server:
-
-```bash
-mkdir -p data && docker run --rm -i ghcr.io/addaui/madar hash-password <<< 'a long password'   # paste the hash into data/accounts.json
-docker compose -f deploy/compose.yml up -d
-```
-
-The container stops cleanly on `docker stop` (SIGTERM). Reads use a pool of SQLite connections (one per core, 2 to 16;
-`readers` in the `db-sqlite` settings) and the server uses every core.
-
-### Repository secrets (GitHub)
-
-- `NUAH_READ_TOKEN`: only if the Nuah repository is private: a fine-grained token with read access to it.
-- `NUAH_UPDATE_TOKEN` (optional): lets the update pull request trigger the tests; without it, run the `ci` workflow on that branch by hand.
+- [ ] docs
+- [ ] license
+- [ ] arm64 image
+- [ ] overview page
+- [ ] light theme
+- [ ] share by link
+- [ ] backup command
+- [ ] raw text mode
+- [ ] otlp

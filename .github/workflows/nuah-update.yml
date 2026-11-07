@@ -1,6 +1,6 @@
 name: nuah-update
-# When Nuah publishes a new tag, open a pull request that moves Madar to it. The pull request runs the
-# tests (and builds the image on merge), so taking a Nuah update is reviewing one diff of four lines.
+# When Nuah or nuah-plugins publish a new tag, open a pull request that moves the pins. The pull request runs
+# the tests; a failure there means the two need matching releases.
 on:
   schedule:
     - cron: "17 6 * * *"
@@ -13,8 +13,6 @@ permissions:
   pull-requests: write
 
 env:
-  NUAH_REPO: addaui/nuah
-  NUAH_READ_TOKEN: ${{ secrets.NUAH_READ_TOKEN }}
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
@@ -22,32 +20,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Let cargo and git fetch Nuah
-        run: |
-          if [ -n "$NUAH_READ_TOKEN" ]; then git config --global url."https://x-access-token:${NUAH_READ_TOKEN}@github.com/".insteadOf "https://github.com/"; fi
       - uses: dtolnay/rust-toolchain@stable
-      - name: Find the newest Nuah tag
-        id: tag
+      - name: Find the newest tags
+        id: tags
         run: |
-          latest=$(git ls-remote --tags --refs "https://github.com/${NUAH_REPO}" 'v*' | sed 's|.*refs/tags/||' | sort -V | tail -1)
-          current=$(grep -m1 '^nuah-kernel' Cargo.toml | sed 's/.*tag = "\(.*\)".*/\1/')
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
-          echo "current=$current" >> "$GITHUB_OUTPUT"
-          echo "Nuah: pinned $current, newest $latest"
-      - name: Move the pin
-        if: steps.tag.outputs.latest != '' && steps.tag.outputs.latest != steps.tag.outputs.current
+          newest() { git ls-remote --tags --refs "https://github.com/$1" 'v*' | sed 's|.*refs/tags/||' | sort -V | tail -1; }
+          pinned() { grep -m1 "^$1 " Cargo.toml | sed 's/.*tag = "\(.*\)".*/\1/'; }
+          echo "nuah=$(newest addaui/nuah)" >> "$GITHUB_OUTPUT"
+          echo "plugins=$(newest addaui/nuah-plugins)" >> "$GITHUB_OUTPUT"
+          echo "nuah_now=$(pinned nuah-kernel)" >> "$GITHUB_OUTPUT"
+          echo "plugins_now=$(pinned nuah-prefs)" >> "$GITHUB_OUTPUT"
+      - name: Move the pins
+        id: move
         run: |
-          sed -i "s|\(^nuah-[a-z]* = .*tag = \"\)[^\"]*\"|\1${{ steps.tag.outputs.latest }}\"|" Cargo.toml
-          cargo update -p nuah-kernel -p nuah-adapters -p nuah-http -p nuah-host
+          changed=no
+          if [ -n "${{ steps.tags.outputs.nuah }}" ] && [ "${{ steps.tags.outputs.nuah }}" != "${{ steps.tags.outputs.nuah_now }}" ]; then
+            sed -i "s|\(^nuah-\(kernel\|adapters\|http\|host\) = .*tag = \"\)[^\"]*\"|\1${{ steps.tags.outputs.nuah }}\"|" Cargo.toml; changed=yes
+          fi
+          if [ -n "${{ steps.tags.outputs.plugins }}" ] && [ "${{ steps.tags.outputs.plugins }}" != "${{ steps.tags.outputs.plugins_now }}" ]; then
+            sed -i "s|\(^nuah-\(prefs\|appearance\|metric-prometheus\) = .*tag = \"\)[^\"]*\"|\1${{ steps.tags.outputs.plugins }}\"|" Cargo.toml; changed=yes
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          if [ "$changed" = yes ]; then cargo update -p nuah-kernel -p nuah-adapters -p nuah-http -p nuah-host -p nuah-prefs -p nuah-appearance -p nuah-metric-prometheus; fi
       - uses: peter-evans/create-pull-request@v7
-        if: steps.tag.outputs.latest != '' && steps.tag.outputs.latest != steps.tag.outputs.current
+        if: steps.move.outputs.changed == 'yes'
         with:
-          branch: nuah-${{ steps.tag.outputs.latest }}
-          title: "Take Nuah ${{ steps.tag.outputs.latest }}"
-          commit-message: "Take Nuah ${{ steps.tag.outputs.latest }} (was ${{ steps.tag.outputs.current }})"
+          branch: nuah-update
+          title: "Take Nuah ${{ steps.tags.outputs.nuah }} and nuah-plugins ${{ steps.tags.outputs.plugins }}"
+          commit-message: "Take Nuah ${{ steps.tags.outputs.nuah }} and nuah-plugins ${{ steps.tags.outputs.plugins }}"
           body: |
-            Moves the pinned Nuah tag from `${{ steps.tag.outputs.current }}` to `${{ steps.tag.outputs.latest }}`.
-            Release notes: https://github.com/${{ env.NUAH_REPO }}/releases/tag/${{ steps.tag.outputs.latest }}
-
-            Nothing in Madar edits Nuah; if the tests fail here, the fix is a plugin or a Madar change, or a pull request to Nuah.
+            Nuah ${{ steps.tags.outputs.nuah_now }} to ${{ steps.tags.outputs.nuah }}, nuah-plugins ${{ steps.tags.outputs.plugins_now }} to ${{ steps.tags.outputs.plugins }}.
+            https://github.com/addaui/nuah/releases
           token: ${{ secrets.NUAH_UPDATE_TOKEN || github.token }}

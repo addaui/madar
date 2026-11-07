@@ -8,5 +8,3 @@ node_modules/
 # the editor build resolves packages from here (a link or an install); never committed
 faces/editor-src/node_modules
 
-# local development against a checkout of nuah (see README)
-.cargo/
