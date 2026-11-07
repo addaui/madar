@@ -82,6 +82,23 @@ pub fn catalog(previews: bool) -> Catalog {
     c
 }
 
+/// `--with metrics`: Prometheus can scrape the Core on its own port (default 127.0.0.1:9464), with a bearer token
+/// when `MADAR_METRICS_TOKEN` is set. The token stays a reference to the environment; it is not copied into the Profile.
+pub fn enable_metrics(profile: &mut Profile, listen: Option<String>, token: bool) {
+    if !profile.enabled.iter().any(|p| p == "metric-prometheus") {
+        profile.enabled.push("metric-prometheus".into());
+    }
+    let grants = profile.grants.entry("metric-prometheus".into()).or_default();
+    if !grants.iter().any(|g| g == "serve") {
+        grants.push("serve".into());
+    }
+    let mut s = json!({"listen": listen.unwrap_or_else(|| "127.0.0.1:9464".into())});
+    if token {
+        s["token"] = json!({"$env": "MADAR_METRICS_TOKEN"});
+    }
+    profile.settings.entry("metric-prometheus".into()).or_insert(s);
+}
+
 /// Madar as the host sees it.
 pub struct Madar;
 
@@ -97,5 +114,10 @@ impl nuah_host::Product for Madar {
     }
     fn starting_point(&self) -> Profile {
         madar_core::profile_embedded("madar.db")
+    }
+    fn configure(&self, profile: &mut Profile, with: &[String]) {
+        if with.iter().any(|w| w == "metrics") {
+            enable_metrics(profile, std::env::var("MADAR_METRICS_LISTEN").ok(), std::env::var_os("MADAR_METRICS_TOKEN").is_some());
+        }
     }
 }

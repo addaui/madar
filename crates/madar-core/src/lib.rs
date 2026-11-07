@@ -60,14 +60,14 @@ fn base_profile(name: &str, adapters: &[&str]) -> Profile {
 
 /// One person, one file, always signed in. For a Core only that person can reach.
 pub fn profile_embedded(db_path: &str) -> Profile {
-    let mut p = base_profile("embedded", &["db-sqlite", "auth-local", "policy-roles", "clock-system", "ids-random"]);
+    let mut p = base_profile("embedded", &["db-sqlite", "auth-local", "policy-roles", "clock-system", "ids-random", "log-console"]);
     p.settings.insert("db-sqlite".into(), json!({"path": db_path}));
     p
 }
 
 /// Several people with passwords. `accounts` are `{name, password_hash, roles}`.
 pub fn profile_server(db_path: &str, accounts: serde_json::Value) -> Profile {
-    let mut p = base_profile("server", &["db-sqlite", "auth-password", "policy-roles", "clock-system", "ids-random"]);
+    let mut p = base_profile("server", &["db-sqlite", "auth-password", "policy-roles", "clock-system", "ids-random", "log-console"]);
     p.settings.insert("db-sqlite".into(), json!({"path": db_path}));
     p.settings.insert("auth-password".into(), json!({"accounts": accounts}));
     p.settings.insert("quota".into(), json!({"max_tasks": 5000}));

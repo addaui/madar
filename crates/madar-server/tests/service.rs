@@ -111,9 +111,7 @@ fn madar_writes_its_log_to_a_file_and_prometheus_can_scrape_it() {
     let log = dir.join("madar.log");
     let mut profile = Madar.server_profile(":memory:", accounts());
     with_http(&mut profile, HttpFlags { listen: Some(format!("127.0.0.1:{port}")), hosts: vec![], secure_cookie: false, faces: vec![] });
-    profile.enabled.push("metric-prometheus".into());
-    profile.grants.insert("metric-prometheus".into(), vec!["serve".into()]);
-    profile.settings.insert("metric-prometheus".into(), json!({"listen": format!("127.0.0.1:{metrics_port}")}));
+    madar_server::enable_metrics(&mut profile, Some(format!("127.0.0.1:{metrics_port}")), false);
     let mut catalog = Madar.catalog(&[]);
     nuah_host::with_logging(&mut catalog, &mut profile, Some("debug".into()), Some(log.display().to_string()));
     let core = Core::start(&Distribution { name: "madar".into(), catalog, profile }).unwrap_or_else(|p| panic!("{p:#?}"));
@@ -125,8 +123,12 @@ fn madar_writes_its_log_to_a_file_and_prometheus_can_scrape_it() {
         .send(json!({"name": "alice", "password": "pw"}).to_string())
         .unwrap();
     assert_eq!(signed.status().as_u16(), 200);
+    let me = nuah_kernel::Identity::new("alice", "alice", &["member"]);
+    let project = core.call_as(&me, "projects.create", json!({"name": "Home"}), None).unwrap().output;
+    core.call_as(&me, "tasks.create", json!({"project": project["id"], "title": "one"}), None).unwrap();
     let scrape = agent().get(&format!("http://127.0.0.1:{metrics_port}/metrics")).call().unwrap().body_mut().read_to_string().unwrap();
     assert!(scrape.contains("nuah_operations_total{operation=\"auth.sign_in\",outcome=\"ok\"} 1"), "{scrape}");
+    assert!(scrape.contains("madar_tasks_created_total 1\n"), "Madar's own counter is scraped too: {scrape}");
     services.stop();
     let text = std::fs::read_to_string(&log).unwrap();
     let keys: Vec<String> = text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter_map(|v| v["key"].as_str().map(String::from)).collect();

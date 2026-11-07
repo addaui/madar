@@ -101,6 +101,7 @@ impl Plugin for Discussion {
             let body_doc = if i["body"].is_object() { i["body"].clone() } else { Value::Null };
             let links = richtext::refs_for("discussion.comment", &d.id, "", &body_doc);
             tx.emit("discussion.added", Audience::scope("projects.members", &project), json!({"project": project, kind: tid, "comment": view(&d), "refs": links}))?;
+            tx.metrics().inc("madar_comments_added_total", &[], 1.0);
             Ok(view(&d))
         });
         b.op("discussion.list", |tx, i| {

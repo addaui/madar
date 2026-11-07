@@ -319,6 +319,7 @@ impl Plugin for Tasks {
             let aud = Audience::scope("projects.members", &project);
             tx.emit("tasks.created", aud, json!({"project": project, "task": view(&d), "refs": richtext::refs_for("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
             notify_assigned(tx, &d)?;
+            tx.metrics().inc("madar_tasks_created_total", &[], 1.0);
             Ok(view(&d))
         });
 
