@@ -20,11 +20,12 @@ impl Plugin for AdapterSqlite {
     fn manifest(&self) -> Manifest {
         serde_json::from_value(json!({
             "id":"db-sqlite","version":"0.2.0","name":"SQLite database","description":"Keeps data in one SQLite file","fills":"db",
-            "settings_schema":{"type":"object","properties":{"path":{"type":"string","minLength":1}},"additionalProperties":false}
+            "settings_schema":{"type":"object","properties":{"path":{"type":"string","minLength":1},"readers":{"type":"integer","minimum":0,"maximum":128}},"additionalProperties":false}
         })).unwrap()
     }
     fn fill(&self, s: &Value) -> Result<Option<PortImpl>> {
         let path = s.get("path").and_then(|p| p.as_str()).unwrap_or(":memory:");
-        Ok(Some(PortImpl::Db(Arc::new(SqliteDb::open(path)?))))
+        let readers = s.get("readers").and_then(|r| r.as_u64()).map(|r| r as usize).unwrap_or_else(crate::sqlite::default_readers);
+        Ok(Some(PortImpl::Db(Arc::new(SqliteDb::open_with(path, readers)?))))
     }
 }

@@ -10,7 +10,7 @@
 //!
 //! [ADR 0014]: https://docs.addaui.com/nuah/adr/0014-setup-wizard-is-a-separate-mode-with-a-setup-code-and-no-secrets/
 
-use crate::{guard, header_str, refuse, Config};
+use nuah_http::{guard, header_str, refuse, Config};
 use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};

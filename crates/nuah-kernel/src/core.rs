@@ -110,6 +110,91 @@ impl Core {
     }
 }
 
+/// The Core's running services, started by [`Core::start_services`]. Dropping it stops them, last started first.
+pub struct Services {
+    started: Vec<(String, Box<dyn Service>)>,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    housekeeping: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Services {
+    /// Ids of the plugins whose service is running.
+    pub fn running(&self) -> Vec<&str> {
+        self.started.iter().map(|(id, _)| id.as_str()).collect()
+    }
+    /// Stop everything and wait.
+    pub fn stop(mut self) {
+        self.shutdown();
+    }
+    fn shutdown(&mut self) {
+        while let Some((_, s)) = self.started.pop() {
+            s.stop();
+        }
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(h) = self.housekeeping.take() {
+            let _ = h.join();
+        }
+    }
+}
+
+impl Drop for Services {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+/// The Core's own upkeep: deliver committed Events to Listeners, trim the change log.
+fn housekeeping(core: Core, stop: Arc<std::sync::atomic::AtomicBool>) {
+    use std::sync::atomic::Ordering::SeqCst;
+    use std::time::{Duration, Instant};
+    let mut wake = core.subscribe();
+    let mut rounds = 0u64;
+    while !stop.load(SeqCst) {
+        rounds += 1;
+        if let Err(e) = core.drain_listeners() {
+            eprintln!("[nuah] listener failed: {}", e.message);
+        }
+        if rounds % 600 == 0 {
+            let _ = core.prune_log(crate::pipeline::CHANGE_RETENTION);
+        }
+        // A commit wakes the loop at once; once a second covers another process writing the same database.
+        let started = Instant::now();
+        while !stop.load(SeqCst) && started.elapsed() < Duration::from_secs(1) {
+            match wake.has_changed() {
+                Ok(true) => {
+                    wake.borrow_and_update();
+                    break;
+                }
+                Ok(false) => std::thread::sleep(Duration::from_millis(20)),
+                Err(_) => return,
+            }
+        }
+    }
+}
+
+impl Core {
+    /// Start the Core's upkeep and the service of every plugin that asked for `serve`, in plugin id
+    /// order. If one cannot start, the ones already running are stopped and the failure is returned.
+    pub fn start_services(&self) -> Result<Services> {
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (c, s) = (self.clone(), stop.clone());
+        let housekeeping = std::thread::Builder::new().name("nuah-housekeeping".into()).spawn(move || housekeeping(c, s)).map_err(|e| Error::internal(format!("cannot start housekeeping: {e}")))?;
+        let mut services = Services { started: vec![], stop, housekeeping: Some(housekeeping) };
+        for (id, a) in &self.inner.plan.active {
+            if !a.manifest.requires.capabilities.iter().any(|c| c == "serve") {
+                continue;
+            }
+            let settings = self.inner.settings.get(id).cloned().unwrap_or(Value::Null);
+            match a.plugin.serve(ServiceContext { core: self.clone(), settings }) {
+                Ok(Some(svc)) => services.started.push((id.clone(), svc)),
+                Ok(None) => {}
+                Err(e) => return Err(Error::internal(format!("{id} could not start its service: {}", e.message))),
+            }
+        }
+        Ok(services)
+    }
+}
+
 impl Inner {
     pub(crate) fn manifest(&self, plugin: &str) -> Option<&Manifest> {
         self.plan.active.get(plugin).map(|a| &a.manifest)

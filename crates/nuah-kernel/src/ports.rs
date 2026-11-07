@@ -1,4 +1,4 @@
-//! The fixed Ports besides data: auth, policy, clock, ids. Exactly one Adapter fills each in a Core.
+//! The fixed Ports: db, auth, policy, clock, ids. Each Port declares how many Adapters fill it (all five: one).
 
 use crate::db::{DbRead, Millis};
 use crate::error::Result;
@@ -58,4 +58,36 @@ pub trait Ids: Send + Sync {
     fn new_id(&self) -> String;
 }
 
+/// How many Adapters fill one Port ([ADR 0031]). Whether a Port may have several is a property of the
+/// Port, not a choice of the Profile.
+///
+/// [ADR 0031]: https://docs.addaui.com/nuah/adr/0031-products-add-to-nuah-and-never-edit-it-ports-declare-cardinality-projections-are-plugins/
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cardinality {
+    /// Exactly one Adapter; the Profile names it when several are enabled.
+    Single,
+    /// Every enabled Adapter is active. How a caller picks among them is that Port's own rule, decided
+    /// when such a Port is proposed. No Port is `Many` yet, and the Resolver refuses to start one.
+    Many,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PortSpec {
+    pub name: &'static str,
+    pub cardinality: Cardinality,
+}
+
+pub const PORT_SPECS: [PortSpec; 5] = [
+    PortSpec { name: "db", cardinality: Cardinality::Single },
+    PortSpec { name: "auth", cardinality: Cardinality::Single },
+    PortSpec { name: "policy", cardinality: Cardinality::Single },
+    PortSpec { name: "clock", cardinality: Cardinality::Single },
+    PortSpec { name: "ids", cardinality: Cardinality::Single },
+];
+
 pub const PORTS: [&str; 5] = ["db", "auth", "policy", "clock", "ids"];
+
+/// How many Adapters fill this Port; `None` for a name that is not a Port.
+pub fn cardinality(port: &str) -> Option<Cardinality> {
+    PORT_SPECS.iter().find(|s| s.name == port).map(|s| s.cardinality)
+}

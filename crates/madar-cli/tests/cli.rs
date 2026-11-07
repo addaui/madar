@@ -7,14 +7,14 @@ use std::sync::mpsc;
 
 fn server() -> String {
     let hash = AuthPassword::hash_password("pw");
-    let core = Core::start(&nuah_madar::distribution(nuah_madar::profile_server(":memory:", json!([{"name": "alice", "password_hash": hash, "roles": ["member"]}])))).unwrap();
+    let core = Core::start(&madar_core::distribution(madar_core::profile_server(":memory:", json!([{"name": "alice", "password_hash": hash, "roles": ["member"]}])))).unwrap();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new().unwrap().block_on(async move {
             let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             tx.send(l.local_addr().unwrap()).unwrap();
-            nuah_server::spawn_background(core.clone());
-            axum::serve(l, nuah_server::router(core, Default::default())).await.unwrap();
+            let _services = core.start_services().unwrap();
+            axum::serve(l, nuah_http::router(core, Default::default())).await.unwrap();
         });
     });
     format!("http://{}", rx.recv().unwrap())

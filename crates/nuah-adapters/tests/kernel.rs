@@ -326,3 +326,76 @@ fn describe_tells_a_face_what_exists_and_what_it_may_do() {
     assert!(d["plugins"].as_array().unwrap().iter().any(|p| p["id"] == "tell-a" && p["kind"] == "provider"));
     assert!(w.core.describe_public()["operations"].as_object().unwrap().is_empty() || true);
 }
+
+// ---- services (ADR 0031) -----------------------------------------------------------------------
+
+struct Serving { running: std::sync::Arc<std::sync::atomic::AtomicUsize>, fail: bool }
+struct Stopper(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+impl Service for Stopper {
+    fn stop(self: Box<Self>) { self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst); }
+}
+impl Plugin for Serving {
+    fn manifest(&self) -> Manifest {
+        serde_json::from_value(json!({"id":"serving","version":"1","namespaces":["serving"],"requires":{"capabilities":["serve"]}})).unwrap()
+    }
+    fn serve(&self, ctx: ServiceContext) -> Result<Option<Box<dyn Service>>> {
+        if self.fail { return Err(Error::internal("no port")); }
+        assert!(!ctx.core.plugin_ids().is_empty(), "a service sees the Core");
+        self.running.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(Some(Box::new(Stopper(self.running.clone()))))
+    }
+}
+
+fn serving_core(fail: bool, grant: bool) -> (std::result::Result<Core, Vec<Problem>>, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    let running = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let clock = FixedClock::at(0);
+    let seen = Default::default();
+    let mut cat = catalog(&clock, &seen);
+    cat.0.push(std::sync::Arc::new(Serving { running: running.clone(), fail }));
+    let mut p = profile(&["db-memory", "auth-local", "policy-roles", "clock-fixed", "ids-sequential", "notes", "tell", "tell-a", "serving"]);
+    if grant { p.grants.insert("serving".into(), vec!["serve".into()]); }
+    (Core::start(&Distribution { name: "t".into(), catalog: cat, profile: p }), running)
+}
+
+#[test]
+fn a_plugin_may_serve_only_when_the_operator_grants_it() {
+    let (core, _) = serving_core(false, false);
+    let codes: Vec<String> = core.err().expect("must not resolve").into_iter().map(|p| p.code).collect();
+    assert!(codes.iter().any(|c| c == "capability_not_granted"), "{codes:?}");
+}
+
+#[test]
+fn services_start_with_the_core_and_stop_with_it() {
+    let (core, running) = serving_core(false, true);
+    let core = core.unwrap();
+    let services = core.start_services().unwrap();
+    assert_eq!(services.running(), vec!["serving"]);
+    assert_eq!(running.load(std::sync::atomic::Ordering::SeqCst), 1);
+    services.stop();
+    assert_eq!(running.load(std::sync::atomic::Ordering::SeqCst), 0);
+    // dropping stops them too
+    let services = core.start_services().unwrap();
+    drop(services);
+    assert_eq!(running.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_service_that_cannot_start_fails_the_start_and_leaves_nothing_running() {
+    let (core, running) = serving_core(true, true);
+    let e = core.unwrap().start_services().err().expect("must fail");
+    assert!(e.message.contains("serving could not start its service"), "{}", e.message);
+    assert_eq!(running.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[test]
+fn housekeeping_delivers_events_to_listeners_without_a_server() {
+    let w = world();
+    let services = w.core.start_services().unwrap();
+    let a = person("alice", &["member"]);
+    let b = book(&w, &a);
+    call(&w, &a, "notes.add", json!({"book": b, "text": "x"})).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    // Nothing is left for a manual drain: the Core's own upkeep already ran the Listener.
+    assert_eq!(w.core.drain_listeners().unwrap(), 0);
+    services.stop();
+}

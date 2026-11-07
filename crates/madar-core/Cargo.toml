@@ -1,5 +1,5 @@
 [package]
-name = "nuah-madar"
+name = "madar-core"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

@@ -106,12 +106,32 @@ impl Bindings {
     }
 }
 
+/// What a service gets when the Core starts it: the Link (a `Core` handle) and its own Settings.
+pub struct ServiceContext {
+    pub core: crate::core::Core,
+    pub settings: Value,
+}
+
+/// A plugin's long-running part, for example a Projection listening on a socket. It runs in the Core's
+/// process, on threads of its own ([ADR 0031]). The kernel stops it when the Core's services stop.
+///
+/// [ADR 0031]: https://docs.addaui.com/nuah/adr/0031-products-add-to-nuah-and-never-edit-it-ports-declare-cardinality-projections-are-plugins/
+pub trait Service: Send {
+    /// Stop and wait until it has. Called once; must not hang.
+    fn stop(self: Box<Self>);
+}
+
 pub trait Plugin: Send + Sync {
     fn manifest(&self) -> Manifest;
     /// Attach handlers to the names the Manifest declares. Must not touch the outside world.
     fn bind(&self, _b: &mut Bindings) {}
     /// For an Adapter: build what fills the Port, from the plugin's Settings.
     fn fill(&self, _settings: &Value) -> Result<Option<PortImpl>> {
+        Ok(None)
+    }
+    /// Start the plugin's long-running part. Called once the Core is ready, and only for a plugin whose
+    /// Manifest asks for the capability `serve` (which the Profile must grant). Return `None` to run nothing.
+    fn serve(&self, _ctx: ServiceContext) -> Result<Option<Box<dyn Service>>> {
         Ok(None)
     }
     /// Move this plugin's data from `from` to the Manifest's `data.version`, one step at a time.

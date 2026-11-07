@@ -16,7 +16,7 @@ pub mod resolver;
 pub mod schema;
 pub mod setup;
 
-pub use crate::core::Core;
+pub use crate::core::{Core, Services};
 pub use crate::db::*;
 pub use crate::error::{Category, Error, Result};
 pub use crate::manifest::*;

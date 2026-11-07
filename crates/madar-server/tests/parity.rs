@@ -3,7 +3,7 @@
 
 use nuah_adapters::{FixedClock, TestClock, TestIds};
 use nuah_kernel::Core;
-use nuah_madar::{distribution_with, profile_test};
+use madar_core::{distribution_with, profile_test};
 use serde_json::{json, Value};
 use std::sync::{mpsc, Arc};
 
@@ -72,7 +72,7 @@ fn the_same_scenario_gives_the_same_answers_in_process_and_over_http() {
         tokio::runtime::Runtime::new().unwrap().block_on(async move {
             let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             tx.send(l.local_addr().unwrap()).unwrap();
-            axum::serve(l, nuah_server::router(remote, Default::default())).await.unwrap();
+            axum::serve(l, nuah_http::router(remote, Default::default())).await.unwrap();
         });
     });
     let base = format!("http://{}", rx.recv().unwrap());

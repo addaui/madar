@@ -3,7 +3,7 @@
 
 use crate::manifest::*;
 use crate::plugin::{Bindings, Plugin};
-use crate::ports::PORTS;
+use crate::ports::{cardinality, Cardinality, PORTS};
 use crate::schema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -97,7 +97,8 @@ pub struct Plan {
     pub hash: String,
 }
 
-const CAPABILITIES: [&str; 2] = ["emit", "call"];
+/// `serve`: the plugin runs a long-lived service (a Projection, for one). See ADR 0031.
+const CAPABILITIES: [&str; 3] = ["emit", "call", "serve"];
 
 /// The hash of the operation and schema set, so a Face can tell it was built for a different Core.
 pub const ENVELOPE_VERSION: u32 = 1;
@@ -353,6 +354,10 @@ pub fn resolve(dist: &Distribution) -> (Vec<Problem>, Plan) {
         }
     }
     for port in PORTS {
+        if cardinality(port) == Some(Cardinality::Many) {
+            ps.push(problem("port_many_unsupported", &[], format!("the port {port} takes several adapters, and no routing rule for that exists yet")));
+            continue;
+        }
         match (p.bindings.get(port), fillers.get(port)) {
             (Some(b), _) => {
                 plan.ports.insert(port.into(), b.clone());

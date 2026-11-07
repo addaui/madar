@@ -1,6 +1,6 @@
 use nuah_adapters::*;
 use nuah_kernel::*;
-use nuah_madar::*;
+use madar_core::*;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -952,7 +952,7 @@ fn the_overview_counts_columns_bands_overdue_and_completions_per_day() {
 }
 
 fn date_of_clock(a: &App) -> String {
-    nuah_madar::util::date_of(a.core.now())
+    madar_core::util::date_of(a.core.now())
 }
 
 #[test]
@@ -966,7 +966,7 @@ fn focus_ranks_your_open_tasks_by_urgency_in_two_lists() {
     mk("low and undated", 0, Value::Null);
     mk("urgent but far", 9, json!("2099-01-01"));
     mk("due today", 3, json!(today));
-    mk("a week late", 3, json!(nuah_madar::util::days_before(&today, 7)));
+    mk("a week late", 3, json!(madar_core::util::days_before(&today, 7)));
     for n in 0..8 {
         mk(&format!("filler {n}"), 1, Value::Null);
     }
@@ -1251,7 +1251,7 @@ fn intervals_step_over_short_months() {
     assert_eq!(add_interval_for_test("2023-12-30", 2, "week"), "2024-01-13");
 }
 fn add_interval_for_test(d: &str, n: i64, u: &str) -> String {
-    nuah_madar::add_interval(d, n, u)
+    madar_core::add_interval(d, n, u)
 }
 
 const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";

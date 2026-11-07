@@ -1,11 +1,11 @@
-//! The HTTP and SSE Projection of the Link ([Link spec]). It knows nothing about tasks: it exposes
-//! whatever contract the Core describes. Sessions come from the `auth.*` Operations ([ADR 0010]);
+//! The HTTP and SSE Projection of the Link ([Link spec]), as a plugin (`http`, ADR 0031). It knows nothing
+//! about any product: it exposes whatever contract the Core describes. A product that needs more routes
+//! hands them to [`Http::with_routes`]; it never edits this crate. Sessions come from the `auth.*` Operations ([ADR 0010]);
 //! a browser Face holds its session in an HttpOnly cookie, any other Face sends a bearer token.
 //!
 //!   GET  /healthz                   liveness, nothing else
 //!   GET  /link/describe             public before sign-in, full after
 //!   POST /link/call/{op}            run an Operation; the JSON body is the input
-//!   GET  /files/{id}                an uploaded file, by running the Operation files.download (404 if no plugin has it)
 //!   GET  /pulse                     server-sent events; resume with ?after=<cursor> or Last-Event-ID
 //!   GET  /link/openapi.json | tools.json | client.ts   generated from the contract (sign-in required)
 //!
@@ -27,7 +27,8 @@ use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub mod setup;
+mod plugin;
+pub use plugin::Http;
 
 pub const COOKIE: &str = "nuah_session";
 
@@ -50,8 +51,36 @@ pub struct Config {
     pub pulse_streams_per_person: usize,
     /// Open Pulse streams the whole server serves; past it a new stream is refused with 429.
     pub pulse_streams_total: usize,
-    /// Fetches link previews (ADR 0026). `None`: previews are not set up and `/previews` answers 404.
-    pub previews: Option<Arc<nuah_madar::previews::Fetcher>>,
+    /// Where to listen (`host:port`); port 0 picks a free one.
+    pub listen: String,
+    /// Tokio worker threads; 0 means one per core.
+    pub worker_threads: usize,
+}
+
+impl Config {
+    /// Read the plugin's Settings (checked against its schema by the Resolver) on top of the defaults.
+    pub fn from_settings(v: &Value) -> Result<Config, String> {
+        let mut c = Config::default();
+        if let Some(l) = v["listen"].as_str() {
+            c.listen = l.into();
+        }
+        c.hosts.extend(v["hosts"].as_array().into_iter().flatten().filter_map(|h| h.as_str()).map(|h| h.to_lowercase()));
+        c.secure_cookie = v["secure_cookie"].as_bool().unwrap_or(false);
+        for (prefix, dir) in v["faces"].as_object().into_iter().flatten() {
+            if !prefix.starts_with('/') {
+                return Err(format!("the face prefix {prefix} must start with /"));
+            }
+            c.faces.push((prefix.clone(), dir.as_str().unwrap_or("").into()));
+        }
+        let n = |k: &str, d: usize| v[k].as_u64().map(|n| n as usize).unwrap_or(d);
+        c.sign_in_failures_per_name = n("sign_in_failures_per_name", c.sign_in_failures_per_name);
+        c.sign_in_failures_overall = n("sign_in_failures_overall", c.sign_in_failures_overall);
+        c.throttle_window = Duration::from_secs(v["throttle_window_secs"].as_u64().unwrap_or(c.throttle_window.as_secs()));
+        c.pulse_streams_per_person = n("pulse_streams_per_person", c.pulse_streams_per_person);
+        c.pulse_streams_total = n("pulse_streams_total", c.pulse_streams_total);
+        c.worker_threads = n("worker_threads", 0);
+        Ok(c)
+    }
 }
 
 impl Default for Config {
@@ -65,7 +94,8 @@ impl Default for Config {
             throttle_window: Duration::from_secs(300),
             pulse_streams_per_person: 8,
             pulse_streams_total: 1000,
-            previews: None,
+            listen: "127.0.0.1:3000".into(),
+            worker_threads: 0,
         }
     }
 }
@@ -75,8 +105,8 @@ struct App {
     core: Core,
     cfg: Arc<Config>,
     throttle: Arc<Mutex<Throttle>>,
-    previews: Option<Arc<nuah_madar::previews::Fetcher>>,
     streams: Arc<Mutex<Streams>>,
+    shutdown: tokio::sync::watch::Receiver<bool>,
 }
 
 /// The open Pulse streams: per person, oldest first ([ADR 0017]).
@@ -194,7 +224,8 @@ impl Throttle {
     }
 }
 
-struct ApiError(Error);
+/// An Error on its way to becoming a response: internals stay in the log, the caller gets a reference.
+pub struct ApiError(pub Error);
 
 impl From<Error> for ApiError {
     fn from(e: Error) -> Self {
@@ -209,14 +240,14 @@ impl IntoResponse for ApiError {
         // Internals (SQL messages, panics) stay in the server log; the caller gets a reference to quote.
         if err.category == Category::Internal {
             let reference = format!("{:08x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0));
-            eprintln!("[nuah-server] error ref {reference}: {}", err.message);
+            eprintln!("[nuah-http] error ref {reference}: {}", err.message);
             err = Error::internal(format!("Something went wrong on the server (ref {reference})"));
         }
         (status, [(header::CACHE_CONTROL, "no-store")], Json(json!({"ok": false, "error": err}))).into_response()
     }
 }
 
-pub(crate) fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
+pub fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
     headers.get(name).and_then(|v| v.to_str().ok()).map(String::from)
 }
 
@@ -230,16 +261,16 @@ fn cookie(headers: &HeaderMap) -> Option<String> {
 }
 
 /// A bearer token wins over the cookie, so a script on a machine with a browser session is not confused.
-fn credential(headers: &HeaderMap) -> Option<String> {
+pub fn credential(headers: &HeaderMap) -> Option<String> {
     bearer(headers).or_else(|| cookie(headers))
 }
 
 /// Storage calls never run on the async worker threads.
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, ApiError> {
+pub async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, ApiError> {
     tokio::task::spawn_blocking(f).await.map_err(|e| ApiError(Error::internal(format!("task failed: {e}"))))
 }
 
-fn no_store<T: IntoResponse>(t: T) -> Response {
+pub fn no_store<T: IntoResponse>(t: T) -> Response {
     ([(header::CACHE_CONTROL, "no-store")], t).into_response()
 }
 
@@ -343,53 +374,6 @@ async fn call(State(app): State<App>, Path(op): Path<String>, headers: HeaderMap
     Ok(out)
 }
 
-/// An uploaded file. Images show inline; everything else downloads. A file never runs as a page.
-async fn file(State(app): State<App>, Path(id): Path<String>, headers: HeaderMap) -> Result<Response, ApiError> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    let req = CallRequest { credential: credential(&headers), op: "files.download".into(), input: json!({"id": id}), key: None, contract: None };
-    let core = app.core.clone();
-    let out = blocking(move || core.call(req)).await??.output;
-    let bytes = STANDARD.decode(out["data"].as_str().unwrap_or("")).map_err(|_| Error::internal("stored file is not valid base64"))?;
-    let ty = out["type"].as_str().unwrap_or("application/octet-stream").to_string();
-    let name: String = out["name"].as_str().unwrap_or("file").chars().filter(|c| c.is_ascii_alphanumeric() || " ._-".contains(*c)).collect();
-    let inline = ty.starts_with("image/");
-    let disposition = format!("{}; filename=\"{}\"", if inline { "inline" } else { "attachment" }, name);
-    Ok((
-        [
-            (header::CONTENT_TYPE, HeaderValue::from_str(&ty).unwrap_or(HeaderValue::from_static("application/octet-stream"))),
-            (header::CONTENT_DISPOSITION, HeaderValue::from_str(&disposition).unwrap_or(HeaderValue::from_static("attachment"))),
-            (header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600")),
-            (header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("sandbox; default-src 'none'")),
-        ],
-        bytes,
-    ).into_response())
-}
-
-/// A link preview: `previews.get` first (who may ask, is the plugin on), then the fetch, off the async threads
-/// and outside any transaction (ADR 0026). 404 when the server was not set up to fetch.
-async fn preview(State(app): State<App>, headers: HeaderMap, Json(body): Json<Value>) -> Result<Response, ApiError> {
-    use nuah_madar::previews::Refusal;
-    let Some(fetcher) = app.previews.clone() else {
-        return Err(Error::reason(Category::NotFound, "previews.unavailable", "Link previews are not set up on this server").into());
-    };
-    let cred = credential(&headers);
-    let core = app.core.clone();
-    let url = body["url"].as_str().unwrap_or("").to_string();
-    let (who, plain) = blocking(move || -> nuah_kernel::Result<(String, Value)> {
-        let who = core.authenticate(cred.as_deref())?.subject;
-        let plain = core.call(CallRequest { credential: cred, op: "previews.get".into(), input: json!({"url": url}), key: None, contract: None })?.output;
-        Ok((who, plain))
-    }).await??;
-    let target = plain["url"].as_str().unwrap_or("").to_string();
-    let got = blocking(move || fetcher.get(&who, &target)).await?;
-    match got {
-        Ok(v) => Ok(no_store(Json(json!({"ok": true, "output": v}))).into_response()),
-        Err(Refusal::RateLimited) => Err(Error::reason(Category::Denied, "previews.rate_limited", "Too many previews just now, try again in a minute").into()),
-        Err(Refusal::Invalid) => Err(Error::invalid("url", "is not a public web address").into()),
-        Err(_) => Err(Error::reason(Category::NotFound, "previews.unavailable", "No preview could be made for that address").into()),
-    }
-}
-
 const BATCH: usize = 200;
 
 async fn pulse(
@@ -423,6 +407,7 @@ async fn pulse(
         return Ok(r);
     };
     let mut wake = core.subscribe();
+    let mut shutdown = app.shutdown.clone();
     let who0 = who.subject.clone();
     let stream = async_stream::stream! {
         let slot = slot;
@@ -461,6 +446,10 @@ async fn pulse(
             tokio::select! {
                 r = wake.changed() => if r.is_err() { return },
                 _ = tick.tick() => {}
+                _ = async {
+                    // The server is stopping. With no shutdown signal wired (a sender that is gone) this never fires.
+                    if shutdown.wait_for(|down| *down).await.is_err() { std::future::pending::<()>().await }
+                } => { return; }
                 _ = slot.replaced.notified() => {
                     yield Ok(Sse::default().event("closed").data(json!({"category": "denied", "key": "pulse.replaced"}).to_string()));
                     return;
@@ -483,14 +472,14 @@ fn host_only(h: &str) -> String {
     }
 }
 
-pub(crate) fn refuse(status: StatusCode, category: &str, key: &str, message: &str) -> Response {
+pub fn refuse(status: StatusCode, category: &str, key: &str, message: &str) -> Response {
     (status, Json(json!({"ok": false, "error": {"category": category, "key": key, "message": message}}))).into_response()
 }
 
 /// Browser-facing protections: Host allow-list (DNS rebinding), Origin must match Host (cross-site
 /// writes), commands must be JSON with the Face header (a plain cross-site form cannot send both),
 /// and security headers on every response.
-pub(crate) async fn guard(State(cfg): State<Arc<Config>>, req: Request, next: Next) -> Response {
+pub async fn guard(State(cfg): State<Arc<Config>>, req: Request, next: Next) -> Response {
     let host_header = header_str(req.headers(), "host").unwrap_or_default();
     if !cfg.hosts.iter().any(|h| *h == host_only(&host_header)) {
         return refuse(StatusCode::MISDIRECTED_REQUEST, "invalid", "server.bad_host", "This host name is not allowed. Start the server with --allow-host to add it.");
@@ -522,19 +511,29 @@ pub(crate) async fn guard(State(cfg): State<Arc<Config>>, req: Request, next: Ne
     res
 }
 
+/// Routes a product adds to the Projection. Called once with the Core, it returns its own router.
+pub type RouteFn = Arc<dyn Fn(Core) -> Router + Send + Sync>;
+
 pub fn router(core: Core, cfg: Config) -> Router {
+    router_with(core, cfg, &[], tokio::sync::watch::channel(false).1)
+}
+
+/// The Link, the static Faces and a product's extra routes, behind the guard. `shutdown` ends Pulse streams
+/// when it turns true so the server can stop.
+pub fn router_with(core: Core, cfg: Config, extra: &[RouteFn], shutdown: tokio::sync::watch::Receiver<bool>) -> Router {
     let cfg = Arc::new(cfg);
     let mut r = Router::new()
         .route("/healthz", get(health))
         .route("/link/describe", get(describe))
         .route("/link/call/{op}", post(call).layer(axum::extract::DefaultBodyLimit::max(7 * 1024 * 1024)))
-        .route("/files/{id}", get(file))
-        .route("/previews", post(preview).layer(axum::extract::DefaultBodyLimit::max(4 * 1024)))
         .route("/link/openapi.json", get(openapi_doc))
         .route("/link/tools.json", get(tools_doc))
         .route("/link/client.ts", get(client_ts))
         .route("/pulse", get(pulse))
-        .with_state(App { core, cfg: cfg.clone(), throttle: Default::default(), previews: cfg.previews.clone(), streams: Default::default() });
+        .with_state(App { core: core.clone(), cfg: cfg.clone(), throttle: Default::default(), streams: Default::default(), shutdown });
+    for f in extra {
+        r = r.merge(f(core.clone()));
+    }
     for (prefix, dir) in &cfg.faces {
         r = r.nest_service(prefix, tower_http::services::ServeDir::new(dir));
     }
@@ -543,31 +542,4 @@ pub fn router(core: Core, cfg: Config) -> Router {
         r = r.route("/", get(move || async move { axum::response::Redirect::temporary(&to) }));
     }
     r.layer(middleware::from_fn_with_state(cfg, guard))
-}
-
-/// Keep the Core's housekeeping going: run Listeners after commits, trim the change log. Needs a
-/// tokio runtime; abort the handle to stop it.
-pub fn spawn_background(core: Core) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut wake = core.subscribe();
-        let mut tick = tokio::time::interval(Duration::from_secs(1));
-        let mut rounds = 0u64;
-        loop {
-            let c = core.clone();
-            rounds += 1;
-            let _ = tokio::task::spawn_blocking(move || {
-                if let Err(e) = c.drain_listeners() {
-                    eprintln!("[nuah-server] listener failed: {}", e.message);
-                }
-                if rounds % 600 == 0 {
-                    let _ = c.prune_log(nuah_kernel::pipeline::CHANGE_RETENTION);
-                }
-            })
-            .await;
-            tokio::select! {
-                r = wake.changed() => if r.is_err() { return },
-                _ = tick.tick() => {}
-            }
-        }
-    })
 }

@@ -14,20 +14,25 @@ fn start() -> Server {
     start_with(Default::default())
 }
 
-fn start_with(cfg: nuah_server::Config) -> Server {
+fn start_with(cfg: nuah_http::Config) -> Server {
+    start_full(cfg, None)
+}
+
+fn start_full(cfg: nuah_http::Config, previews: Option<std::sync::Arc<madar_core::previews::Fetcher>>) -> Server {
     let hash = AuthPassword::hash_password("correct horse");
     let accounts = json!([
         {"name": "alice", "password_hash": hash, "roles": ["member"]},
         {"name": "bob", "password_hash": hash, "roles": ["member"]},
     ]);
-    let core = Core::start(&nuah_madar::distribution(nuah_madar::profile_server(":memory:", accounts))).unwrap_or_else(|p| panic!("{p:#?}"));
+    let core = Core::start(&madar_core::distribution(madar_core::profile_server(":memory:", accounts))).unwrap_or_else(|p| panic!("{p:#?}"));
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new().unwrap().block_on(async move {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             tx.send(listener.local_addr().unwrap()).unwrap();
-            nuah_server::spawn_background(core.clone());
-            axum::serve(listener, nuah_server::router(core, cfg)).await.unwrap();
+            let _services = core.start_services().unwrap();
+            let routes: nuah_http::RouteFn = std::sync::Arc::new(madar_server::routes(previews));
+            axum::serve(listener, nuah_http::router_with(core, cfg, &[routes], tokio::sync::watch::channel(false).1)).await.unwrap();
         });
     });
     let addr = rx.recv().unwrap();
@@ -241,7 +246,7 @@ fn faces_are_hosted_revalidated_and_the_root_leads_to_the_first() {
     let dir = std::env::temp_dir().join(format!("nuah-faces-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("index.html"), "<title>face</title>").unwrap();
-    let cfg = nuah_server::Config { faces: vec![("/faces/web".into(), dir.clone())], ..Default::default() };
+    let cfg = nuah_http::Config { faces: vec![("/faces/web".into(), dir.clone())], ..Default::default() };
     let s = start_with(cfg);
     let page = s.get("/faces/web/", &[]);
     assert_eq!(page.status, 200);
@@ -255,7 +260,7 @@ fn faces_are_hosted_revalidated_and_the_root_leads_to_the_first() {
 
 #[test]
 fn failed_sign_ins_are_throttled_per_account_and_a_success_clears_them() {
-    let s = start_with(nuah_server::Config { sign_in_failures_per_name: 3, sign_in_failures_overall: 6, ..Default::default() });
+    let s = start_with(nuah_http::Config { sign_in_failures_per_name: 3, sign_in_failures_overall: 6, ..Default::default() });
     let sign_in = |name: &str, pw: &str| {
         let mut r = agent().post(&format!("{}/link/call/auth.sign_in", s.base)).header("X-Nuah-Face", "t").header("Content-Type", "application/json").send(serde_json::to_vec(&json!({"name": name, "password": pw})).unwrap()).unwrap();
         (r.status().as_u16(), r.headers().get("retry-after").is_some(), r.body_mut().read_json::<Value>().unwrap_or(Value::Null))
@@ -283,7 +288,7 @@ fn failed_sign_ins_are_throttled_per_account_and_a_success_clears_them() {
 fn the_web_board_declares_every_slot_madar_fills() {
     // ADR 0016: what plugins put into Slots must be something the board says it can show.
     let decl: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../faces/web/slots.json")).unwrap()).unwrap();
-    let core = Core::start(&nuah_madar::distribution(nuah_madar::profile_embedded(":memory:"))).unwrap();
+    let core = Core::start(&madar_core::distribution(madar_core::profile_embedded(":memory:"))).unwrap();
     let me = nuah_kernel::Identity::new("me", "me", &["admin"]);
     let d = core.describe(&me);
     assert!(d["slots"].as_array().unwrap().iter().any(|i| i["id"] == "export.project" && i["slot"] == "project.actions"), "{}", d["slots"]);
@@ -326,7 +331,7 @@ fn saw(rx: &mpsc::Receiver<String>, needle: &str) -> bool {
 
 #[test]
 fn a_person_holds_a_few_streams_and_the_newest_replaces_the_oldest() {
-    let s = start_with(nuah_server::Config { pulse_streams_per_person: 2, ..Default::default() });
+    let s = start_with(nuah_http::Config { pulse_streams_per_person: 2, ..Default::default() });
     let (ta, tb) = (s.sign_in("alice"), s.sign_in("bob"));
     let first = open_stream(&s, &ta).unwrap();
     assert!(saw(&first, "event: ready"));
@@ -347,7 +352,7 @@ fn a_person_holds_a_few_streams_and_the_newest_replaces_the_oldest() {
 
 #[test]
 fn the_server_refuses_new_streams_when_it_is_full_and_frees_places_when_they_end() {
-    let s = start_with(nuah_server::Config { pulse_streams_total: 2, ..Default::default() });
+    let s = start_with(nuah_http::Config { pulse_streams_total: 2, ..Default::default() });
     let (ta, tb) = (s.sign_in("alice"), s.sign_in("bob"));
     let a = open_stream(&s, &ta).unwrap();
     let b = open_stream(&s, &tb).unwrap();
@@ -428,7 +433,7 @@ fn tiny_site() -> String {
 fn link_previews_are_fetched_for_signed_in_people_and_never_from_private_addresses() {
     // set up for the test to reach a loopback site; the same server without the fetcher answers 404
     let site = tiny_site();
-    let on = start_with(nuah_server::Config { previews: Some(std::sync::Arc::new(nuah_madar::previews::Fetcher::new(true, 4))), ..Default::default() });
+    let on = start_full(nuah_http::Config::default(), Some(std::sync::Arc::new(madar_core::previews::Fetcher::new(true, 4))));
     let a = on.sign_in("alice");
     let ah = format!("Bearer {a}");
     let ask = |url: &str, h: &[(&str, &str)]| on.post("/previews", json!({"url": url}), h);
@@ -447,7 +452,7 @@ fn link_previews_are_fetched_for_signed_in_people_and_never_from_private_address
     assert_eq!(limited.body["error"]["reason"], "previews.rate_limited", "{:?}", limited.body);
 
     // the real configuration: loopback and the private network are refused outright
-    let real = start_with(nuah_server::Config { previews: Some(std::sync::Arc::new(nuah_madar::previews::Fetcher::new(false, 20))), ..Default::default() });
+    let real = start_full(nuah_http::Config::default(), Some(std::sync::Arc::new(madar_core::previews::Fetcher::new(false, 20))));
     let b = real.sign_in("bob");
     let bh = format!("Bearer {b}");
     for bad in [format!("{site}/page"), "http://127.0.0.1/".into(), "http://169.254.169.254/latest/meta-data/".into(), "http://[::1]/".into(), "http://localhost/".into()] {

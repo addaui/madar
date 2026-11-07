@@ -1,13 +1,45 @@
-//! The SQLite data Adapter. One connection behind a lock: writers are serialized, a reader sees one
-//! snapshot. Other mechanisms (a pool, WAL readers) can replace this without the kernel noticing.
+//! The SQLite data Adapter. A file database has one writer connection (writes are serialized, as SQLite
+//! requires) and a pool of reader connections (WAL), so many people can read at once, each on one
+//! snapshot, while a write is going on ([ADR 0031]). `:memory:` has one connection for everything.
+//!
+//! [ADR 0031]: https://docs.addaui.com/nuah/adr/0031-products-add-to-nuah-and-never-edit-it-ports-declare-cardinality-projections-are-plugins/
 
 use nuah_kernel::*;
-use parking_lot::Mutex;
+use parking_lot::{Condvar, Mutex};
 use rusqlite::{params, params_from_iter, types::Value as Sql, Connection, OptionalExtension};
 use serde_json::Value;
 
 pub struct SqliteDb {
+    /// The writer; also serves reads when there is no pool.
     conn: Mutex<Connection>,
+    readers: Option<Readers>,
+}
+
+/// Idle reader connections. A read takes one and puts it back; when all are busy it waits for one.
+struct Readers {
+    idle: Mutex<Vec<Connection>>,
+    back: Condvar,
+}
+
+impl Readers {
+    fn take(&self) -> Connection {
+        let mut idle = self.idle.lock();
+        loop {
+            if let Some(c) = idle.pop() {
+                return c;
+            }
+            self.back.wait(&mut idle);
+        }
+    }
+    fn give(&self, c: Connection) {
+        self.idle.lock().push(c);
+        self.back.notify_one();
+    }
+}
+
+/// How many reader connections a file database gets unless the operator says: one per core, 2 to 16.
+pub fn default_readers() -> usize {
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 16)
 }
 
 fn db_err(e: rusqlite::Error) -> Error {
@@ -19,9 +51,17 @@ fn json_err(e: serde_json::Error) -> Error {
 
 impl SqliteDb {
     pub fn open(path: &str) -> Result<Self> {
+        Self::open_with(path, default_readers())
+    }
+
+    /// `readers`: reader connections for a file database (0 or `:memory:` means one shared connection).
+    pub fn open_with(path: &str, readers: usize) -> Result<Self> {
         let conn = if path == ":memory:" { Connection::open_in_memory() } else { Connection::open(path) }.map_err(db_err)?;
         if path != ":memory:" {
             conn.pragma_update(None, "journal_mode", "WAL").map_err(db_err)?;
+            // With WAL a power cut can lose the last commits but never corrupts; it makes every commit one fsync cheaper.
+            conn.pragma_update(None, "synchronous", "NORMAL").map_err(db_err)?;
+            conn.pragma_update(None, "cache_size", -32_000).map_err(db_err)?;
         }
         conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(db_err)?;
         conn.execute_batch(
@@ -30,7 +70,20 @@ impl SqliteDb {
              CREATE TABLE IF NOT EXISTS changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, record TEXT NOT NULL);",
         )
         .map_err(db_err)?;
-        Ok(SqliteDb { conn: Mutex::new(conn) })
+        let readers = if path == ":memory:" || readers == 0 {
+            None
+        } else {
+            let mut idle = Vec::with_capacity(readers);
+            for _ in 0..readers {
+                let r = Connection::open(path).map_err(db_err)?;
+                r.busy_timeout(std::time::Duration::from_secs(5)).map_err(db_err)?;
+                r.pragma_update(None, "query_only", true).map_err(db_err)?;
+                r.pragma_update(None, "cache_size", -16_000).map_err(db_err)?;
+                idle.push(r);
+            }
+            Some(Readers { idle: Mutex::new(idle), back: Condvar::new() })
+        };
+        Ok(SqliteDb { conn: Mutex::new(conn), readers })
     }
 }
 
@@ -221,6 +274,14 @@ impl Db for SqliteDb {
         "sqlite"
     }
     fn read(&self, f: &mut dyn FnMut(&dyn DbRead) -> Result<()>) -> Result<()> {
+        if let Some(pool) = &self.readers {
+            let c = pool.take();
+            let begun = c.execute_batch("BEGIN").map_err(db_err);
+            let r = begun.and_then(|_| f(&Conn { c: &c, nested: 0 }));
+            let _ = c.execute_batch("ROLLBACK");
+            pool.give(c);
+            return r;
+        }
         let guard = self.conn.lock();
         guard.execute_batch("BEGIN").map_err(db_err)?;
         let r = f(&Conn { c: &guard, nested: 0 });

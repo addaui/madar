@@ -1,7 +1,7 @@
 //! The setup wizard's server mode (ADR 0014): code, secrets, save-only-if-it-resolves.
 
 use nuah_adapters::AuthPassword;
-use nuah_server::setup::{setup_router, SetupConfig};
+use nuah_host::setup::{setup_router, SetupConfig};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -23,8 +23,8 @@ fn start(existing: Option<Value>) -> Wizard {
     }
     let cfg = SetupConfig {
         distribution: "madar".into(),
-        catalog: nuah_madar::catalog(),
-        starting_point: nuah_madar::profile_embedded("madar.db"),
+        catalog: madar_core::catalog(),
+        starting_point: madar_core::profile_embedded("madar.db"),
         profile_path: file.clone(),
         code: CODE.into(),
         server: Default::default(),
@@ -65,7 +65,7 @@ impl Wizard {
 }
 
 fn server_profile(hash: &str) -> Value {
-    let mut p = serde_json::to_value(nuah_madar::profile_server("data.db", json!([{"name": "alice", "password_hash": hash, "roles": ["admin"]}]))).unwrap();
+    let mut p = serde_json::to_value(madar_core::profile_server("data.db", json!([{"name": "alice", "password_hash": hash, "roles": ["admin"]}]))).unwrap();
     p["name"] = json!("server");
     p
 }
@@ -120,7 +120,7 @@ fn a_draft_with_the_marker_keeps_the_stored_secret() {
 #[test]
 fn only_a_profile_that_resolves_is_saved() {
     let w = start(None);
-    let before = nuah_madar::profile_embedded("madar.db");
+    let before = madar_core::profile_embedded("madar.db");
     let mut draft = serde_json::to_value(&before).unwrap();
     draft["enabled"].as_array_mut().unwrap().push(json!("no-such-plugin"));
     let (status, body) = w.post("/setup/save", &draft, Some(CODE));
@@ -137,16 +137,16 @@ fn only_a_profile_that_resolves_is_saved() {
 #[test]
 fn a_saved_profile_starts_a_core_and_is_private() {
     let w = start(None);
-    let draft = serde_json::to_value(nuah_madar::profile_test(&[])).unwrap();
+    let draft = serde_json::to_value(madar_core::profile_test(&[])).unwrap();
     // The test profile uses plugins the wizard's catalog does not ship (fixed clock): the wizard says so.
     assert_eq!(w.post("/setup/save", &draft, Some(CODE)).0, 422);
-    let mut p = serde_json::to_value(nuah_madar::profile_embedded(":memory:")).unwrap();
+    let mut p = serde_json::to_value(madar_core::profile_embedded(":memory:")).unwrap();
     p["name"] = json!("mine");
     let (status, body) = w.post("/setup/save", &p, Some(CODE));
     assert_eq!(status, 200, "{body}");
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(&w.file).unwrap()).unwrap();
     let profile = nuah_kernel::setup::profile_from_json(&saved).unwrap();
-    nuah_kernel::Core::start(&nuah_madar::distribution(profile)).unwrap_or_else(|p| panic!("{p:#?}"));
+    nuah_kernel::Core::start(&madar_core::distribution(profile)).unwrap_or_else(|p| panic!("{p:#?}"));
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
