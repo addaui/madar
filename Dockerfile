@@ -1,14 +1,10 @@
-# syntax=docker/dockerfile:1.7
 FROM rust:1-bookworm AS build
 RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/src/target \
-    set -eu; \
+RUN set -eu; \
     cargo build --release --locked -p madar-server; \
     cp target/release/madar-server /madar-server; \
     nuah="$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name=="nuah-host") | .manifest_path' | xargs dirname)/../.."; \

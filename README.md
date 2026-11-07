@@ -7,14 +7,14 @@ Task manager: projects, tasks, pages, live updates. Built on [Nuah](https://gith
 Requirements for a minimal deployment:
 
 - a Linux box (amd64) with Docker 24+ and the Compose plugin
-- 1 vCPU, 512 MB RAM, 1 GB of disk for the image and a small database
+- 1 vCPU, 256 MB RAM, 1 GB of disk for the image and a small database
 - a domain and a reverse proxy for TLS (Nginx Proxy Manager, Caddy, Traefik), or use it on a LAN without TLS
 - outbound internet only for link previews and pulling the image
 
 Steps:
 
 ```bash
-mkdir madar && cd madar && mkdir data
+mkdir madar && cd madar && mkdir data && sudo chown 10001 data
 curl -O https://raw.githubusercontent.com/addaui/madar/main/deploy/compose.yml
 ```
 
@@ -25,7 +25,7 @@ HASH=$(printf '%s' 'a long password' | docker run --rm -i ghcr.io/addaui/madar h
 printf '[{"name": "admin", "password_hash": "%s", "roles": ["admin"]}]\n' "$HASH" > data/accounts.json
 ```
 
-Set `NUAH_ALLOW_HOSTS` in `compose.yml` to the name your proxy serves, then:
+Replace `madar.example.com` in `NUAH_ALLOW_HOSTS` in `compose.yml` with the name your proxy serves, then:
 
 ```bash
 docker compose up -d
@@ -46,8 +46,8 @@ Update: `docker compose pull && docker compose up -d`. Backup: stop the containe
 | `NUAH_LOG_FILE` | also write JSON lines to this file |
 | `NUAH_LISTEN` | address inside the container, default `0.0.0.0:3000` |
 | `NUAH_PROFILE` | a Profile file instead of `--db` and `--accounts` |
-| `MADAR_METRICS_LISTEN` | with `metrics`, default `127.0.0.1:9464` |
-| `MADAR_METRICS_TOKEN` | bearer token for the metrics endpoint |
+| `MADAR_METRICS_LISTEN` | with `metrics`; in a container use `0.0.0.0:9464` and publish the port |
+| `MADAR_METRICS_TOKEN` | bearer token for the metrics endpoint, 8 characters or more |
 
 Health: `GET /healthz` (alive) and `GET /readyz` (can read its data).
 

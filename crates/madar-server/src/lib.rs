@@ -117,7 +117,7 @@ impl nuah_host::Product for Madar {
     }
     fn configure(&self, profile: &mut Profile, with: &[String]) {
         if with.iter().any(|w| w == "metrics") {
-            enable_metrics(profile, std::env::var("MADAR_METRICS_LISTEN").ok(), std::env::var_os("MADAR_METRICS_TOKEN").is_some());
+            enable_metrics(profile, std::env::var("MADAR_METRICS_LISTEN").ok(), std::env::var("MADAR_METRICS_TOKEN").is_ok_and(|t| !t.is_empty()));
         }
     }
 }

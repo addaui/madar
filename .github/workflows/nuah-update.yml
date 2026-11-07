@@ -1,6 +1,7 @@
 name: nuah-update
 # When Nuah or nuah-plugins publish a new tag, open a pull request that moves the pins. The pull request runs
-# the tests; a failure there means the two need matching releases.
+# the tests; a failure there means the two need matching releases. Needs the repository setting "Allow GitHub
+# Actions to create and approve pull requests"; add a token as NUAH_UPDATE_TOKEN so the tests run on the pull request.
 on:
   schedule:
     - cron: "17 6 * * *"
@@ -35,10 +36,10 @@ jobs:
         run: |
           changed=no
           if [ -n "${{ steps.tags.outputs.nuah }}" ] && [ "${{ steps.tags.outputs.nuah }}" != "${{ steps.tags.outputs.nuah_now }}" ]; then
-            sed -i "s|\(^nuah-\(kernel\|adapters\|http\|host\) = .*tag = \"\)[^\"]*\"|\1${{ steps.tags.outputs.nuah }}\"|" Cargo.toml; changed=yes
+            sed -E -i "s#(^nuah-(kernel|adapters|http|host) = .*tag = \")[^\"]*\"#\1${{ steps.tags.outputs.nuah }}\"#" Cargo.toml; changed=yes
           fi
           if [ -n "${{ steps.tags.outputs.plugins }}" ] && [ "${{ steps.tags.outputs.plugins }}" != "${{ steps.tags.outputs.plugins_now }}" ]; then
-            sed -i "s|\(^nuah-\(prefs\|appearance\|metric-prometheus\) = .*tag = \"\)[^\"]*\"|\1${{ steps.tags.outputs.plugins }}\"|" Cargo.toml; changed=yes
+            sed -E -i "s#(^nuah-(prefs|appearance|metric-prometheus) = .*tag = \")[^\"]*\"#\1${{ steps.tags.outputs.plugins }}\"#" Cargo.toml; changed=yes
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
           if [ "$changed" = yes ]; then cargo update -p nuah-kernel -p nuah-adapters -p nuah-http -p nuah-host -p nuah-prefs -p nuah-appearance -p nuah-metric-prometheus; fi
