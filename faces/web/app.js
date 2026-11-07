@@ -70,6 +70,7 @@ async function attempt(fn) {
 async function boot() {
   S.desc = await (await fetch("/link/describe", { credentials: "same-origin" })).json();
   S.who = S.desc.who || null;
+  applyTheme(S.prefs.theme || "system");
   const r = routeFromHash(); S.view = r.view; S.wantTask = r.task || null; S.tab = r.tab || null; S.wantPage = r.page || null;
   if (S.who) { await afterSignIn(); } else render();
 }
@@ -82,12 +83,20 @@ async function afterSignIn() {
   start();
 }
 function applyTheme(name) {
-  const th = (S.desc.themes || []).find((x) => x.id === "theme-" + name || x.id === name) || (S.desc.themes || [])[0];
+  const themes = S.desc.themes || [];
+  name = name || "system"; applyTheme.cur = name;
+  const th = themes.find((x) => x.id === "theme-" + name || x.id === name) || themes[0];
   if (!th) return;
-  const r = document.documentElement.style, k = th.tokens;
-  for (const key of ["bg", "surface", "text", "muted", "accent", "danger"]) if (k[key]) r.setProperty("--" + key, k[key]);
-  r.colorScheme = k.scheme || "light";
+  const k = th.tokens || {};
+  // "auto" carries a light and a dark palette and follows the device
+  const pick = k.scheme === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? k.dark : k.light) : k;
+  const r = document.documentElement.style, dark = pick.scheme === "dark";
+  for (const key of ["bg", "surface", "text", "muted", "accent", "danger"]) if (pick[key]) r.setProperty("--" + key, pick[key]);
+  r.setProperty("--on-accent", pick.on_accent || (dark ? "#04201b" : "#ffffff"));
+  document.documentElement.dataset.scheme = dark ? "dark" : "light";
+  r.colorScheme = dark ? "dark" : "light";
 }
+if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (S.desc && applyTheme.cur === "system") applyTheme("system"); });
 async function refreshAll() {
   const seq = ++loadSeq;
   const [list, inbox] = await Promise.all([attempt(() => call("projects.list")), attempt(() => call("inbox.list", { limit: 30 }))]);
@@ -119,7 +128,7 @@ async function refreshAll() {
   setHash();
   render();
 }
-function scheduleRefresh() { clearTimeout(refreshTimer); refreshTimer = setTimeout(() => { if (!document.activeElement || !document.activeElement.closest(".drawer, .col form, .madar-editor, .page-title, .composer, .filters")) refreshAll(); else scheduleRefresh(); }, 200); }
+function scheduleRefresh() { clearTimeout(refreshTimer); refreshTimer = setTimeout(() => { if (!document.activeElement || !document.activeElement.closest(".pane, .col form, .madar-editor, .page-title, .composer, .filters")) refreshAll(); else scheduleRefresh(); }, 200); }
 
 // ---------- live updates ----------
 function start() {
@@ -132,7 +141,7 @@ function start() {
   for (const kind of Object.keys(S.desc.events || {})) es.addEventListener(kind, (ev) => { S.live = "live"; paintLive(); const d = JSON.parse(ev.data); if (kind === "prefs.changed") { call("prefs.get").then((p) => { applyPrefs(p); render(); }).catch(() => {}); } onLiveEvent(kind, d); scheduleRefresh(); });
 }
 function stop() { if (es) { es.close(); es = null; } }
-function paintLive() { const el = document.querySelector(".live"); if (el) { el.dataset.state = S.live; el.title = S.live === "live" ? t("live") : t("offline"); } }
+function paintLive() { const el = document.querySelector(".live"); if (el) { el.dataset.state = S.live; el.title = S.live === "live" ? t("live") : t("offline"); const l = el.parentNode.querySelector(".live-label"); if (l) l.textContent = el.title; } }
 
 // ---------- views ----------
 function render() {
@@ -145,40 +154,52 @@ function restoreInputs(m) { for (const el of $app.querySelectorAll("[data-keep]"
 
 function signIn() {
   const err = h("div", { class: "err", role: "alert" });
-  const name = h("input", { type: "text", placeholder: t("name"), autocomplete: "username", "aria-label": t("name") });
+  const name = h("input", { type: "text", placeholder: t("name"), autocomplete: "username", "aria-label": t("name"), dir: "auto" });
   const pw = h("input", { type: "password", placeholder: t("password"), autocomplete: "current-password", "aria-label": t("password") });
-  const form = h("form", { onsubmit: async (e) => {
+  const form = h("form", { class: "signin", onsubmit: async (e) => {
     e.preventDefault(); err.textContent = "";
     try { await call("auth.sign_in", { name: name.value, password: pw.value }, { "X-Nuah-Session": "cookie" }); } catch (x) { err.textContent = x.message; return; }
     await boot();
-  } }, name, pw, err, h("button", { class: "primary", type: "submit" }, t("signIn")));
-  return h("div", { class: "signin" }, h("h1", {}, "Madar"), form);
+  } }, h("div", { class: "brand" }, ico("logo"), "Madar"), h("p", {}, t("signInHint")), name, pw, err, btn(t("signIn"), { kind: "primary", type: "submit" }));
+  return h("div", { class: "signin-wrap" }, form);
 }
 
 async function signOut() { await attempt(() => call("auth.sign_out", {})); S.who = null; stop(); render(); }
 
 function dueChip(task) {
-  if (!task.due) return task.repeat ? h("span", { class: "chip", title: repeatLabel(task.repeat) }, "↻") : null;
+  if (!task.due) return task.repeat ? h("span", { class: "chip", title: repeatLabel(task.repeat) }, ico("repeat"), repeatLabel(task.repeat)) : null;
   const today = S.today || new Date().toISOString().slice(0, 10);
   const late = task.due < today && !task.completed_at, soon = !late && !task.completed_at && task.due <= new Date(Date.parse(today) + dueSoonDays() * 864e5).toISOString().slice(0, 10);
-  return h("span", { class: "chip" + (late ? " late" : soon ? " soon" : ""), title: task.repeat ? repeatLabel(task.repeat) : null }, (task.repeat ? "↻ " : "") + fmtDate(task.due));
+  return h("span", { class: "chip" + (late ? " late" : soon ? " soon" : ""), title: task.repeat ? repeatLabel(task.repeat) : null }, ico(task.repeat ? "repeat" : "calendar"), fmtDate(task.due));
 }
-
+// Priority is always a word and a flag, never colour alone. Cards show it only when it is high.
+function prioChip(task, always) {
+  if (!task.band || (!always && task.band !== "high" && task.band !== "urgent")) return null;
+  if (always && (task.band === "low" || task.band === "medium")) return null;
+  return h("span", { class: "chip prio", "data-b": task.band }, ico("flag"), t(task.band));
+}
 
 function inboxView() {
-  return h("div", {}, h("div", { class: "head" }, h("h1", {}, t("inbox")), S.inbox.unread ? h("button", { onclick: async () => { await attempt(() => call("inbox.read", {})); refreshAll(); } }, t("markRead")) : null),
-    S.inbox.messages.length ? h("div", { class: "panel" }, ...S.inbox.messages.map((m) => h("div", { class: "list-item" }, h("span", { class: "grow", style: m.read ? "" : "font-weight:600" }, m.text), h("span", { class: "muted" }, new Date(m.at).toLocaleString())))) : h("div", { class: "empty" }, t("nothingNew")));
+  return h("div", {}, h("div", { class: "head" }, h("h1", {}, t("inbox")), S.inbox.unread ? btn(t("markRead"), { icon: "check", onclick: async () => { await attempt(() => call("inbox.read", {})); refreshAll(); } }) : null),
+    S.inbox.messages.length ? h("div", { class: "panel" }, ...S.inbox.messages.map((m) => h("div", { class: "list-item" }, m.read ? ico("inbox") : h("span", { class: "dot-nav", "aria-label": t("unread") }), h("span", { class: "grow", dir: "auto", style: m.read ? "" : "font-weight:620" }, m.text), h("span", { class: "muted", style: "font-size:12.5px" }, fmtTime(m.at)))))
+      : h("div", { class: "empty" }, ico("inbox"), h("b", {}, t("nothingNew")), h("span", {}, t("nothingNewHint"))));
 }
 
-
+function openCard(task) { S.openTask = task; setHash(); render(); }
 function card(task, subtasks, writer) {
-  const done = subtasks.filter((s) => s.completed_at).length;
-  const el = h("div", { class: "card", draggable: writer, "data-id": task.id, tabindex: "0", role: "button",
-    onclick: () => { S.openTask = task; setHash(); render(); }, onkeydown: (e) => { if (e.key === "Enter") { S.openTask = task; setHash(); render(); } },
+  const done = subtasks.filter((s) => s.completed_at).length, isDone = !!task.completed_at, lab = task.labels.map((id) => S.labels.find((x) => x.id === id)).filter(Boolean);
+  const cols = S.project.statuses;
+  const top = [prioChip(task), ...lab.slice(0, 2).map((l) => h("span", { class: "chip tag", dir: "auto" }, l.name))].filter(Boolean);
+  const el = h("div", { class: "card" + (isDone ? " done" : ""), draggable: writer, "data-id": task.id, tabindex: "0", role: "button", "aria-current": S.openTask && S.openTask.id === task.id ? "true" : null,
+    onclick: () => openCard(task), onkeydown: (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); openCard(task); } },
     ondragstart: (e) => { e.dataTransfer.setData("text/plain", task.id); el.classList.add("dragging"); }, ondragend: () => el.classList.remove("dragging") },
-    h("div", {}, task.title),
-    h("div", { class: "meta" }, h("span", { class: "band", "data-b": task.band }), dueChip(task), task.assignee ? h("span", {}, "@" + task.assignee) : null, subtasks.length ? h("span", {}, `${done}/${subtasks.length}`) : null,
-      ...task.labels.map((id) => { const l = S.labels.find((x) => x.id === id); return l ? h("span", { class: "chip" }, l.name) : null; })));
+    top.length ? h("div", { class: "card-top" }, ...top) : null,
+    h("div", { class: "card-title", dir: "auto" }, task.title),
+    // Every drag has a click: the same move, from a menu (WCAG 2.5.7)
+    writer ? ((m) => { m.classList.add("card-menu", "sm"); return m; })(menuBtn(t("moveTo") + ": " + task.title, () => [{ heading: t("moveTo") }, ...cols.map((c) => ({ label: c.name, icon: "move", checked: c.id === task.status, onclick: () => c.id !== task.status && dropOn(task.id, c.id, null) })), "-", { label: t("open"), icon: "task", onclick: () => openCard(task) }])) : null,
+    (task.due || task.repeat || subtasks.length || task.assignee) ? h("div", { class: "meta" }, dueChip(task),
+      subtasks.length ? h("span", { class: "mini-progress", title: t("subtasks") }, h("i", {}, h("b", { style: "width:" + Math.round((done / subtasks.length) * 100) + "%" })), `${done}/${subtasks.length}`) : null,
+      h("span", { class: "grow" }), task.assignee ? avatar(task.assignee, personName(task.assignee), "sm") : null) : null);
   return el;
 }
 async function dropOn(id, status, overCard) {
@@ -190,9 +211,9 @@ async function dropOn(id, status, overCard) {
   refreshAll();
 }
 
-async function renameProject() { const n = prompt(t("rename"), S.project.name); if (n && n.trim()) { await attempt(() => call("projects.update", { project: S.project.id, name: n.trim(), expected_rev: S.project.rev })); refreshAll(); } }
-async function deleteProject() { if (confirmDelete()) { await attempt(() => call("projects.delete", { project: S.project.id })); S.view = "today"; refreshAll(); } }
-async function leaveProject() { if (confirm(t("leave") + "?")) { await attempt(() => call("projects.leave", { project: S.project.id })); S.view = "today"; refreshAll(); } }
+async function renameProject() { const n = await askText(t("rename"), S.project.name); if (n && n.trim()) { await attempt(() => call("projects.update", { project: S.project.id, name: n.trim(), expected_rev: S.project.rev })); refreshAll(); } }
+async function deleteProject() { if (await confirmDelete()) { await attempt(() => call("projects.delete", { project: S.project.id })); S.view = "today"; refreshAll(); } }
+async function leaveProject() { if (await askConfirm(t("leave") + "?", { label: t("leave") })) { await attempt(() => call("projects.leave", { project: S.project.id })); S.view = "today"; refreshAll(); } }
 // Slots: places plugins may add buttons to. What to show comes from `describe`; a button only
 // names an Operation, and its inputs are read from the Slot's context (ADR 0016).
 const fromContext = (ctx, path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), ctx);
@@ -206,7 +227,7 @@ const fillFile = (tpl, ctx) => tpl.replace(/\$([a-z0-9_]+(?:\.[a-z0-9_]+)*)/g, (
 function slotLabel(item) { return item.label[lang] || item.label.en || item.id; }
 function slotButtons(slot, ctx) {
   return (S.desc.slots || []).filter((i) => i.slot === slot).map((item) =>
-    h("button", { "data-slot-item": item.id, onclick: () => runSlot(item, ctx) }, slotLabel(item)));
+    h("button", { class: "btn", "data-slot-item": item.id, onclick: () => runSlot(item, ctx) }, slotLabel(item)));
 }
 async function runSlot(item, ctx) {
   const args = Object.fromEntries(Object.entries(item.args).map(([k, v]) => [k, fillRefs(v, ctx)]));
@@ -218,13 +239,16 @@ async function runSlot(item, ctx) {
   } else refreshAll();
 }
 
+function slotMenuItems(slot, ctx) {
+  return (S.desc.slots || []).filter((i) => i.slot === slot).map((item) => ({ label: slotLabel(item), icon: item.result === "download" ? "download" : "sparkle", onclick: () => runSlot(item, ctx) }));
+}
 function membersPanel(manager) {
-  const who = h("input", { type: "text", placeholder: t("person"), "aria-label": t("person"), "data-keep": "share-who" });
+  const who = h("input", { type: "text", placeholder: t("person"), "aria-label": t("person"), "data-keep": "share-who", dir: "auto" });
   const level = h("select", { "aria-label": "level" }, h("option", { value: "editor" }, t("editor")), h("option", { value: "viewer" }, t("viewer")));
   return h("div", { class: "panel" }, h("h2", {}, t("members")),
-    ...S.members.map((m) => h("div", { class: "list-item" }, h("span", { class: "grow" }, m.display || m.subject), h("span", { class: "muted" }, t(m.level)),
-      manager && m.level !== "owner" ? h("button", { class: "quiet danger", onclick: async () => { await attempt(() => call("projects.unshare", { project: S.project.id, subject: m.subject })); refreshAll(); } }, "×") : null)),
-    manager ? h("form", { class: "list-item", onsubmit: async (e) => { e.preventDefault(); if (!who.value.trim()) return; await attempt(() => call("projects.share", { project: S.project.id, subject: who.value.trim(), level: level.value })); who.value = ""; refreshAll(); } }, who, level, h("button", { type: "submit" }, t("share"))) : null);
+    ...S.members.map((m) => h("div", { class: "list-item" }, avatar(m.subject, m.display), h("span", { class: "grow", dir: "auto" }, m.display || m.subject), h("span", { class: "chip" }, t(m.level)),
+      manager && m.level !== "owner" ? iconBtn("close", t("remove"), async () => { await attempt(() => call("projects.unshare", { project: S.project.id, subject: m.subject })); refreshAll(); }, { class: "sm danger" }) : null)),
+    manager ? h("form", { class: "list-item", onsubmit: async (e) => { e.preventDefault(); if (!who.value.trim()) return; await attempt(() => call("projects.share", { project: S.project.id, subject: who.value.trim(), level: level.value })); who.value = ""; refreshAll(); } }, who, level, btn(t("share"), { icon: "plus", type: "submit" })) : null);
 }
 async function loadAudit() { const out = await attempt(() => call("audit.list", { project: S.project.id, limit: 50 })); S.audit = out ? out.entries : []; render(); }
 // A person is shown by display name when they are a current member, otherwise by their sign-in name.
@@ -247,7 +271,7 @@ function describeEntry(e) {
   return STR.en[key] !== undefined ? fill(key, v) : e.kind;
 }
 function auditPanel() {
-  return h("div", { class: "panel" }, h("h2", {}, t("audit")), ...(S.audit || []).map((e) => h("div", { class: "list-item" }, h("span", { class: "grow" }, describeEntry(e)), h("span", { class: "muted" }, new Date(e.at).toLocaleString()))));
+  return h("div", { class: "panel" }, h("h2", {}, t("audit")), ...(S.audit || []).map((e) => h("div", { class: "list-item" }, ico("history"), h("span", { class: "grow", dir: "auto" }, describeEntry(e)), h("span", { class: "muted", style: "font-size:12.5px" }, fmtTime(e.at)))));
 }
 
 // ---------- archived tasks ----------
@@ -256,12 +280,13 @@ function archivedPanel(writer) {
   const rows = S.archivedTasks || [];
   return h("div", { class: "panel" }, h("h2", {}, t("archived")),
     rows.length ? null : h("div", { class: "muted" }, t("noArchived")),
-    ...rows.map((x) => h("div", { class: "list-item" }, h("span", { class: "grow" }, x.title),
-      writer ? h("button", { onclick: async () => { await attempt(() => call("tasks.update", { project: S.project.id, id: x.id, expected_rev: x.rev, archived: false })); await loadArchived(); refreshAll(); } }, t("restore")) : null)));
+    ...rows.map((x) => h("div", { class: "list-item" }, ico("archive"), h("span", { class: "grow", dir: "auto" }, x.title),
+      writer ? btn(t("restore"), { icon: "history", onclick: async () => { await attempt(() => call("tasks.update", { project: S.project.id, id: x.id, expected_rev: x.rev, archived: false })); await loadArchived(); refreshAll(); } }) : null)));
 }
 
 // ---------- the task drawer ----------
 // An incoming event re-renders the page, but half-typed edits in the drawer must survive it, so the
 // drawer is only rebuilt when the task (or who can be picked in it) really changed.
 
-boot();
+// every script is loaded before the first call (several of them define what boot and render use)
+if (document.readyState === "complete") boot(); else window.addEventListener("load", boot);

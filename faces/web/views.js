@@ -29,39 +29,54 @@ async function loadList(more) {
 let listTimer = null;
 function listChanged() { clearTimeout(listTimer); listTimer = setTimeout(async () => { await loadList(false); render(); }, 250); }
 
+const TAB_ICON = { board: "board", list: "list", overview: "chart", pages: "book" };
 function projectView() {
-  if (!S.project) return h("div", { class: "empty" }, t("empty"));
+  if (!S.project) return h("div", { class: "empty" }, ico("folder"), h("b", {}, t("empty")));
   const p = S.project, writer = can(p, "projects.write"), manager = can(p, "projects.manage");
   const tab = tabsAvailable().includes(S.tab) ? S.tab : "board";
   const place = S.ws && hasOp("workspaces.place") ? (S.ws.placements.find((x) => x.project === p.id) || { workspace: "default" }).workspace : null;
-  const head = h("div", { class: "head" }, h("h1", {}, p.name),
-    h("button", { onclick: () => { S.panel = S.panel === "members" ? null : "members"; render(); } }, t("members") + " (" + S.members.length + ")"),
-    slotButtons("project.actions", { project: p }),
-    place !== null ? h("select", { "aria-label": t("moveTo"), title: t("moveTo"), onchange: async (e) => { await attempt(() => call("workspaces.place", { project: p.id, workspace: e.target.value })); refreshAll(); } },
-      ...S.ws.workspaces.map((w) => h("option", { value: w.id, selected: w.id === place }, w.builtin ? t("defaultWs") : w.name))) : null,
-    h("button", { onclick: () => { S.panel = S.panel === "archived" ? null : "archived"; if (S.panel === "archived") loadArchived(); else render(); } }, t("archived")),
-    manager ? h("button", { onclick: () => { S.panel = S.panel === "audit" ? null : "audit"; if (S.panel === "audit") loadAudit(); else render(); } }, t("audit")) : null,
-    manager ? h("button", { onclick: openProjectSettings, title: t("projectSettings") }, "⚙ " + t("projectSettings")) : null,
-    manager ? h("button", { onclick: renameProject }, t("rename")) : null,
-    manager ? h("button", { class: "danger", onclick: deleteProject }, t("delete")) : h("button", { class: "danger", onclick: leaveProject }, t("leave")));
-  const tabs = h("div", { class: "tabs", role: "tablist" }, ...tabsAvailable().map((x) => h("button", { role: "tab", "aria-selected": String(x === tab), class: "tab", onclick: async () => { flushPage(); S.tab = x; S.openPage = null; S.openTask = null; drawerCache = null; await loadTab(); setHash(); render(); } }, t(x))));
+  const toggle = (name, load) => { S.panel = S.panel === name ? null : name; if (S.panel && load) load(); else render(); };
+  const head = h("div", { class: "head" }, h("h1", { dir: "auto" }, p.name),
+    h("button", { class: "btn ghost", onclick: () => toggle("members"), title: t("members"), "aria-label": t("members") + " (" + S.members.length + ")" }, avatarStack(S.members, 4), h("span", {}, String(S.members.length))),
+    writer && tab !== "pages" ? btn(t("newTask"), { kind: "primary", icon: "plus", onclick: newTaskHere }) : null,
+    menuBtn(t("more"), () => [
+      place !== null ? { heading: t("moveTo") } : null,
+      ...(place !== null ? S.ws.workspaces.map((w) => ({ label: w.builtin ? t("defaultWs") : w.name, icon: "folder", checked: w.id === place, onclick: async () => { if (w.id !== place) { await attempt(() => call("workspaces.place", { project: p.id, workspace: w.id })); refreshAll(); } } })) : []),
+      place !== null ? "-" : null,
+      ...slotMenuItems("project.actions", { project: p }),
+      { label: t("archived"), icon: "archive", onclick: () => toggle("archived", loadArchived) },
+      manager ? { label: t("audit"), icon: "history", onclick: () => toggle("audit", loadAudit) } : null,
+      manager ? { label: t("projectSettings"), icon: "gear", onclick: openProjectSettings } : null,
+      manager ? { label: t("rename"), icon: "edit", onclick: renameProject } : null,
+      "-",
+      manager ? { label: t("delete"), icon: "trash", danger: true, onclick: deleteProject } : { label: t("leave"), icon: "logout", danger: true, onclick: leaveProject },
+    ]));
+  const tabs = h("div", { class: "tabs", role: "tablist" }, ...tabsAvailable().map((x) => h("button", { role: "tab", "aria-selected": String(x === tab), class: "tab", onclick: async () => { flushPage(); S.tab = x; S.openPage = null; S.openTask = null; drawerCache = null; await loadTab(); setHash(); render(); } }, ico(TAB_ICON[x]), t(x))));
   let body;
   if (tab === "list") body = listTab(); else if (tab === "overview") body = overviewTab(); else if (tab === "pages") body = pagesTab(p, writer); else body = boardTab(p, writer);
   return h("div", {}, head, tabs, S.panel === "members" ? membersPanel(manager) : null, S.panel === "audit" ? auditPanel() : null, S.panel === "archived" ? archivedPanel(writer) : null, body);
 }
+// "N" and the New task button: put the cursor in the first column's add box (switching to the board first).
+async function newTaskHere() {
+  if (S.tab !== "board") { S.tab = "board"; S.openPage = null; S.openTask = null; drawerCache = null; await loadTab(); setHash(); render(); }
+  const i = document.querySelector(".board .add-row input"); if (i) { i.scrollIntoView({ block: "nearest", inline: "nearest" }); i.focus(); }
+}
 
+const COL_COLORS = ["var(--p-low)", "var(--info)", "var(--warn)", "#8b6fd1", "#d0629a"];
 function boardTab(p, writer) {
   const top = S.tasks.filter((x) => !x.parent && !x.archived);
   const subs = (id) => S.tasks.filter((x) => x.parent === id);
-  const cols = p.statuses.map((s) => {
+  const cols = p.statuses.map((s, idx) => {
     const items = top.filter((x) => x.status === s.id).sort((a, b) => a.position - b.position);
-    const col = h("div", { class: "col", "data-status": s.id,
-      ondragover: (e) => { if (writer) { e.preventDefault(); col.classList.add("over"); } }, ondragleave: () => col.classList.remove("over"),
+    const last = idx === p.statuses.length - 1;
+    const col = h("section", { class: "col", "data-status": s.id, "aria-label": s.name,
+      ondragover: (e) => { if (writer) { e.preventDefault(); col.classList.add("over"); } }, ondragleave: (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("over"); },
       ondrop: (e) => { e.preventDefault(); col.classList.remove("over"); const id = e.dataTransfer.getData("text/plain"); if (id) dropOn(id, s.id, e.target.closest(".card")); } },
-      h("h3", {}, h("span", {}, s.name), h("span", {}, items.length)),
+      h("div", { class: "col-head" }, h("span", { class: "col-dot" }), h("span", { class: "name", dir: "auto" }, s.name), h("span", { class: "count" }, String(items.length))),
       ...items.map((x) => card(x, subs(x.id), writer)),
-      writer ? h("form", { onsubmit: async (e) => { e.preventDefault(); const i = e.target.elements[0]; const title = i.value.trim(); if (!title) return; i.value = ""; await attempt(() => call("tasks.create", { project: p.id, title, status: s.id, priority: defaultPriority() })); refreshAll(); } },
-        h("input", { class: "add", type: "text", placeholder: t("addPh"), "aria-label": t("add"), "data-keep": "add-" + s.id })) : null);
+      writer ? h("form", { class: "add-row", onsubmit: async (e) => { e.preventDefault(); const i = e.target.elements[0]; const title = i.value.trim(); if (!title) return; i.value = ""; await attempt(() => call("tasks.create", { project: p.id, title, status: s.id, priority: defaultPriority() })); refreshAll(); } },
+        h("input", { type: "text", placeholder: "+  " + t("addPh"), "aria-label": t("add") + ": " + s.name, "data-keep": "add-" + s.id, dir: "auto" })) : null);
+    col.style.setProperty("--c", last ? "var(--ok)" : COL_COLORS[Math.min(idx, COL_COLORS.length - 1)]);
     return col;
   });
   return h("div", { class: "board" }, ...cols);
@@ -73,21 +88,21 @@ function listTab() {
   const p = S.project, q = S.listq, attrs = p.attributes || [];
   const sorts = [["position", t("board")], ["title", t("title")], ["priority", t("priority")], ["due", t("due")], ["created_at", "↧"], ["status", t("status")], ...attrs.map((a) => ["custom." + a.key, a.label])];
   const open = (r) => { S.openTask = r; setHash(); render(); };
-  const ctl = h("div", { class: "row filters" },
-    h("input", { type: "search", placeholder: t("search"), "aria-label": t("search"), value: q.q, "data-keep": "listq", oninput: (e) => { q.q = e.target.value; listChanged(); } }),
+  const ctl = h("div", { class: "toolbar filters" },
+    h("input", { type: "search", placeholder: t("search"), "aria-label": t("search"), value: q.q, "data-keep": "listq", dir: "auto", oninput: (e) => { q.q = e.target.value; listChanged(); } }),
     h("select", { "aria-label": t("status"), onchange: (e) => { q.status = e.target.value; listChanged(); } }, h("option", { value: "" }, t("all") + " · " + t("status")), ...p.statuses.map((s) => h("option", { value: s.id, selected: s.id === q.status }, s.name))),
     h("select", { "aria-label": t("assignee"), onchange: (e) => { q.assignee = e.target.value; listChanged(); } }, h("option", { value: "" }, t("all") + " · " + t("assignee")), h("option", { value: "-", selected: q.assignee === "-" }, t("nobody")), ...S.members.map((m) => h("option", { value: m.subject, selected: m.subject === q.assignee }, m.display || m.subject))),
     h("select", { "aria-label": t("sortBy"), onchange: (e) => { q.sort = e.target.value; listChanged(); } }, ...sorts.map(([v, l]) => h("option", { value: v, selected: v === q.sort }, t("sortBy") + ": " + l))),
-    h("button", { onclick: () => { q.desc = !q.desc; listChanged(); }, "aria-label": q.desc ? "descending" : "ascending" }, q.desc ? "↓" : "↑"),
+    iconBtn(q.desc ? "down" : "up", q.desc ? t("descending") : t("ascending"), () => { q.desc = !q.desc; listChanged(); }),
     h("span", { class: "muted" }, t("total") + ": " + q.total));
   const th = (s) => h("th", {}, s);
   const colName = (id) => (p.statuses.find((s) => s.id === id) || {}).name || id;
   const rows = q.rows.map((r) => h("tr", { class: "clickable", tabindex: 0, onclick: () => open(r), onkeydown: (e) => { if (e.key === "Enter") open(r); } },
-    h("td", {}, r.parent ? "↳ " : "", r.title), h("td", {}, colName(r.status)), h("td", {}, h("span", { class: "band", "data-b": r.band }), " " + r.priority), h("td", {}, dueChip(r)),
-    h("td", {}, (S.members.find((m) => m.subject === r.assignee) || {}).display || r.assignee || ""), ...attrs.map((a) => h("td", {}, attrValue(a, (r.custom || {})[a.key])))));
+    h("td", { dir: "auto" }, r.parent ? ico("subtask") : null, " ", r.title), h("td", {}, h("span", { class: "chip" }, colName(r.status))), h("td", {}, h("span", { class: "chip prio", "data-b": r.band }, ico("flag"), t(r.band))), h("td", {}, dueChip(r)),
+    h("td", {}, r.assignee ? h("span", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, avatar(r.assignee, personName(r.assignee), "sm"), personName(r.assignee)) : ""), ...attrs.map((a) => h("td", {}, attrValue(a, (r.custom || {})[a.key])))));
   return h("div", {}, ctl, h("div", { class: "table-wrap" }, h("table", { class: "grid" }, h("thead", {}, h("tr", {}, th(t("title")), th(t("status")), th(t("priority")), th(t("due")), th(t("assignee")), ...attrs.map((a) => th(a.label)))), h("tbody", {}, ...rows))),
-    !rows.length ? h("div", { class: "empty", style: "margin:4vh auto" }, t("none")) : null,
-    q.next ? h("button", { onclick: async () => { await loadList(true); render(); } }, t("loadOlder")) : null);
+    !rows.length ? h("div", { class: "empty", style: "margin:4vh auto" }, ico("search"), h("b", {}, t("none"))) : null,
+    q.next ? h("div", { style: "margin-block-start:12px" }, btn(t("loadOlder"), { onclick: async () => { await loadList(true); render(); } })) : null);
 }
 
 // ---------- overview ----------
@@ -107,8 +122,8 @@ function overviewTab() {
   const s = S.stats, p = S.project;
   if (!s) return h("div", { class: "empty" }, t("none"));
   const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
-  const stat = (label, n, cls) => h("div", { class: "stat " + (cls || "") }, h("div", { class: "stat-n" }, String(n)), h("div", { class: "muted" }, label));
-  return h("div", {}, h("div", { class: "stats" }, stat(t("total"), s.total), stat(t("openN"), s.open), stat(t("doneN"), s.done + " · " + pct + "%"), stat(t("overdueN"), s.overdue, s.overdue ? "late" : "")),
+  const stat = (label, n, cls) => h("div", { class: cls || "" }, h("b", {}, String(n)), h("span", {}, label));
+  return h("div", {}, h("div", { class: "stat-strip" }, stat(t("total"), s.total), stat(t("openN"), s.open), stat(t("doneN"), s.done + " · " + pct + "%"), stat(t("overdueN"), s.overdue, s.overdue ? "late" : "")),
     h("div", { class: "grid2" }, bars(t("byColumn"), p.statuses.map((c) => [c.name, s.by_status[c.id] || 0])),
       bars(t("byPriority"), ["urgent", "high", "medium", "low"].map((b) => [t(b), s.by_band[b] || 0, b]))),
     h("div", { class: "panel" }, h("h2", {}, t("completions")), sparkline(s.completed_per_day)));
@@ -126,22 +141,22 @@ function openProjectSettings() {
     const colRows = statuses.map((s, i) => h("div", { class: "list-item" },
       h("input", { type: "text", value: s.name, maxlength: 60, "aria-label": t("columnName"), class: "grow", oninput: (e) => (s.name = e.target.value) }),
       i === statuses.length - 1 ? h("span", { class: "chip" }, t("doneN")) : null,
-      h("button", { class: "quiet", title: t("up"), onclick: () => move(i, -1) }, "↑"), h("button", { class: "quiet", title: t("down"), onclick: () => move(i, 1) }, "↓"),
-      h("button", { class: "quiet danger", title: t("delete"), disabled: statuses.length <= 2, onclick: () => { statuses.splice(i, 1); draw(); } }, "×")));
+      iconBtn("up", t("up"), () => move(i, -1), { class: "sm" }), iconBtn("down", t("down"), () => move(i, 1), { class: "sm" }),
+      iconBtn("close", t("delete"), () => { statuses.splice(i, 1); draw(); }, { class: "sm danger", attrs: { disabled: statuses.length <= 2 } })));
     const nameIn = h("input", { type: "text", placeholder: t("columnName"), maxlength: 60 });
     const attrRows = attrs.map((a, i) => h("div", { class: "attr-row" },
       h("input", { type: "text", value: a.label, placeholder: t("fieldLabel"), maxlength: 60, oninput: (e) => (a.label = e.target.value) }),
       h("input", { type: "text", value: a.key, placeholder: t("fieldKey"), maxlength: 30, style: "width:110px", oninput: (e) => (a.key = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_")) }),
       h("select", { "aria-label": t("fieldType"), onchange: (e) => { a.type = e.target.value; draw(); } }, ...["text", "number", "date", "boolean", "choice"].map((ty) => h("option", { value: ty, selected: ty === a.type }, t("t_" + ty)))),
       a.type === "choice" ? h("input", { type: "text", value: a.choices, placeholder: t("fieldChoices"), oninput: (e) => (a.choices = e.target.value) }) : null,
-      h("button", { class: "quiet danger", onclick: () => { attrs.splice(i, 1); draw(); } }, "×")));
+      iconBtn("close", t("delete"), () => { attrs.splice(i, 1); draw(); }, { class: "sm danger" })));
     body.replaceChildren(
       h("section", { class: "panel" }, h("h2", {}, t("columns")), h("p", { class: "muted" }, t("doneNote")), ...colRows,
-        h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); const n = nameIn.value.trim(); if (!n || statuses.length >= 12) return; statuses.splice(Math.max(0, statuses.length - 1), 0, { id: uniqueId(n), name: n }); draw(); /* before the last: the last column means done */ } }, nameIn, h("button", { type: "submit" }, "+ " + t("addColumn"))),
-        h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, h("button", { class: "primary", onclick: () => save({ statuses: statuses.map((s) => ({ id: s.id, name: s.name.trim() || s.id })) }) }, t("save")))),
+        h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); const n = nameIn.value.trim(); if (!n || statuses.length >= 12) return; statuses.splice(Math.max(0, statuses.length - 1), 0, { id: uniqueId(n), name: n }); draw(); /* before the last: the last column means done */ } }, nameIn, btn(t("addColumn"), { icon: "plus", type: "submit" })),
+        h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, btn(t("save"), { kind: "primary", onclick: () => save({ statuses: statuses.map((s) => ({ id: s.id, name: s.name.trim() || s.id })) }) }))),
       h("section", { class: "panel" }, h("h2", {}, t("attributes")), ...attrRows,
-        h("button", { onclick: () => { if (attrs.length < 30) { attrs.push({ key: "field_" + (attrs.length + 1), label: "", type: "text", choices: "" }); draw(); } } }, "+ " + t("addAttribute")),
-        h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, h("button", { class: "primary", onclick: () => save({ attributes: attrs.map((a) => { const o = { key: a.key, label: a.label.trim() || a.key, type: a.type }; if (a.type === "choice") o.choices = a.choices.split(",").map((x) => x.trim()).filter(Boolean); return o; }) }) }, t("save")))));
+        btn(t("addAttribute"), { icon: "plus", onclick: () => { if (attrs.length < 30) { attrs.push({ key: "field_" + (attrs.length + 1), label: "", type: "text", choices: "" }); draw(); } } }),
+        h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, btn(t("save"), { kind: "primary", onclick: () => save({ attributes: attrs.map((a) => { const o = { key: a.key, label: a.label.trim() || a.key, type: a.type }; if (a.type === "choice") o.choices = a.choices.split(",").map((x) => x.trim()).filter(Boolean); return o; }) }) }))));
   };
   draw();
   openModal(t("projectSettings"), body, { wide: true });

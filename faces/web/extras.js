@@ -11,20 +11,20 @@ function openFound(x) {
 }
 function openSearch() {
   if (!hasOp("search.query") || document.querySelector(".modal-back")) return;
-  const out = h("div", { class: "results", role: "listbox" }), input = h("input", { type: "search", placeholder: t("search"), "aria-label": t("search"), style: "width:100%" });
+  const out = h("div", { class: "results", role: "listbox", id: "search-results" }), input = h("input", { type: "search", placeholder: t("search"), "aria-label": t("search"), role: "combobox", "aria-controls": "search-results", "aria-expanded": "true", dir: "auto", autocomplete: "off" });
   let timer, m, seq = 0, rows = [], at = 0;
-  const mark = () => [...out.children].forEach((el, i) => el.setAttribute("aria-selected", String(i === at)));
+  const mark = () => { [...out.children].forEach((el, i) => { el.setAttribute("aria-selected", String(i === at)); if (i === at) el.scrollIntoView({ block: "nearest" }); }); };
   const pick = (x) => { m.close(); openFound(x); };
   const run = async () => {
     const q = input.value.trim(), mine = ++seq;
-    if (q.length < 2) { rows = []; out.replaceChildren(); return; }
+    if (q.length < 2) { rows = []; out.replaceChildren(h("div", { class: "muted", style: "padding:14px 12px" }, t("searchHint"))); return; }
     const res = await attempt(() => call("search.query", { q, limit: 20 }));
     if (mine !== seq || !res) return;
     rows = res.items; at = 0;
-    out.replaceChildren(...(rows.length ? rows.map((x) => h("button", { class: "found", role: "option", onclick: () => pick(x) },
-      h("span", { class: "kind" }, x.kind === "task" ? "☑" : x.kind === "note" ? "✎" : "▤"),
+    out.replaceChildren(...(rows.length ? rows.map((x) => h("button", { class: "found", type: "button", role: "option", onclick: () => pick(x) },
+      h("span", { class: "kind" }, ico(x.kind === "task" ? "task" : x.kind === "note" ? "notes" : "page")),
       h("span", { class: "grow" }, h("strong", { dir: "auto" }, x.title || t("untitled")), x.snippet ? h("small", { class: "muted", dir: "auto" }, x.snippet) : null),
-      h("span", { class: "muted" }, x.kind === "note" ? t("notes") : x.project_name || ""))) : [h("div", { class: "muted", style: "padding:10px" }, t("noResults"))]));
+      h("span", { class: "where", dir: "auto" }, x.kind === "note" ? t("notes") : x.project_name || ""))) : [h("div", { class: "empty", style: "margin:5vh auto" }, ico("search"), h("b", {}, t("noResults")))]));
     mark();
   };
   input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(run, 180); });
@@ -33,7 +33,9 @@ function openSearch() {
     else if (e.key === "ArrowUp" && rows.length) { e.preventDefault(); at = (at - 1 + rows.length) % rows.length; mark(); }
     else if (e.key === "Enter" && rows[at]) { e.preventDefault(); pick(rows[at]); }
   });
-  m = openModal(t("search").replace("…", ""), h("div", {}, input, out), { wide: true });
+  out.append(h("div", { class: "muted", style: "padding:14px 12px" }, t("searchHint")));
+  m = openModal(t("search").replace("…", ""), h("div", {}, h("div", { class: "palette-input" }, ico("search"), input), out,
+    h("div", { class: "palette-foot" }, h("span", {}, h("kbd", {}, "↑"), " ", h("kbd", {}, "↓"), " " + t("kMove")), h("span", {}, h("kbd", {}, "↵"), " " + t("kOpen")), h("span", {}, h("kbd", {}, "Esc"), " " + t("close")))), { palette: true });
   input.focus();
 }
 document.addEventListener("keydown", (e) => {
@@ -51,11 +53,11 @@ function openHistory(writer) {
     [...list.children].forEach((el) => el.setAttribute("aria-current", String(el.dataset.id === v.id)));
     const full = await attempt(() => call(pgOp("version"), pgIn({ id: pg.id, version: v.id }))); if (!full) return;
     view.replaceChildren(h("h3", { dir: "auto" }, full.title), h("pre", { class: "version-text", dir: "auto" }, window.MadarEditor ? window.MadarEditor.text(full.body) : ""),
-      writer ? h("button", { class: "primary", onclick: async () => {
-        if (!confirm(t("sureRestore"))) return;
+      writer ? btn(t("restoreVersion"), { kind: "primary", icon: "history", onclick: async () => {
+        if (!(await askConfirm(t("sureRestore"), { label: t("restoreVersion"), danger: false }))) return;
         const back = await attempt(() => call(pgOp("restore"), pgIn({ id: pg.id, version: v.id })));
         if (back) { m.close(); dropPageCache(); await loadPagesData(); await openPageNow(pg.id); render(); toast(t("restored")); }
-      } }, t("restoreVersion")) : null);
+      } }) : null);
   };
   (async () => {
     const out = await attempt(() => call(pgOp("versions"), pgIn({ id: pg.id }))); if (!out) return;
@@ -86,7 +88,7 @@ function repeatControl(task, writer) {
 // ---------- images: an address, or a file from this computer ----------
 function askImage(label) {
   return new Promise((resolve) => {
-    const url = h("input", { type: "text", "aria-label": label, placeholder: "https://…", style: "width:100%" }), note = h("div", { class: "muted" }, "");
+    const url = h("input", { type: "text", "aria-label": label, placeholder: "https://…", style: "width:100%" }), note = h("div", { class: "muted", style: "margin-block-start:8px" }, "");
     let done = false; const finish = (v) => { if (!done) { done = true; m.close(); resolve(v); } };
     const file = h("input", { type: "file", accept: "image/png,image/jpeg,image/gif,image/webp", hidden: true, onchange: async () => {
       const f = file.files[0]; if (!f) return;
@@ -98,9 +100,9 @@ function askImage(label) {
       if (out) finish(out.url); else note.textContent = (attempt.last && attempt.last.message) || t("offline");
     } });
     const form = h("form", { onsubmit: (e) => { e.preventDefault(); finish(url.value.trim() || null); } }, url,
-      hasOp("files.upload") ? h("div", { class: "row", style: "margin-top:10px" }, h("button", { type: "button", onclick: () => file.click() }, "⬆ " + t("uploadImage")), file) : null, note,
-      h("div", { class: "row", style: "margin-top:12px;justify-content:flex-end" }, h("button", { type: "button", onclick: () => finish(null) }, t("cancel")), h("button", { class: "primary", type: "submit" }, t("ok"))));
-    const m = openModal(label, form);
+      hasOp("files.upload") ? h("div", { class: "row", style: "margin-block-start:10px" }, btn(t("uploadImage"), { icon: "upload", onclick: () => file.click() }), file) : null, note,
+      h("div", { class: "btn-row" }, btn(t("cancel"), { onclick: () => finish(null) }), btn(t("ok"), { kind: "primary", type: "submit" })));
+    const m = openModal(label, form, { onClose: () => finish(null) });
     url.focus();
   });
 }

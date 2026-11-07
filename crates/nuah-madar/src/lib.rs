@@ -36,7 +36,7 @@ pub fn catalog() -> Catalog {
     Catalog(list)
 }
 
-const FEATURES: [&str; 20] = ["projects", "tasks", "discussion", "audit", "quota", "prefs", "export", "notify", "notify-inbox", "theme-paper", "editor", "editor-basic", "refs", "pages", "timeline", "workspaces", "search", "files", "files-db", "previews"];
+const FEATURES: [&str; 21] = ["projects", "tasks", "discussion", "audit", "quota", "prefs", "export", "notify", "notify-inbox", "theme-paper", "theme-system", "editor", "editor-basic", "refs", "pages", "timeline", "workspaces", "search", "files", "files-db", "previews"];
 
 fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     let mut enabled: Vec<String> = adapters.iter().map(|s| s.to_string()).collect();

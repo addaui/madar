@@ -25,14 +25,14 @@ function openRef(kind, id) {
 }
 function pickItem() {
   return new Promise((resolve) => {
-    const out = h("div", {}), input = h("input", { type: "search", placeholder: t("searchItems"), "aria-label": t("searchItems"), style: "width:100%" });
+    const out = h("div", { class: "results" }), input = h("input", { type: "search", placeholder: t("searchItems"), "aria-label": t("searchItems"), dir: "auto", style: "width:100%" });
     let timer, m, finished = false;
     const done = (v) => { if (!finished) { finished = true; m.close(); resolve(v); } };
     const run = async () => {
       const q = input.value.trim(); if (!q) { out.replaceChildren(); return; }
       const [pages, tasks] = await Promise.all([attempt(() => call(pgOp("search"), pgIn({ q }))), personal() ? null : attempt(() => call("tasks.query", { project: S.project.id, q, limit: 8 }))]);
       const rows = [...(pages ? pages.pages.map((x) => ({ kind: "pages.page", id: x.id, title: x.title || t("untitled") })) : []), ...(tasks ? tasks.tasks.map((x) => ({ kind: "tasks.task", id: x.id, title: x.title })) : [])];
-      out.replaceChildren(...rows.map((r) => h("button", { class: "list-item clickable", style: "width:100%;text-align:start", onclick: () => done(r) }, (r.kind === "tasks.task" ? "☑ " : "▤ ") + r.title)));
+      out.replaceChildren(...rows.map((r) => h("button", { class: "found", type: "button", onclick: () => done(r) }, h("span", { class: "kind" }, ico(r.kind === "tasks.task" ? "task" : "page")), h("span", { class: "grow" }, h("strong", { dir: "auto" }, r.title)))));
     };
     input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(run, 200); });
     m = openModal(t("pickItem"), h("div", {}, input, out));
@@ -57,9 +57,14 @@ function treeRow(pg, depth, writer) {
       const sibs = childrenOf(pg.parent || null).filter((x) => x.id !== id), i = sibs.findIndex((x) => x.id === pg.id);
       if (z === "child") movePage(id, pg.id, null); else if (z === "before") movePage(id, pg.parent || null, pg.id); else movePage(id, pg.parent || null, sibs[i + 1] ? sibs[i + 1].id : null);
     } },
-    kids.length ? h("button", { class: "quiet chev", "aria-label": open ? "collapse" : "expand", onclick: (e) => { e.stopPropagation(); toggleOpen("c:" + pg.id); } }, open ? "▾" : "▸") : h("span", { class: "chev" }),
-    h("button", { class: "quiet grow title-btn", onclick: () => selectPage(pg.id) }, pg.icon ? pg.icon + " " : "", pg.title || t("untitled")),
-    writer ? h("button", { class: "quiet", title: t("addChild"), "aria-label": t("addChild"), onclick: (e) => { e.stopPropagation(); newPage(pg.id); } }, "+") : null);
+    kids.length ? h("button", { class: "chev" + (open ? " open" : ""), "aria-label": open ? t("collapse") : t("expand"), "aria-expanded": String(open), onclick: (e) => { e.stopPropagation(); toggleOpen("c:" + pg.id); } }, ico("chevron")) : h("span", { class: "chev" }),
+    h("button", { class: "grow title-btn", onclick: () => selectPage(pg.id), "aria-current": cur ? "page" : null }, pg.icon ? h("span", {}, pg.icon) : ico("page"), h("span", { class: "grow", dir: "auto", style: "overflow:hidden;text-overflow:ellipsis" }, pg.title || t("untitled"))),
+    writer ? h("span", { class: "row-actions" }, iconBtn("plus", t("addChild"), (e) => { e.stopPropagation(); newPage(pg.id); }, { class: "sm" }),
+      menuBtn(t("more"), () => { const sibs = childrenOf(pg.parent || null), i = sibs.findIndex((x) => x.id === pg.id), par = pg.parent ? S.pagesList.find((x) => x.id === pg.parent) : null, parSibs = par ? childrenOf(par.parent || null) : [], pi = par ? parSibs.findIndex((x) => x.id === par.id) : -1;
+        return [{ label: t("pgUp"), icon: "up", disabled: i <= 0, onclick: () => movePage(pg.id, pg.parent || null, sibs[i - 1].id) },
+          { label: t("pgDown"), icon: "down", disabled: i < 0 || i >= sibs.length - 1, onclick: () => movePage(pg.id, pg.parent || null, sibs[i + 2] ? sibs[i + 2].id : null) },
+          { label: t("pgIndent"), icon: "move", disabled: i <= 0, onclick: () => movePage(pg.id, sibs[i - 1].id, null) },
+          { label: t("pgOutdent"), icon: "up", disabled: !par, onclick: () => movePage(pg.id, par.parent || null, parSibs[pi + 1] ? parSibs[pi + 1].id : null) }]; }, "more")) : null);
   return [row, ...(open ? kids.flatMap((k) => treeRow(k, depth + 1, writer)) : [])];
 }
 async function newPage(parent) {
@@ -119,28 +124,28 @@ function pageView(writer) {
   c.titleEl = title;
   const back = h("div", { class: "backlinks" });
   loadBacklinks(pg, back);
-  return h("article", { class: "page" }, h("div", { class: "row page-head" }, title, h("span", { class: "muted save-state" }, c.status || ""),
-    hasOp(pgOp("versions")) ? h("button", { class: "quiet", onclick: () => openHistory(writer) }, "⟲ " + t("pageHistory")) : null,
-    writer ? h("button", { class: "danger quiet", onclick: async () => { if (!confirmDelete()) return; await attempt(() => call(pgOp("delete"), pgIn({ id: pg.id }))); dropPageCache(); S.openPage = null; await loadPagesData(); setHash(); render(); } }, t("delete")) : null),
+  return h("article", { class: "page" }, h("div", { class: "page-head" }, title, h("span", { class: "muted save-state" }, c.status || ""),
+    hasOp(pgOp("versions")) ? btn(t("pageHistory"), { kind: "ghost", icon: "history", onclick: () => openHistory(writer) }) : null,
+    writer ? iconBtn("trash", t("delete"), async () => { if (!(await confirmDelete())) return; await attempt(() => call(pgOp("delete"), pgIn({ id: pg.id }))); dropPageCache(); S.openPage = null; await loadPagesData(); setHash(); render(); }, { class: "danger" }) : null),
     c.el, back, personal() ? null : [h("h3", {}, t("timeline")), timelineBox(S.project.id, { type: "pages.page", id: pg.id }, writer)]);
 }
 async function loadBacklinks(pg, box) {
   if (!hasOp("refs.to")) return;
   const out = await attempt(() => (personal() ? call("refs.mine", { kind: "pages.page", id: pg.id }) : call("refs.to", { project: S.project.id, kind: "pages.page", id: pg.id })));
   if (!out) return;
-  box.replaceChildren(h("h3", {}, t("linkedFrom")), ...(out.links.length ? out.links.map((l) => h("button", { class: "list-item clickable quiet", onclick: () => openRef(l.from.type, l.from.id) }, (l.from.type === "tasks.task" ? "☑ " : "▤ ") + (l.title || l.from.id))) : [h("div", { class: "muted" }, t("noLinks"))]));
+  box.replaceChildren(h("h3", {}, ico("link"), t("linkedFrom")), ...(out.links.length ? out.links.map((l) => h("button", { class: "found", type: "button", onclick: () => openRef(l.from.type, l.from.id) }, h("span", { class: "kind" }, ico(l.from.type === "tasks.task" ? "task" : "page")), h("span", { class: "grow" }, h("strong", { dir: "auto" }, l.title || l.from.id)))) : [h("div", { class: "muted" }, t("noLinks"))]));
 }
 function pagesLayout(writer) {
   const roots = childrenOf(null);
   const tree = h("nav", { class: "tree", "aria-label": t("pages"),
     ondragover: (e) => { if (writer) e.preventDefault(); },
     ondrop: (e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) movePage(id, null, null); } },
-    writer ? h("button", { class: "primary add", onclick: () => newPage(null) }, "+ " + (personal() ? t("newNote") : t("newPage"))) : null,
+    writer ? btn(personal() ? t("newNote") : t("newPage"), { kind: "primary", icon: "plus", onclick: () => newPage(null) }) : null,
     ...(roots.length ? roots.flatMap((r) => treeRow(r, 0, writer)) : [h("div", { class: "muted", style: "padding:8px" }, t("noPages"))]));
-  return h("div", { class: "pages-layout" }, tree, h("div", { class: "page-pane" }, S.openPage ? pageView(writer) : h("div", { class: "empty", style: "margin:8vh auto" }, t("noPages"))));
+  return h("div", { class: "pages-layout" }, tree, h("div", { class: "page-pane" }, S.openPage ? pageView(writer) : h("div", { class: "empty", style: "margin:8vh auto" }, ico("book"), h("b", {}, t("noPages")), h("span", {}, t("noPagesHint")))));
 }
 function pagesTab(p, writer) { return pagesLayout(writer); }
-function notesView() { return h("div", {}, h("div", { class: "head" }, h("h1", {}, t("notes"))), pagesLayout(true)); }
+function notesView() { return h("div", {}, h("div", { class: "head" }, h("h1", {}, t("notes")), h("span", { class: "sub" }, t("notesHint"))), pagesLayout(true)); }
 
 // ---------- the timeline of a task or a page: comments with threads, updates, and history ----------
 function targetField(target) { return target.type === "tasks.task" ? { task: target.id } : { page: target.id }; }
@@ -163,21 +168,21 @@ function timelineBox(project, target, writer) {
   const composer = (parent) => {
     const ta = h("textarea", { rows: parent ? 2 : 3, placeholder: parent ? t("reply") : t("write"), "data-keep": "cm-" + (parent || "new") + target.id, dir: "auto" });
     const kind = parent ? null : h("select", { "aria-label": t("comment") }, h("option", { value: "comment" }, t("comment")), h("option", { value: "update" }, t("updateKind")));
-    return h("form", { class: "composer", onsubmit: (e) => { e.preventDefault(); const b = ta.value.trim(); if (!b) return; ta.value = ""; post(b, kind ? kind.value : "comment", parent); } }, ta, h("div", { class: "row" }, kind, h("button", { class: "primary", type: "submit" }, parent ? t("reply") : t("post"))));
+    return h("form", { class: "composer", onsubmit: (e) => { e.preventDefault(); const b = ta.value.trim(); if (!b) return; ta.value = ""; post(b, kind ? kind.value : "comment", parent); } }, ta, h("div", { class: "row" }, kind, btn(parent ? t("reply") : t("post"), { kind: "primary", type: "submit" })));
   };
   function item(it) {
-    if (it.source === "audit") return h("div", { class: "tl-audit muted" }, describeEntry({ kind: it.kind, actor: it.actor, data: it.data || {} }), " · ", fmtTime(it.at));
+    if (it.source === "audit") return h("div", { class: "tl-audit" }, ico("history"), h("span", { dir: "auto" }, describeEntry({ kind: it.kind, actor: it.actor, data: it.data || {} }), " · ", fmtTime(it.at)));
     const c = it, replies = st.open.get(c.id), n = c.reply_count || 0;
     return h("div", { class: "comment" + (c.kind === "update" ? " update" : "") },
-      h("small", {}, (c.actor_display || c.actor) + " · " + fmtTime(c.at), c.kind === "update" ? [" · ", h("span", { class: "chip" }, t("updateKind"))] : null),
+      h("div", { class: "cmt-head" }, avatar(c.actor, c.actor_display, "sm"), h("b", { dir: "auto" }, c.actor_display || c.actor), h("small", {}, fmtTime(c.at)), c.kind === "update" ? h("span", { class: "chip tag" }, t("updateKind")) : null),
       commentBody(c.body),
       h("div", { class: "row", style: "gap:4px" },
-        h("button", { class: "quiet", onclick: () => thread(c) }, replies ? t("hideThread") : n ? (n === 1 ? t("oneReply") : n + " " + t("replies")) : (writer ? t("reply") : null)),
-        manager || c.actor === me ? h("button", { class: "quiet danger", onclick: async () => { if (!confirmDelete()) return; await attempt(() => call("discussion.remove", { project, id: c.id })); load(false); } }, t("delete")) : null),
-      replies ? h("div", { class: "thread" }, ...replies.map((r) => h("div", { class: "comment" }, h("small", {}, (r.author_display || r.author) + " · " + fmtTime(r.at)), commentBody(r.body),
-        manager || r.author === me ? h("button", { class: "quiet danger", onclick: async () => { await attempt(() => call("discussion.remove", { project, id: r.id })); st.open.delete(c.id); await load(false); await thread(c); } }, t("delete")) : null)), writer ? composer(c.id) : null) : null);
+        (replies || n || writer) ? btn(replies ? t("hideThread") : n ? (n === 1 ? t("oneReply") : n + " " + t("replies")) : t("reply"), { kind: "ghost sm", onclick: () => thread(c) }) : null,
+        manager || c.actor === me ? btn(t("delete"), { kind: "ghost sm", onclick: async () => { if (!(await confirmDelete())) return; await attempt(() => call("discussion.remove", { project, id: c.id })); load(false); } }) : null),
+      replies ? h("div", { class: "thread" }, ...replies.map((r) => h("div", { class: "comment" }, h("div", { class: "cmt-head" }, avatar(r.author, r.author_display, "sm"), h("b", { dir: "auto" }, r.author_display || r.author), h("small", {}, fmtTime(r.at))), commentBody(r.body),
+        manager || r.author === me ? btn(t("delete"), { kind: "ghost sm", onclick: async () => { await attempt(() => call("discussion.remove", { project, id: r.id })); st.open.delete(c.id); await load(false); await thread(c); } }) : null)), writer ? composer(c.id) : null) : null);
   }
-  function draw() { list.replaceChildren(...st.items.map(item)); more.replaceChildren(...(st.next ? [h("button", { onclick: () => load(true) }, t("loadOlder"))] : [])); }
+  function draw() { list.replaceChildren(...st.items.map(item)); more.replaceChildren(...(st.next ? [btn(t("loadOlder"), { onclick: () => load(true) })] : [])); }
   box.append(writer ? composer(null) : "", list, more);
   S.activeTimeline = { target, reload: () => load(false) };
   load(false);

@@ -5,7 +5,8 @@ const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private window: the choice just does not stick */ } },
 };
-Object.assign(S, { tab: null, side: ls.get("madar.side", "open"), focus: ls.get("madar.focus", "0") === "1", prefs: {}, schema: [], blocks: [], ws: null, focusData: null, openPage: null, wantPage: null });
+const narrow = () => matchMedia("(max-width:760px)").matches;
+Object.assign(S, { tab: null, side: narrow() ? "closed" : ls.get("madar.side", "open"), focus: ls.get("madar.focus", "0") === "1", prefs: {}, schema: [], blocks: [], ws: null, focusData: null, openPage: null, wantPage: null });
 
 // ---------- preferences ----------
 function applyPrefs(p) {
@@ -18,7 +19,6 @@ function applyPrefs(p) {
 }
 const defaultPriority = () => Number(S.prefs["tasks.default_priority"] ?? 0);
 const dueSoonDays = () => Number(S.prefs["tasks.due_soon_days"] ?? 3);
-const confirmDelete = (msg) => S.prefs.confirm_before_delete === false || confirm(msg || t("sure"));
 async function loadChrome() {
   if (hasOp("prefs.schema")) { const s = await attempt(() => call("prefs.schema")); S.schema = s ? s.items : []; }
   if (hasOp("editor.blocks")) { const b = await attempt(() => call("editor.blocks")); S.blocks = b ? b.blocks : []; }
@@ -59,6 +59,7 @@ function setHash() {
 function go(view, tab) {
   flushPage();
   S.view = view; S.openTask = null; drawerCache = null; S.panel = null; S.openPage = null; S.wantPage = null;
+  if (narrow()) S.side = "closed";
   const isProject = !["today", "inbox", "notes"].includes(view);
   const want = tab || S.prefs["projects.default_tab"] || "board";
   S.tab = isProject ? (tabsAvailable().includes(want) ? want : "board") : null;
@@ -66,34 +67,45 @@ function go(view, tab) {
 }
 
 // ---------- dialogs (outside #app, so a live update never wipes them) ----------
-function openModal(title, content, { wide } = {}) {
-  const back = h("div", { class: "modal-back" });
-  const close = () => { back.remove(); document.removeEventListener("keydown", onKey); };
-  const onKey = (e) => { if (e.key === "Escape") close(); };
+function openModal(title, content, { wide, palette, onClose } = {}) {
+  const back = h("div", { class: "modal-back" }), prev = document.activeElement;
+  const close = () => { if (!back.isConnected) return; back.remove(); document.removeEventListener("keydown", onKey); if (onClose) onClose(); if (prev && prev.focus && document.contains(prev)) prev.focus(); };
+  const onKey = (e) => { if (e.key === "Escape" && !openMenu.cur) { e.stopPropagation(); close(); } };
   document.addEventListener("keydown", onKey);
-  const box = h("div", { class: "modal" + (wide ? " wide" : ""), role: "dialog", "aria-label": title },
-    h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, title), h("button", { class: "quiet", onclick: close, "aria-label": t("close") }, "×")), content);
+  const box = h("div", { class: "modal" + (wide ? " wide" : "") + (palette ? " palette" : ""), role: "dialog", "aria-modal": "true", "aria-label": title },
+    h("div", { class: "head" }, h("h2", {}, title), iconBtn("close", t("close"), close)), content);
   back.addEventListener("mousedown", (e) => { if (e.target === back) close(); });
   back.append(box); document.body.append(back);
   return { close, box };
 }
 function askText(label, initial = "") {
   return new Promise((resolve) => {
-    const input = h("input", { type: "text", value: initial, "aria-label": label, style: "width:100%" });
+    const input = h("input", { type: "text", value: initial, "aria-label": label, dir: "auto", style: "width:100%" });
     let done = false; const finish = (v) => { if (!done) { done = true; m.close(); resolve(v); } };
     const form = h("form", { onsubmit: (e) => { e.preventDefault(); finish(input.value.trim() || null); } }, input,
-      h("div", { class: "row", style: "margin-top:12px;justify-content:flex-end" }, h("button", { type: "button", onclick: () => finish(null) }, t("cancel")), h("button", { class: "primary", type: "submit" }, t("ok"))));
-    const m = openModal(label, form);
+      h("div", { class: "btn-row" }, btn(t("cancel"), { onclick: () => finish(null) }), btn(t("ok"), { kind: "primary", type: "submit" })));
+    const m = openModal(label, form, { onClose: () => finish(null) });
     input.focus(); input.select();
   });
 }
+// A styled yes/no in place of the browser's own box. Resolves true or false.
+function askConfirm(message, { label, danger = true } = {}) {
+  return new Promise((resolve) => {
+    let done = false; const finish = (v) => { if (!done) { done = true; m.close(); resolve(v); } };
+    const body = h("div", {}, h("p", { style: "margin:0 0 4px" }, message),
+      h("div", { class: "btn-row" }, btn(t("cancel"), { onclick: () => finish(false) }), btn(label || t("delete"), { kind: danger ? "primary" : "primary", onclick: () => finish(true) })));
+    const m = openModal(t("sureTitle"), body, { onClose: () => finish(false) });
+    body.querySelector(".btn.primary").focus();
+  });
+}
+const confirmDelete = async (msg) => S.prefs.confirm_before_delete === false || (await askConfirm(msg || t("sure")));
 
 // ---------- the settings window, built from what the plugins declare ----------
 function openSettings() {
   const body = h("div", {});
   const draw = () => {
     const groups = [...new Set(S.schema.map((i) => i.group || "other"))];
-    body.replaceChildren(...groups.map((g) => h("section", { class: "panel" }, h("h2", {}, t("g_" + g) !== "g_" + g ? t("g_" + g) : g),
+    body.replaceChildren(...groups.map((g) => h("section", { class: "panel settings-group" }, h("h2", {}, t("g_" + g) !== "g_" + g ? t("g_" + g) : g),
       ...S.schema.filter((i) => (i.group || "other") === g).map(settingRow))));
   };
   const save = async (key, value) => { const out = await attempt(() => call("prefs.set", { [key]: value })); if (out) { applyPrefs(out); render(); draw(); } else draw(); };
@@ -104,9 +116,9 @@ function openSettings() {
     else if (it.type === "boolean") ctl = h("input", { id, type: "checkbox", checked: !!v, onchange: (e) => save(it.key, e.target.checked) });
     else if (it.type === "integer") ctl = h("input", { id, type: "number", min: it.min, max: it.max, value: v, style: "width:90px", onchange: (e) => save(it.key, Number(e.target.value)) });
     else if (it.type === "choice") ctl = h("select", { id, onchange: (e) => save(it.key, e.target.value) }, ...it.choices.map((c) => h("option", { value: c.value, selected: c.value === v }, c.label[lang] || c.label.en)));
-    else if (it.type === "color") ctl = h("span", {}, h("input", { id, type: "color", value: v || "#2f6f5e", onchange: (e) => save(it.key, e.target.value) }), v ? h("button", { class: "quiet", onclick: () => save(it.key, "") }, "×") : null);
+    else if (it.type === "color") ctl = h("span", { class: "row" }, h("input", { id, type: "color", value: v || "#0b7a70", onchange: (e) => save(it.key, e.target.value) }), v ? iconBtn("close", t("clear"), () => save(it.key, ""), { class: "sm" }) : null);
     else ctl = h("input", { id, type: "text", value: v, onchange: (e) => save(it.key, e.target.value) });
-    return h("div", { class: "list-item" }, h("label", { for: id, class: "grow", style: "margin:0;font-size:14px;color:inherit" }, it.label[lang] || it.label.en), ctl);
+    return h("div", { class: "set-row" }, h("label", { for: id }, it.label[lang] || it.label.en), ctl);
   };
   draw();
   openModal(t("settings"), body, { wide: true });
@@ -120,27 +132,41 @@ function crumbs() {
   if (S.view === "notes") { out.push([t("notes"), S.openPage ? () => { S.openPage = null; setHash(); render(); } : null]); if (S.openPage) out.push([S.openPage.title || t("untitled")]); return out; }
   if (S.project) {
     const w = S.ws && S.ws.placements.find((p) => p.project === S.project.id), wn = w && S.ws.workspaces.find((x) => x.id === w.workspace);
-    if (S.ws && hasOp("workspaces.list")) out.push([wn ? wn.name : t("defaultWs")]);
+    if (S.ws && hasOp("workspaces.list")) out.push([wn ? (wn.builtin ? t("defaultWs") : wn.name) : t("defaultWs")]);
     out.push([S.project.name, S.tab && S.tab !== "board" || S.openTask ? () => { S.openTask = null; drawerCache = null; S.openPage = null; setHash(); render(); } : null]);
     if (S.tab && S.tab !== "board") out.push([t(S.tab)]);
     if (S.tab === "pages" && S.openPage) out.push([S.openPage.title || t("untitled")]);
-    if (S.openTask) out.push([S.openTask.title]);
   }
   return out;
+}
+function toggleSide() {
+  S.side = S.side === "open" ? "closed" : "open";
+  if (!narrow()) ls.set("madar.side", S.side);
+  render();
 }
 function topbar() {
   const cs = crumbs();
   return h("header", { class: "topbar" },
-    h("button", { class: "quiet", onclick: () => { S.side = S.side === "open" ? "closed" : "open"; ls.set("madar.side", S.side); render(); }, title: t("toggleSide"), "aria-label": t("toggleSide") }, "☰"),
-    h("nav", { class: "crumbs", "aria-label": "breadcrumb" }, ...cs.flatMap(([label, fn], i) => [i ? h("span", { class: "sep", "aria-hidden": "true" }, "›") : null, fn ? h("button", { class: "quiet", onclick: fn }, label) : h("span", { "aria-current": i === cs.length - 1 ? "page" : null }, label)])),
+    S.side === "closed" || narrow() ? iconBtn("side", t("toggleSide"), toggleSide) : null,
+    h("nav", { class: "crumbs", "aria-label": "breadcrumb" }, ...cs.flatMap(([label, fn], i) => [i ? h("span", { class: "sep", "aria-hidden": "true" }, ico("chevron")) : null, fn ? h("button", { onclick: fn, dir: "auto" }, label) : h("span", { "aria-current": i === cs.length - 1 ? "page" : null, dir: "auto" }, label)])),
     h("span", { class: "grow" }),
-    hasOp("search.query") ? h("button", { class: "quiet", onclick: openSearch, title: t("search").replace("…", "") + " (/)", "aria-label": t("search").replace("…", "") }, "🔍") : null,
-    h("button", { class: "quiet", onclick: toggleFocus, title: t("focusMode") + " (Ctrl+\\)", "aria-label": t("focusMode") }, "⤢"));
+    hasOp("search.query") && (S.side === "closed" || narrow()) ? iconBtn("search", t("search").replace("…", "") + " (/)", openSearch) : null,
+    iconBtn("focus", t("focusMode") + " (Ctrl+\\)", toggleFocus), iconBtn("help", t("kHelp") + " (?)", openShortcuts));
 }
 function toggleFocus() { S.focus = !S.focus; ls.set("madar.focus", S.focus ? "1" : "0"); render(); }
-document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "\\") { e.preventDefault(); if (S.who) toggleFocus(); } });
+document.addEventListener("keydown", (e) => {
+  if (!S.who) return;
+  if ((e.ctrlKey || e.metaKey) && e.key === "\\") { e.preventDefault(); toggleFocus(); return; }
+  const a = document.activeElement, typing = a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable);
+  if (typing || e.ctrlKey || e.metaKey || e.altKey || document.querySelector(".modal-back") || openMenu.cur) return;
+  if (e.key === "?") { e.preventDefault(); openShortcuts(); }
+  else if (e.key === "Escape" && S.openTask) { S.openTask = null; drawerCache = null; setHash(); render(); }
+  else if ((e.key === "n" || e.key === "N") && S.project && S.view !== "today" && S.view !== "inbox" && S.view !== "notes" && can(S.project, "projects.write")) { e.preventDefault(); newTaskHere(); }
+});
 
-function navItem(label, view, badge, tab) { return h("button", { class: "nav", "aria-current": String(S.view === view), onclick: () => go(view, tab) }, h("span", {}, label), badge ? h("span", { class: "badge" }, badge) : null); }
+function navItem(label, view, badge, icon, tab) {
+  return h("button", { class: "nav", "aria-current": String(S.view === view), onclick: () => go(view, tab) }, icon ? ico(icon) : h("span", { class: "dot-nav", "aria-hidden": "true" }), h("span", { class: "label", dir: "auto" }, label), badge ? h("span", { class: "badge" }, badge) : null);
+}
 function projectItems(list) { return list.map((p) => navItem(p.name, p.id)); }
 function sidebar() {
   const canCreate = S.desc.operations["projects.create"] && S.desc.operations["projects.create"].allowed;
@@ -150,25 +176,30 @@ function sidebar() {
     projects = S.ws.workspaces.flatMap((w) => {
       const mine = S.projects.filter((p) => (place.get(p.id) || "default") === w.id);
       const open = ls.get("madar.ws." + w.id, "1") === "1";
-      return [h("div", { class: "ws-head" }, h("button", { class: "quiet", onclick: () => { ls.set("madar.ws." + w.id, open ? "0" : "1"); render(); } }, (open ? "▾ " : "▸ ") + (w.builtin ? t("defaultWs") : w.name)),
-        w.builtin ? null : h("button", { class: "quiet", title: t("renameWs"), onclick: () => renameWorkspace(w) }, "✎"),
-        w.builtin ? null : h("button", { class: "quiet danger", title: t("deleteWs"), onclick: () => deleteWorkspace(w) }, "🗑")), ...(open ? projectItems(mine) : [])];
+      const name = w.builtin ? t("defaultWs") : w.name;
+      return [h("div", { class: "group-title" },
+        h("button", { class: "t" + (open ? "" : " closed"), "aria-expanded": String(open), onclick: () => { ls.set("madar.ws." + w.id, open ? "0" : "1"); render(); } }, ico("down", "caret"), h("span", { dir: "auto" }, name)),
+        w.builtin ? null : menuBtn(name, () => [{ label: t("renameWs"), icon: "edit", onclick: () => renameWorkspace(w) }, { label: t("deleteWs"), icon: "trash", danger: true, onclick: () => deleteWorkspace(w) }]),
+      ), ...(open ? projectItems(mine) : [])];
     });
-    projects.push(h("button", { class: "quiet", onclick: newWorkspace }, "+ " + t("newWorkspace")));
-  } else projects = projectItems(S.projects);
-  return h("aside", {}, h("div", { class: "brand" }, "Madar"),
-    navItem(t("today"), "today"), navItem(t("inbox"), "inbox", S.inbox.unread), hasOp("notes.list") ? navItem(t("notes"), "notes") : null,
-    h("div", { class: "muted", style: "padding:10px 8px 2px;font-size:12px" }, t("projects")), ...projects,
-    canCreate ? h("button", { class: "quiet", onclick: newProject }, "+ " + t("newProject")) : null,
-    h("div", { class: "side-foot" }, h("span", {}, h("span", { class: "live", "data-state": S.live }), S.who.display),
-      h("div", { class: "row" }, h("button", { onclick: openSettings }, "⚙ " + t("settings")), h("button", { class: "quiet", onclick: signOut }, t("signOut")))));
+    projects.unshift(h("div", { class: "group-title" }, h("span", { class: "t" }, t("projects")),
+      canCreate ? menuBtn(t("newProject"), () => [{ label: t("newProject"), icon: "plus", onclick: newProject }, hasOp("workspaces.create") ? { label: t("newWorkspace"), icon: "folder", onclick: newWorkspace } : null], "plus") : null));
+  } else projects = [h("div", { class: "group-title" }, h("span", { class: "t" }, t("projects")), canCreate ? iconBtn("plus", t("newProject"), newProject) : null), ...projectItems(S.projects)];
+  return h("aside", { class: "side" },
+    h("div", { class: "side-top" }, h("div", { class: "brand" }, ico("logo"), "Madar"), h("span", { class: "grow" }), iconBtn("side", t("toggleSide"), toggleSide)),
+    hasOp("search.query") ? h("button", { class: "search-pill", onclick: openSearch }, ico("search"), h("span", {}, t("search").replace("…", "")), h("kbd", { dir: "ltr" }, "/")) : null,
+    h("nav", { class: "side-scroll", "aria-label": t("projects") },
+      navItem(t("today"), "today", null, "today"), navItem(t("inbox"), "inbox", S.inbox.unread, "inbox"), hasOp("notes.list") ? navItem(t("notes"), "notes", null, "notes") : null, ...projects),
+    h("div", { class: "side-foot" }, h("div", { class: "me" }, avatar(S.who.subject, S.who.display), h("div", { class: "who" }, h("b", { dir: "auto" }, S.who.display), h("small", {}, h("span", { class: "live", "data-state": S.live }), h("span", { class: "live-label" }, S.live === "live" ? t("live") : t("offline"))))),
+      iconBtn("gear", t("settings"), openSettings), iconBtn("logout", t("signOut"), signOut)));
 }
 function shell() {
   let body;
   if (S.view === "today") body = todayView(); else if (S.view === "inbox") body = inboxView(); else if (S.view === "notes") body = notesView(); else body = projectView();
-  return h("div", { class: "layout", "data-side": S.side, "data-focus": S.focus ? "1" : "0" }, sidebar(),
-    h("div", { class: "col-main" }, topbar(), h("main", {}, body)), S.focus ? h("button", { class: "focus-exit", onclick: toggleFocus }, t("exitFocus")) : null,
-    S.openTask && S.view !== "today" ? cachedDrawer() : null);
+  const pane = S.openTask && S.project && !["today", "inbox", "notes"].includes(S.view) ? cachedDrawer() : null;
+  return h("div", { class: "app", "data-side": S.side, "data-focus": S.focus ? "1" : "0", "data-pane": pane ? "1" : "0" }, sidebar(),
+    h("div", { class: "scrim", onclick: toggleSide }),
+    h("div", { class: "main-panel" }, topbar(), h("main", { class: "content", id: "main" }, body)), S.focus ? h("button", { class: "btn focus-exit", onclick: toggleFocus }, ico("focus"), t("exitFocus")) : null, pane);
 }
 
 async function newProject() {
@@ -177,21 +208,25 @@ async function newProject() {
 }
 async function newWorkspace() { const name = await askText(t("newWorkspace")); if (name) { await attempt(() => call("workspaces.create", { name })); refreshAll(); } }
 async function renameWorkspace(w) { const name = await askText(t("renameWs"), w.name); if (name) { await attempt(() => call("workspaces.rename", { id: w.id, name })); refreshAll(); } }
-async function deleteWorkspace(w) { if (!confirmDelete()) return; await attempt(() => call("workspaces.delete", { id: w.id })); refreshAll(); }
+async function deleteWorkspace(w) { if (!(await confirmDelete())) return; await attempt(() => call("workspaces.delete", { id: w.id })); refreshAll(); }
 
 // ---------- Today: where to start ----------
 function openTaskFrom(x) { S.view = x.project; S.tab = "board"; S.wantTask = x.id; S.openPage = null; refreshAll(); }
 function taskRow(x) {
-  return h("div", { class: "list-item clickable", onclick: () => openTaskFrom(x), tabindex: 0, onkeydown: (e) => { if (e.key === "Enter") openTaskFrom(x); } },
-    h("span", { class: "band", "data-b": x.band }), h("span", { class: "grow" }, x.title), h("span", { class: "muted" }, x.project_name), dueChip(x));
+  return h("div", { class: "list-item clickable task-row", onclick: () => openTaskFrom(x), tabindex: 0, role: "button", onkeydown: (e) => { if (e.key === "Enter") openTaskFrom(x); } },
+    ico("task"), h("span", { class: "grow t", dir: "auto" }, x.title), prioChip(x, true), h("span", { class: "chip", dir: "auto" }, x.project_name), dueChip(x));
 }
+function greeting() { const hr = new Date().getHours(); return t(hr < 12 ? "gMorning" : hr < 18 ? "gAfternoon" : "gEvening"); }
 function todayView() {
   const groups = [["overdue", t("overdue")], ["today", t("todayB")], ["upcoming", t("soon")], ["undated", t("undated")]];
   const f = S.focusData, any = S.mine.length > 0;
-  return h("div", {}, h("div", { class: "head" }, h("h1", {}, t("today")), h("span", { class: "muted" }, fmtDate(S.today || ""))),
-    !any ? h("div", { class: "empty" }, t("nothingOpen")) : null,
+  const n = (k) => S.mine.filter((x) => x.bucket === k).length;
+  return h("div", {},
+    h("div", { class: "greeting" }, h("h1", { dir: "auto" }, greeting() + ", " + (S.who.display || S.who.subject)), h("p", {}, fmtDate(S.today || ""))),
+    any ? h("div", { class: "stat-strip" }, h("div", {}, h("b", {}, String(S.mine.length)), h("span", {}, t("openN"))), h("div", { class: n("overdue") ? "late" : "" }, h("b", {}, String(n("overdue"))), h("span", {}, t("overdue"))), h("div", {}, h("b", {}, String(n("today"))), h("span", {}, t("todayB")))) : null,
+    !any ? h("div", { class: "empty" }, ico("sparkle"), h("b", {}, t("nothingOpen")), h("span", {}, t("nothingOpenHint"))) : null,
     f && f.start.length ? h("div", { class: "panel start" }, h("h2", {}, t("startHere")), ...f.start.map(taskRow)) : null,
     f && f.also.length ? h("div", { class: "panel" }, h("h2", {}, t("alsoOpen")), ...f.also.map(taskRow)) : null,
-    any ? h("details", { class: "panel" }, h("summary", {}, t("assignedAll")),
-      ...groups.map(([k, label]) => { const items = S.mine.filter((x) => x.bucket === k); return items.length ? h("div", {}, h("h3", { class: "muted", style: "font-size:13px" }, label), ...items.map(taskRow)) : null; })) : null);
+    any ? h("details", { class: "panel" }, h("summary", { style: "cursor:pointer;font-weight:650" }, t("assignedAll")),
+      ...groups.map(([k, label]) => { const items = S.mine.filter((x) => x.bucket === k); return items.length ? h("div", {}, h("div", { class: "section-title" }, label), ...items.map(taskRow)) : null; })) : null);
 }

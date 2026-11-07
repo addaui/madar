@@ -46,3 +46,21 @@ Object.assign(STR.ar, {
   hPages_created: "{actor} أضاف الصفحة {task}", hPages_updated: "{actor} عدّل الصفحة {task}", hPages_moved: "{actor} نقل الصفحة {task}", hPages_removed: "{actor} حذف الصفحة {task}",
   hTasks_recurred: "تكررت {task} كمهمة جديدة",
 });
+
+// The redesign (ADR 0027)
+Object.assign(STR.en, {
+  sureTitle: "Are you sure?", clear: "Clear", signInHint: "Sign in to continue", newTask: "New task", more: "More", open: "Open",
+  kSearch: "Search everything", kNewTask: "New task in this project", kClose: "Close the pane, a menu or a window", kHelp: "Keyboard shortcuts", kMove: "to move", kOpen: "to open",
+  searchHint: "Type at least two letters to search tasks, pages and notes.", gMorning: "Good morning", gAfternoon: "Good afternoon", gEvening: "Good evening",
+  nothingOpenHint: "Tasks assigned to you will show up here.", nothingNewHint: "Mentions and assignments will show up here.", unread: "Unread", remove: "Remove",
+  unsaved: "Unsaved changes", discard: "Discard", noPagesHint: "Pages hold what a project knows: guides, decisions, meeting notes.", notesHint: "Only you can see these.",
+  collapse: "Collapse", expand: "Expand", pgUp: "Move up", pgDown: "Move down", pgIndent: "Move inside the page above", pgOutdent: "Move out one level", ascending: "Ascending", descending: "Descending",
+});
+Object.assign(STR.ar, {
+  sureTitle: "هل أنت متأكد؟", clear: "مسح", signInHint: "سجّل الدخول للمتابعة", newTask: "مهمة جديدة", more: "المزيد", open: "فتح",
+  kSearch: "ابحث في كل شيء", kNewTask: "مهمة جديدة في هذا المشروع", kClose: "إغلاق اللوحة أو القائمة أو النافذة", kHelp: "اختصارات لوحة المفاتيح", kMove: "للتنقل", kOpen: "للفتح",
+  searchHint: "اكتب حرفين على الأقل للبحث في المهام والصفحات والملاحظات.", gMorning: "صباح الخير", gAfternoon: "طاب يومك", gEvening: "مساء الخير",
+  nothingOpenHint: "ستظهر هنا المهام المسندة إليك.", nothingNewHint: "ستظهر هنا الإشارات والإسنادات.", unread: "غير مقروء", remove: "إزالة",
+  unsaved: "تغييرات غير محفوظة", discard: "تجاهل", noPagesHint: "الصفحات تحفظ ما يعرفه المشروع: أدلة وقرارات وملاحظات اجتماعات.", notesHint: "أنت وحدك ترى هذه.",
+  collapse: "طيّ", expand: "توسيع", pgUp: "نقل لأعلى", pgDown: "نقل لأسفل", pgIndent: "نقل داخل الصفحة التي فوقها", pgOutdent: "نقل مستوى للخارج", ascending: "تصاعدي", descending: "تنازلي",
+});

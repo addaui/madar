@@ -420,7 +420,7 @@ fn a_retried_create_runs_once() {
 fn prefs_default_and_change_and_tell_only_their_owner() {
     let a = app();
     let (al, bo) = (who("alice"), who("bob"));
-    assert_eq!(a.ok(&al, "prefs.get", json!({}))["theme"], "paper");
+    assert_eq!(a.ok(&al, "prefs.get", json!({}))["theme"], "system");
     let (ca, cb) = (a.core.pulse_now().unwrap(), a.core.pulse_now().unwrap());
     a.ok(&al, "prefs.set", json!({"theme": "ink", "language": "ar"}));
     assert_eq!(a.ok(&al, "prefs.get", json!({}))["language"], "ar");
@@ -479,7 +479,7 @@ fn a_viewer_role_sees_what_they_may_do_in_describe() {
     assert_eq!(kinds["theme-ink"], "theme");
     assert_eq!(kinds["db-memory"], "adapter");
     assert_eq!(kinds["tasks"], "feature");
-    assert_eq!(d["themes"].as_array().unwrap().len(), 2);
+    assert_eq!(d["themes"].as_array().unwrap().len(), 3);
     assert_eq!(d["extension_points"]["notify.channel"]["providers"], json!(["notify-inbox"]));
 }
 

@@ -3,7 +3,8 @@ let drawerCache = null;
 function cachedDrawer() {
   const k = [S.openTask.id, S.openTask.rev, S.members.length, S.labels.length, S.project.rev, lang, S.blocks.length].join(":");
   if (drawerCache && drawerCache.key === k) return drawerCache.el;
-  if (drawerCache && drawerCache.key.split(":")[0] === S.openTask.id) toast(t("changed"));
+  if (drawerCache && drawerCache.key.split(":")[0] === S.openTask.id && S.savedOwn !== S.openTask.id) toast(t("changed"));
+  S.savedOwn = null;
   if (S.drawerEd) { try { S.drawerEd.ed.destroy(); } catch (e) { /* already gone */ } S.drawerEd = null; }
   drawerCache = { key: k, el: drawer() };
   return drawerCache.el;
@@ -20,26 +21,32 @@ function customField(a, value, writer) {
   if (a.type === "date") return { el: h("input", { ...base, type: "date", value: value || "" }), read: (e) => e.value || null };
   return { el: h("input", { ...base, type: "text", value: value ?? "", maxlength: 500, dir: "auto" }), read: (e) => e.value || null };
 }
+let propSeq = 0;
+function prop(icon, label, control) { return h("div", { class: "prop" }, h("div", { class: "k" }, ico(icon), h("span", {}, label)), h("div", { class: "v" }, control)); }
 function drawer() {
   const task = S.openTask, p = S.project, writer = can(task, "projects.write");
   const f = {
-    title: h("input", { type: "text", value: task.title, disabled: !writer, maxlength: 200, "aria-label": t("title"), dir: "auto" }),
+    title: h("input", { type: "text", class: "pane-title", value: task.title, disabled: !writer, maxlength: 200, "aria-label": t("title"), dir: "auto" }),
     priority: h("input", { type: "range", min: 0, max: 10, value: task.priority, disabled: !writer, "aria-label": t("priority") }),
     due: h("input", { type: "date", value: task.due || "", disabled: !writer, "aria-label": t("due") }),
     assignee: h("select", { disabled: !writer, "aria-label": t("assignee") }, h("option", { value: "" }, t("nobody")), ...S.members.map((m) => h("option", { value: m.subject, selected: m.subject === task.assignee }, m.display || m.subject))),
     status: h("select", { disabled: !writer, "aria-label": t("status") }, ...p.statuses.map((s) => h("option", { value: s.id, selected: s.id === task.status }, s.name))),
   };
+  const bandOf = (n) => (n >= 9 ? "urgent" : n >= 7 ? "high" : n >= 4 ? "medium" : "low");
+  const prioShow = h("span", { class: "chip prio", "data-b": task.band }, ico("flag"), t(task.band));
+  f.priority.addEventListener("input", () => { const b = bandOf(Number(f.priority.value)); prioShow.dataset.b = b; prioShow.lastChild.textContent = t(b); });
   // the description is rich text; a task written before that keeps its old plain notes as the first paragraphs
-  let descDirty = false;
+  let descDirty = false, foot;
+  const markDirty = () => { if (foot) foot.hidden = false; };
   const descHost = h("div", { class: "ed-host" });
-  const ed = makeEditor(descHost, task.description || (task.notes ? paragraphDoc(task.notes) : null), writer, () => { descDirty = true; });
+  const ed = makeEditor(descHost, task.description || (task.notes ? paragraphDoc(task.notes) : null), writer, () => { descDirty = true; markDirty(); });
   S.drawerEd = { ed };
   const rep = task.parent ? null : repeatControl(task, writer);
   const attrs = p.attributes || [], custom = attrs.map((a) => ({ a, ...customField(a, (task.custom || {})[a.key], writer) }));
   const chosen = new Set(task.labels);
-  const labelBox = h("div", { class: "row" }, ...S.labels.map((l) => h("label", { style: "display:inline-flex;gap:4px;align-items:center;margin:0" }, h("input", { type: "checkbox", checked: chosen.has(l.id), disabled: !writer, onchange: (e) => (e.target.checked ? chosen.add(l.id) : chosen.delete(l.id)) }), l.name)));
-  const subs = S.tasks.filter((x) => x.parent === task.id);
-  const subIn = h("input", { type: "text", placeholder: t("addPh"), "data-keep": "sub-" + task.id });
+  const labelBox = h("div", { class: "checks" }, ...S.labels.map((l) => h("label", { class: "check-chip" }, h("input", { type: "checkbox", checked: chosen.has(l.id), disabled: !writer, onchange: (e) => (e.target.checked ? chosen.add(l.id) : chosen.delete(l.id)) }), h("span", { dir: "auto" }, l.name))));
+  const subs = S.tasks.filter((x) => x.parent === task.id), subsDone = subs.filter((x) => x.completed_at).length;
+  const subIn = h("input", { type: "text", placeholder: t("addPh"), "aria-label": t("subtasks"), "data-keep": "sub-" + task.id, dir: "auto" });
   const save = async () => {
     const input = { project: p.id, id: task.id, expected_rev: task.rev, title: f.title.value, status: f.status.value, priority: Number(f.priority.value), due: f.due.value || null, assignee: f.assignee.value || null, labels: [...chosen] };
     if (descDirty) input.description = ed.json();
@@ -49,22 +56,35 @@ function drawer() {
     if (rep && !rep.same(rep.read())) input.repeat = rep.read();
     const out = await attempt(() => call("tasks.update", input));
     if (out === undefined) { if (!attempt.last || attempt.last.category !== "conflict") return; await refreshAll(); const fresh = S.tasks.find((x) => x.id === task.id); if (fresh) { S.openTask = fresh; toast(t("changed")); render(); } return; }
-    S.openTask = null; drawerCache = null; refreshAll();
+    S.savedOwn = task.id; toast(t("saved")); refreshAll();
   };
-  return h("div", { class: "drawer", role: "dialog", "aria-label": task.title },
-    h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, task.title), h("button", { class: "quiet", onclick: () => { S.openTask = null; drawerCache = null; setHash(); render(); }, "aria-label": t("close") }, "×")),
-    h("label", {}, t("title")), f.title, h("label", {}, t("description")), descHost,
-    h("div", { class: "row" }, h("div", {}, h("label", {}, t("priority")), f.priority), h("div", {}, h("label", {}, t("due")), f.due)),
-    rep ? [h("label", {}, t("repeat")), rep.el] : null,
-    h("div", { class: "row" }, h("div", {}, h("label", {}, t("assignee")), f.assignee), h("div", {}, h("label", {}, t("status")), f.status)),
-    custom.length ? h("div", { class: "row" }, ...custom.map((c) => h("div", {}, h("label", {}, c.a.label), c.el))) : null,
-    S.labels.length ? [h("label", {}, t("labels")), labelBox] : null,
-    writer ? h("div", { class: "row", style: "margin-top:14px" }, h("button", { class: "primary", onclick: save }, t("save")),
-      h("button", { onclick: async () => { await attempt(() => call("tasks.update", { project: p.id, id: task.id, archived: !task.archived })); S.openTask = null; drawerCache = null; refreshAll(); } }, task.archived ? t("restore") : t("archive")),
-      slotButtons("task.actions", { project: p, task }),
-      h("button", { class: "danger", onclick: async () => { if (confirmDelete()) { await attempt(() => call("tasks.remove", { project: p.id, id: task.id })); S.openTask = null; drawerCache = null; refreshAll(); } } }, t("delete"))) : null,
-    task.parent ? null : [h("h3", {}, t("subtasks")),
-      ...subs.map((s) => h("div", { class: "list-item" }, h("input", { type: "checkbox", checked: !!s.completed_at, disabled: !writer, onchange: async () => { const done = p.statuses[p.statuses.length - 1].id, first = p.statuses[0].id; await attempt(() => call("tasks.move", { project: p.id, id: s.id, status: s.completed_at ? first : done })); refreshAll(); } }), h("span", { class: "grow" }, s.title))),
-      writer ? h("form", { onsubmit: async (e) => { e.preventDefault(); const title = subIn.value.trim(); if (!title) return; subIn.value = ""; await attempt(() => call("tasks.create", { project: p.id, title, parent: task.id, priority: defaultPriority() })); refreshAll(); } }, subIn) : null],
-    h("h3", {}, t("timeline")), timelineBox(p.id, { type: "tasks.task", id: task.id }, writer));
+  const close = () => { S.openTask = null; drawerCache = null; setHash(); render(); };
+  const menu = writer ? menuBtn(t("more"), () => [
+    { label: task.archived ? t("restore") : t("archive"), icon: "archive", onclick: async () => { await attempt(() => call("tasks.update", { project: p.id, id: task.id, archived: !task.archived })); S.openTask = null; drawerCache = null; refreshAll(); } },
+    ...slotMenuItems("task.actions", { project: p, task }), "-",
+    { label: t("delete"), icon: "trash", danger: true, onclick: async () => { if (await confirmDelete()) { await attempt(() => call("tasks.remove", { project: p.id, id: task.id })); S.openTask = null; drawerCache = null; refreshAll(); } } },
+  ]) : null;
+  foot = h("div", { class: "pane-foot", hidden: true }, h("span", { class: "muted grow" }, t("unsaved")), btn(t("discard"), { kind: "ghost", onclick: () => { drawerCache = null; render(); } }), btn(t("save"), { kind: "primary", icon: "check", onclick: save }));
+  const pane = h("aside", { class: "pane", role: "dialog", "aria-label": task.title },
+    h("div", { class: "pane-head" }, f.title, menu, iconBtn("close", t("close") + " (Esc)", close)),
+    h("div", { class: "pane-body" },
+      h("div", { class: "props" },
+        prop("task", t("status"), f.status),
+        prop("flag", t("priority"), h("div", { class: "prio-val" }, f.priority, prioShow)),
+        prop("calendar", t("due"), f.due),
+        rep ? prop("repeat", t("repeat"), rep.el) : null,
+        prop("user", t("assignee"), h("span", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, task.assignee ? avatar(task.assignee, personName(task.assignee), "sm") : null, f.assignee)),
+        S.labels.length ? prop("tag", t("labels"), labelBox) : null,
+        ...custom.map((c) => prop("page", c.a.label, c.el))),
+      h("h3", {}, t("description")), descHost,
+      task.parent ? null : [h("h3", {}, ico("subtask"), t("subtasks"), subs.length ? h("span", { class: "chip" }, `${subsDone}/${subs.length}`) : null),
+        subs.length ? h("div", { class: "progress" }, h("i", {}, h("b", { style: "width:" + Math.round((subsDone / subs.length) * 100) + "%" })), h("span", {}, Math.round((subsDone / subs.length) * 100) + "%")) : null,
+        ...subs.map((s) => h("div", { class: "sub-row" + (s.completed_at ? " done" : "") }, h("input", { type: "checkbox", checked: !!s.completed_at, disabled: !writer, "aria-label": s.title, onchange: async () => { const done = p.statuses[p.statuses.length - 1].id, first = p.statuses[0].id; await attempt(() => call("tasks.move", { project: p.id, id: s.id, status: s.completed_at ? first : done })); refreshAll(); } }), h("span", { class: "grow", dir: "auto" }, s.title))),
+        writer ? h("form", { class: "sub-add", onsubmit: async (e) => { e.preventDefault(); const title = subIn.value.trim(); if (!title) return; subIn.value = ""; await attempt(() => call("tasks.create", { project: p.id, title, parent: task.id, priority: defaultPriority() })); refreshAll(); } }, subIn) : null],
+      h("h3", {}, ico("message"), t("timeline")), timelineBox(p.id, { type: "tasks.task", id: task.id }, writer)),
+    writer ? foot : null);
+  // anything typed into the fields (not subtasks or the timeline) shows the save bar
+  const fieldArea = (e) => e.target.closest(".props, .pane-title");
+  pane.addEventListener("input", (e) => { if (fieldArea(e)) markDirty(); }); pane.addEventListener("change", (e) => { if (fieldArea(e)) markDirty(); });
+  return pane;
 }

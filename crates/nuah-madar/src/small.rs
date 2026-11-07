@@ -158,7 +158,7 @@ impl Plugin for Prefs {
     fn bind(&self, b: &mut Bindings) {
         b.provide("prefs.item", |_tx, _i| {
             Ok(pref_answer(vec![
-                json!({"key": "theme", "group": "appearance", "type": "string", "default": "paper", "label": lbl("Theme", "المظهر")}),
+                json!({"key": "theme", "group": "appearance", "type": "string", "default": "system", "label": lbl("Theme", "المظهر")}),
                 json!({"key": "language", "group": "appearance", "type": "choice", "default": "en", "label": lbl("Language", "اللغة"), "choices": choices(&[("en", "English", "English"), ("ar", "Arabic", "العربية")])}),
                 json!({"key": "density", "group": "appearance", "type": "choice", "default": "comfortable", "label": lbl("Density", "الكثافة"), "choices": choices(&[("comfortable", "Comfortable", "مريح"), ("compact", "Compact", "مضغوط")])}),
                 json!({"key": "calendar", "group": "appearance", "type": "choice", "default": "gregorian", "label": lbl("Calendar", "التقويم"), "choices": choices(&[("gregorian", "Gregorian", "ميلادي"), ("hijri", "Hijri", "هجري"), ("both", "Both", "كلاهما")])}),
@@ -372,9 +372,20 @@ impl Plugin for Theme {
     }
 }
 
+/// The two palettes every theme is built from. A theme names six colours; the Face derives every other shade
+/// from them (ADR 0027), so a new theme is six colours.
+fn daylight() -> Value {
+    json!({"scheme": "light", "bg": "#e4eae8", "surface": "#ffffff", "text": "#12201d", "muted": "#566763", "accent": "#0b7a70", "danger": "#c23b28"})
+}
+fn night() -> Value {
+    json!({"scheme": "dark", "bg": "#0a1110", "surface": "#131c1b", "text": "#e6eeec", "muted": "#94a6a2", "accent": "#3fd0bc", "danger": "#ff8672"})
+}
+
 pub fn themes() -> Vec<Theme> {
     vec![
-        Theme("theme-paper", "Paper", json!({"scheme": "light", "bg": "#f6f4ef", "surface": "#ffffff", "text": "#1d1b16", "muted": "#6b675c", "accent": "#2f6f5e", "danger": "#b3402f"})),
-        Theme("theme-ink", "Ink", json!({"scheme": "dark", "bg": "#14161a", "surface": "#1d2025", "text": "#e8e6e1", "muted": "#9a978e", "accent": "#6cc4a8", "danger": "#e07a68"})),
+        Theme("theme-paper", "Daylight", daylight()),
+        Theme("theme-ink", "Night", night()),
+        // follows the device: carries both palettes
+        Theme("theme-system", "System", json!({"scheme": "auto", "light": daylight(), "dark": night()})),
     ]
 }
