@@ -29,6 +29,7 @@ fn start(existing: Option<Value>) -> Wizard {
         profile_path: file.clone(),
         code: CODE.into(),
         server: Default::default(),
+        saved: Default::default(),
     };
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
