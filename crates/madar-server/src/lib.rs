@@ -114,7 +114,7 @@ impl nuah_host::Product for Madar {
         madar_core::profile_server(db, accounts)
     }
     fn starting_point(&self) -> Profile {
-        madar_core::profile_embedded("madar.db")
+        madar_core::profile_server("madar.db", serde_json::json!([]))
     }
     fn configure(&self, profile: &mut Profile, with: &[String]) {
         if with.iter().any(|w| w == "metrics") {

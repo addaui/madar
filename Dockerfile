@@ -17,11 +17,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=build /madar-server /usr/local/bin/madar-server
 COPY --from=build /faces /app/faces
 COPY faces/web /app/faces/web
-ENV NUAH_LISTEN=0.0.0.0:3000
+ENV NUAH_LISTEN=0.0.0.0:3000 NUAH_HOME=/data NUAH_FACES=/app/faces
+WORKDIR /data
 USER madar
 VOLUME /data
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["madar-server", "healthcheck"]
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["madar-server"]
-CMD ["serve", "--db", "/data/madar.db", "--accounts", "/data/accounts.json", "--web", "/app/faces/web", "--console", "/app/faces/console"]
+CMD ["serve"]

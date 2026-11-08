@@ -971,7 +971,7 @@ dependencies = [
  "madar-server",
  "nuah-adapters",
  "nuah-http",
- "nuah-kernel",
+ "nuah-kernel 0.7.0",
  "serde_json",
  "tokio",
  "ureq",
@@ -984,7 +984,7 @@ dependencies = [
  "base64 0.23.1",
  "nuah-adapters",
  "nuah-appearance",
- "nuah-kernel",
+ "nuah-kernel 0.7.0",
  "nuah-metric-prometheus",
  "nuah-prefs",
  "parking_lot 0.12.5",
@@ -1004,7 +1004,7 @@ dependencies = [
  "nuah-adapters",
  "nuah-host",
  "nuah-http",
- "nuah-kernel",
+ "nuah-kernel 0.7.0",
  "serde_json",
  "tokio",
  "ureq",
@@ -1072,11 +1072,11 @@ dependencies = [
 
 [[package]]
 name = "nuah-adapters"
-version = "0.6.0"
-source = "git+https://github.com/addaui/nuah?tag=v0.6.0#1045ece330ea09fcfb40e5ae0974018f13ff0ae7"
+version = "0.7.0"
+source = "git+https://github.com/addaui/nuah?tag=v0.7.0#a71e07de6e65d0a6cb3dfd5409610def69878f2e"
 dependencies = [
  "argon2",
- "nuah-kernel",
+ "nuah-kernel 0.7.0",
  "parking_lot 0.13.0",
  "postgres",
  "rand_core 0.6.4",
@@ -1094,20 +1094,20 @@ name = "nuah-appearance"
 version = "0.1.4"
 source = "git+https://github.com/addaui/nuah-plugins?tag=v0.1.4#d9fd9eb9e8e21ce4c17c9a97381d3559ce43de86"
 dependencies = [
- "nuah-kernel",
+ "nuah-kernel 0.6.0",
  "serde_json",
 ]
 
 [[package]]
 name = "nuah-host"
-version = "0.6.0"
-source = "git+https://github.com/addaui/nuah?tag=v0.6.0#1045ece330ea09fcfb40e5ae0974018f13ff0ae7"
+version = "0.7.0"
+source = "git+https://github.com/addaui/nuah?tag=v0.7.0#a71e07de6e65d0a6cb3dfd5409610def69878f2e"
 dependencies = [
  "axum",
  "clap",
  "nuah-adapters",
  "nuah-http",
- "nuah-kernel",
+ "nuah-kernel 0.7.0",
  "serde_json",
  "tokio",
  "tower-http",
@@ -1116,13 +1116,13 @@ dependencies = [
 
 [[package]]
 name = "nuah-http"
-version = "0.6.0"
-source = "git+https://github.com/addaui/nuah?tag=v0.6.0#1045ece330ea09fcfb40e5ae0974018f13ff0ae7"
+version = "0.7.0"
+source = "git+https://github.com/addaui/nuah?tag=v0.7.0#a71e07de6e65d0a6cb3dfd5409610def69878f2e"
 dependencies = [
  "async-stream",
  "axum",
  "futures-util",
- "nuah-kernel",
+ "nuah-kernel 0.7.0",
  "serde_json",
  "tokio",
  "tower-http",
@@ -1140,11 +1140,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nuah-kernel"
+version = "0.7.0"
+source = "git+https://github.com/addaui/nuah?tag=v0.7.0#a71e07de6e65d0a6cb3dfd5409610def69878f2e"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+]
+
+[[package]]
 name = "nuah-metric-prometheus"
 version = "0.1.4"
 source = "git+https://github.com/addaui/nuah-plugins?tag=v0.1.4#d9fd9eb9e8e21ce4c17c9a97381d3559ce43de86"
 dependencies = [
- "nuah-kernel",
+ "nuah-kernel 0.6.0",
  "serde_json",
 ]
 
@@ -1153,7 +1164,7 @@ name = "nuah-prefs"
 version = "0.1.4"
 source = "git+https://github.com/addaui/nuah-plugins?tag=v0.1.4#d9fd9eb9e8e21ce4c17c9a97381d3559ce43de86"
 dependencies = [
- "nuah-kernel",
+ "nuah-kernel 0.6.0",
  "serde_json",
 ]
 
