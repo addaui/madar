@@ -1485,3 +1485,14 @@ fn a_page_remembers_how_it_is_shown_and_refuses_anything_else() {
     let n = a.ok(&al, "notes.create", json!({"title": "mine"}));
     assert_eq!(a.ok(&al, "notes.update", json!({"id": n["id"], "settings": {"font": "mono"}}))["settings"]["font"], "mono");
 }
+
+#[test]
+fn a_postgres_url_selects_the_postgres_adapter_and_a_path_selects_sqlite() {
+    let pg = profile_server("postgres://u:p@db/madar", json!([]));
+    assert!(pg.enabled.iter().any(|e| e == "db-postgres") && !pg.enabled.iter().any(|e| e == "db-sqlite"));
+    assert_eq!(pg.settings["db-postgres"], json!({"url": "postgres://u:p@db/madar"}));
+    let lite = profile_server("/data/madar.db", json!([]));
+    assert!(lite.enabled.iter().any(|e| e == "db-sqlite") && !lite.enabled.iter().any(|e| e == "db-postgres"));
+    assert_eq!(lite.settings["db-sqlite"], json!({"path": "/data/madar.db"}));
+    assert!(catalog().0.iter().any(|p| p.manifest().id == "db-postgres"));
+}

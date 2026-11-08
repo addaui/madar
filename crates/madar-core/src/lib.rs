@@ -24,7 +24,7 @@ use std::sync::Arc;
 /// Every plugin Madar ships, plus the adapters it can run on.
 pub fn catalog() -> Catalog {
     let mut list: Vec<Arc<dyn Plugin>> = vec![
-        Arc::new(AdapterMemory), Arc::new(AdapterSqlite), Arc::new(AuthLocal), Arc::new(AuthPassword),
+        Arc::new(AdapterMemory), Arc::new(AdapterSqlite), Arc::new(AdapterPostgres), Arc::new(AuthLocal), Arc::new(AuthPassword),
         Arc::new(PolicyAllowAll), Arc::new(PolicyRoles), Arc::new(StdClock), Arc::new(StdIds),
         Arc::new(projects::Projects), Arc::new(tasks::Tasks), Arc::new(discussion::Discussion),
         Arc::new(small::Audit), Arc::new(small::Quota), Arc::new(nuah_prefs::Prefs), Arc::new(nuah_appearance::Appearance), Arc::new(nuah_metric_prometheus::MetricPrometheus), Arc::new(LogConsole), Arc::new(LogFile), Arc::new(small::Export),
@@ -66,10 +66,13 @@ pub fn profile_embedded(db_path: &str) -> Profile {
     p
 }
 
-/// Several people with passwords. `accounts` are `{name, password_hash, roles}`.
-pub fn profile_server(db_path: &str, accounts: serde_json::Value) -> Profile {
-    let mut p = base_profile("server", &["db-sqlite", "auth-password", "policy-roles", "clock-system", "ids-random", "log-console"]);
-    p.settings.insert("db-sqlite".into(), json!({"path": db_path}));
+/// Several people with passwords. `accounts` are `{name, password_hash, roles}`. `db` is the path of a SQLite
+/// file, or a `postgres://` URL to run on PostgreSQL (one Madar process per database).
+pub fn profile_server(db: &str, accounts: serde_json::Value) -> Profile {
+    let postgres = db.starts_with("postgres://") || db.starts_with("postgresql://");
+    let adapter = if postgres { "db-postgres" } else { "db-sqlite" };
+    let mut p = base_profile("server", &[adapter, "auth-password", "policy-roles", "clock-system", "ids-random", "log-console"]);
+    p.settings.insert(adapter.into(), if postgres { json!({"url": db}) } else { json!({"path": db}) });
     p.settings.insert("auth-password".into(), json!({"accounts": accounts}));
     p.settings.insert("quota".into(), json!({"max_tasks": 5000}));
     p.enabled.push("quota".into());
