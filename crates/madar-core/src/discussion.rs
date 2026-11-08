@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `discussion`: comments with one level of replies, and updates (a note on a task that is not an edit).
 
 use crate::content::richtext;

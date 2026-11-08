@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `projects`: projects, their members and Access levels. It answers for the project [resource] and the
 //! "project members" [Scope], so the Core (not the Faces) knows who may do what.
 //! Design: https://docs.addaui.com/nuah/specs/madar-v2/

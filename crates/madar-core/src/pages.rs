@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `pages`: a tree of rich-text pages, in a project (its knowledge base, `pages.*`) or one person's
 //! own notes (`notes.*`). Both sets of Operations share this code. ADR 0022.
 

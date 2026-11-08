@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `workspaces`: an optional, personal way to group the projects you can see (ADR 0023).
 //! The id `default` always exists without this plugin; this plugin lets a person add their own.
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! Madar's server: the Madar plugins, the `http` Projection with Madar's own routes (file downloads, link
 //! previews), and the product description the host needs. Nothing here edits Nuah.
 

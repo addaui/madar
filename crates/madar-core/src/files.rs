@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `files`: uploads. The bytes live behind the Extension point `files.store` (one provider), so where they
 //! are kept (the database now, a disk or a bucket later) is a deployment choice. ADR 0025.
 

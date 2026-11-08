@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 "use strict";
 // The customizer's engine (ADR 0028). A theme preset is a full token set; a person's overrides are sparse.
 // This file resolves the two, derives every shade, shadow and radius, and writes the result as CSS custom

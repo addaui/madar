@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! The small plugins: audit, quota, export, notify and the inbox provider. Preferences, appearance and themes
 //! live in the shared plugins repository (nuah-prefs, nuah-appearance).
 

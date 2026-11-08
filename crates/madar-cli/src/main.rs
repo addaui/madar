@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `madar`: the command line Face. It is built only on the Link, so the same commands work against
 //! a server (`--server`) or a database file opened in this process (`--db`).
 //!

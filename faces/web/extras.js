@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Search, page history, repeat labels and image upload. Each one asks the Core; none holds a rule.
 
 // ---------- search ----------

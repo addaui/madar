@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! PRD criterion 1: the same scenario through the in-process Link and through HTTP gives identical
 //! answers (ids and times included, because both Cores use the same fixed clock and sequential ids).
 

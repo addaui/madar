@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! The Link as the CLI sees it. Two Projections, one trait: a Core in this process (`--db`) or a
 //! server over HTTP. The commands above it do not know which one they got.
 

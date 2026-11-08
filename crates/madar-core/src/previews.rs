@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `previews`: what a web address looks like, for the editor's link block (ADR 0026).
 //!
 //! The network is touched only by [`Fetcher`], which the *server* owns and runs outside any transaction (a slow

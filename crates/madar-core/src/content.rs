@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! Rich text, the editor's block registry, and references between items.
 //! Design: ADR 0019 (references), ADR 0020 (rich text), https://docs.addaui.com/nuah/plans/madar-v3-plan/
 

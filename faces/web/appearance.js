@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 "use strict";
 // Settings → Appearance: the customizer panel (ADR 0028). It is built from `appearance.schema`, so a new token
 // the Core knows about shows up here without a change to this file. Edits preview live; Save stores them.

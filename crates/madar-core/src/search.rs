@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `search`: one box that finds tasks, pages and notes across everything the caller can see.
 //! Whoever holds something searchable answers the Extension point `search.source`. ADR 0025.
 

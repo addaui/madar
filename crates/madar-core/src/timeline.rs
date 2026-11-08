@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `timeline`: one feed about an item (a task or a page), merged from whatever provides `timeline.source`.
 //! ADR 0024. The Face decides how to draw it; the feed is newest first and loads a page at a time.
 

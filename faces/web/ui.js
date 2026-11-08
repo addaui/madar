@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Small parts every screen shares: drawn icons, avatars, a popup menu, the shortcut sheet.
 // Icons are 24-unit line drawings in `currentColor`; the ones that point somewhere carry `dir` so a right-to-left
 // layout mirrors them (numbers, check marks and clocks never mirror).

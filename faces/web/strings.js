@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // More words for the web board. English and Arabic (the Arabic is a first draft, not yet reviewed by a speaker).
 Object.assign(STR.en, {
   home: "Home", notes: "Notes", newNote: "New note", newPage: "New page", untitled: "Untitled", pages: "Pages", board: "Board", list: "List", overview: "Overview",

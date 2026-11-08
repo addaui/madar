@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! `tasks`: the board. Tasks, subtasks, labels, order, and the Today view.
 //! Design: https://docs.addaui.com/nuah/specs/madar-v2/
 

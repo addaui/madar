@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 "use strict";
 // The Madar web board. A Face: it holds no rules. Whether a button shows comes from the `can` list
 // the Core puts on every project and task; what happens on a click is an Operation.

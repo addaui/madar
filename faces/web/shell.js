@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // The frame of the web board: sidebar, top bar with breadcrumbs, focus mode, dialogs, the settings window,
 // routes and the Today page. Everything here asks the Core through `call`; none of it holds a rule.
 const hasOp = (n) => !!(S.desc && S.desc.operations && S.desc.operations[n]);

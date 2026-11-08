@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! The `http` plugin as a service (ADR 0031): it starts with the Core, stops with it, frees its port,
 //! never hangs on an open Pulse stream, and the host program stops cleanly on SIGTERM.
 

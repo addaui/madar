@@ -5,7 +5,7 @@ members = ["crates/*"]
 [workspace.package]
 edition = "2021"
 version = "0.3.0"
-license = "UNLICENSED"
+license = "Apache-2.0"
 publish = false
 
 # Nuah is a dependency, pinned by tag. Madar never edits it; to take an update change this tag (the

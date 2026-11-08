@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! The setup wizard's server mode (ADR 0014): code, secrets, save-only-if-it-resolves.
 
 use nuah_adapters::AuthPassword;

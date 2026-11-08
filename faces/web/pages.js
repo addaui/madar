@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Pages (a project's knowledge base) and Notes (your own): one tree and one page view for both, plus the
 // editor helpers, the "link to a page or task" picker and the timeline that tasks and pages share.
 S.pagesList = []; S.activeTimeline = null;

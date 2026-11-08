@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // The rich-text editor as a Face module (ADR 0020): Tiptap on ProseMirror, no network at run time.
 // It builds its slash menu from the blocks the Core lists (editor.blocks) and keeps blocks it does not know.
 import { Editor, Node, Extension, mergeAttributes } from '@tiptap/core'

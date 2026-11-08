@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 use nuah_adapters::AuthPassword;
 use nuah_kernel::Core;
 use serde_json::json;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // The task drawer: fields, a rich description, custom fields, labels, subtasks, and the timeline.
 let drawerCache = null;
 function cachedDrawer() {

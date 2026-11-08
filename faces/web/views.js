@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // A project's pages of the board: header and tabs, the board, the list, the overview, the project settings.
 const SVG = "http://www.w3.org/2000/svg";
 function svg(tag, attrs, ...kids) {

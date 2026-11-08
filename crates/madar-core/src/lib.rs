@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //! Madar v2: a task manager built as plugins on the Nuah kernel.
 //! Design: <https://docs.addaui.com/nuah/specs/madar-v2/>
 

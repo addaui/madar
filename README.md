@@ -1,6 +1,6 @@
 # Madar (مدار)
 
-Task manager: projects, tasks, pages, live updates. Built on [Nuah](https://github.com/addaui/nuah).
+Task manager: projects, tasks, pages, live updates. An open-source application built on [Nuah](https://github.com/addaui/nuah). Self-hosting is a first-class way to run it, and an official hosted service is planned.
 
 ## Run with Docker
 
@@ -67,10 +67,13 @@ cargo run -p madar-server -- serve --db madar.db --accounts accounts.json --web 
 - `faces/editor-src`: editor source
 - `deploy`: compose file
 
+## License
+
+[Apache License 2.0](LICENSE). Self-host it, change it, fork it and use it commercially. Fonts and the bundled editor keep their own licenses, listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The names and logos are covered separately, see [TRADEMARK.md](TRADEMARK.md). To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## TODO
 
 - [ ] docs
-- [ ] license
 - [ ] arm64 image
 - [ ] overview page
 - [ ] light theme
