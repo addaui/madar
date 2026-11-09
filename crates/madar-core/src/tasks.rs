@@ -15,7 +15,7 @@ const GAP: f64 = 1024.0;
 pub fn view(d: &Doc) -> Value {
     let b = &d.body;
     json!({
-        "id": d.id, "rev": d.rev, "project": b["project"], "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"], "notes": b["notes"],
+        "id": d.id, "rev": d.rev, "project": b["project"], "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"],
         "status": b["status"], "priority": b["priority"], "band": band(b["priority"].as_i64().unwrap_or(0)),
         "due": b["due"], "assignee": b["assignee"], "labels": b["labels"], "parent": b["parent"],
         "position": b["position"], "archived": b["archived"], "created_by": b["created_by"],
@@ -133,7 +133,7 @@ fn spawn_next(tx: &mut Tx, p: &Value, done: Doc) -> Result<Doc> {
     let pos = end_of(tx, text(b, "project"), &first)?;
     let number = next_number(tx, COUNTERS, text(b, "project"))?;
     let next = tx.create(TASKS, json!({
-        "project": b["project"], "title": b["title"], "notes": b["notes"], "status": first, "priority": b["priority"], "due": due,
+        "project": b["project"], "title": b["title"], "status": first, "priority": b["priority"], "due": due,
         "assignee": b["assignee"], "labels": b["labels"], "parent": Value::Null, "position": pos, "archived": false,
         "created_by": b["created_by"], "created_at": tx.now(), "completed_at": Value::Null,
         "custom": b["custom"], "description": b.get("description").cloned().unwrap_or(Value::Null), "repeat": r, "repeat_of": done.id, "number": number,
@@ -160,7 +160,7 @@ impl Plugin for Tasks {
             "provides": [{"extension_point": "prefs.item", "optional": true}, {"extension_point": "search.source", "optional": true}],
             "description": "Tasks on a board: columns, order, subtasks, labels, and a Today view",
             "requires": {"plugins": ["projects"], "capabilities": ["emit", "call"]},
-            "data": {"collections": [TASKS, LABELS, COUNTERS], "version": 2,
+            "data": {"collections": [TASKS, LABELS, COUNTERS], "version": 3,
                      "indexes": [{"collection": TASKS, "field": "project"}, {"collection": TASKS, "field": "assignee"}, {"collection": TASKS, "field": "parent"}]},
             "events": {
                 "tasks.created": {}, "tasks.recurred": {}, "tasks.updated": {}, "tasks.moved": {}, "tasks.removed": {},
@@ -171,7 +171,7 @@ impl Plugin for Tasks {
                     "reasons": {"tasks.assignee_not_member": "Only members can be assigned", "tasks.unknown_label": "That label is not in this project",
                                 "tasks.bad_status": "That column does not exist", "tasks.bad_parent": "A subtask needs a top-level task of the same project as its parent"},
                     "input": {"type":"object","required":["project","title"],"properties":{
-                        "project":proj,"title":{"type":"string","minLength":1,"maxLength":200},"notes":{"type":"string","maxLength":10000},
+                        "project":proj,"title":{"type":"string","minLength":1,"maxLength":200},
                         "status":{"type":"string"},"priority":{"type":"integer","minimum":0,"maximum":10},"due":date,
                         "assignee":{"type":["string","null"]},"labels":{"type":"array","maxItems":20,"items":{"type":"string"}},"parent":{"type":["string","null"]},"custom":{"type":"object"},"description":{"type":["object","null"]},"repeat":{"type":["object","null"],"additionalProperties":false,"required":["every","unit"],"properties":{"every":{"type":"integer","minimum":1,"maximum":365},"unit":{"enum":["day","week","month"]}}}},"additionalProperties":false},
                     "output": task_out, "affordances": aff},
@@ -188,7 +188,7 @@ impl Plugin for Tasks {
                                 "tasks.assignee_not_member": "Only members can be assigned", "tasks.unknown_label": "That label is not in this project", "tasks.bad_status": "That column does not exist"},
                     "input": {"type":"object","required":["project","id"],"properties":{
                         "project":proj,"id":{"type":"string"},"expected_rev":{"type":"integer","minimum":1},"title":{"type":"string","minLength":1,"maxLength":200},
-                        "notes":{"type":"string","maxLength":10000},"status":{"type":"string"},"priority":{"type":"integer","minimum":0,"maximum":10},"due":date,
+                        "status":{"type":"string"},"priority":{"type":"integer","minimum":0,"maximum":10},"due":date,
                         "assignee":{"type":["string","null"]},"labels":{"type":"array","maxItems":20,"items":{"type":"string"}},"archived":{"type":"boolean"},"custom":{"type":"object"},"description":{"type":["object","null"]},"repeat":{"type":["object","null"],"additionalProperties":false,"required":["every","unit"],"properties":{"every":{"type":"integer","minimum":1,"maximum":365},"unit":{"enum":["day","week","month"]}}}},"additionalProperties":false},
                     "output": task_out, "affordances": aff},
                 "tasks.move": {"kind": "command", "description": "Move a task to a column and a place in it", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
@@ -228,6 +228,19 @@ impl Plugin for Tasks {
     }
 
     fn migrate(&self, from: u32, tx: &mut Tx) -> Result<()> {
+        // version 3: the plain `notes` text became the first paragraphs of the rich `description`
+        if from < 3 {
+            for d in tx.query(TASKS, &Query::new().limit(20000))?.items.into_iter().filter(|d| d.body.get("notes").is_some()) {
+                let mut body = d.body.clone();
+                let notes = text(&d.body, "notes").to_string();
+                if !notes.trim().is_empty() && body.get("description").map_or(true, |x| x.is_null()) {
+                    let paragraphs: Vec<Value> = notes.split('\n').map(|l| if l.is_empty() { json!({"type": "paragraph"}) } else { json!({"type": "paragraph", "content": [{"type": "text", "text": l}]}) }).collect();
+                    body["description"] = json!({"type": "doc", "content": paragraphs});
+                }
+                body.as_object_mut().map(|o| o.remove("notes"));
+                tx.put(TASKS, &d.id, body, Expect::Rev(d.rev))?;
+            }
+        }
         if from != 1 {
             return Ok(());
         }
@@ -266,7 +279,7 @@ impl Plugin for Tasks {
             for p in projects["projects"].as_array().cloned().unwrap_or_default() {
                 let pid = text(&p, "id").to_string();
                 for d in tx.query(TASKS, &Query::new().eq("project", pid.as_str()).eq("archived", false).limit(5000))?.items {
-                    let body = format!("{}\n{}", text(&d.body, "notes"), richtext::text_of(d.body.get("description").unwrap_or(&Value::Null)));
+                    let body = richtext::text_of(d.body.get("description").unwrap_or(&Value::Null));
                     if let Some((score, snippet)) = crate::search::score(&q, text(&d.body, "title"), &body) {
                         items.push(json!({"kind": "task", "id": d.id, "title": d.body["title"], "snippet": snippet, "score": score,
                             "project": pid, "project_name": p["name"], "done": !d.body["completed_at"].is_null()}));
@@ -311,7 +324,7 @@ impl Plugin for Tasks {
             let done = status == last_status(&p);
             let number = next_number(tx, COUNTERS, &project)?;
             let d = tx.create(TASKS, json!({
-                "project": project, "title": i["title"], "notes": i.get("notes").cloned().unwrap_or(json!("")), "status": status,
+                "project": project, "title": i["title"], "status": status,
                 "priority": i.get("priority").cloned().unwrap_or(json!(0)), "due": i.get("due").cloned().unwrap_or(Value::Null),
                 "assignee": assignee, "labels": labels, "parent": parent, "position": position, "archived": false,
                 "created_by": me, "created_at": now, "completed_at": if done { json!(now) } else { Value::Null }, "number": number,
@@ -361,7 +374,7 @@ impl Plugin for Tasks {
             let mut body = old.body.clone();
             let mut changes = serde_json::Map::new();
             let p = project_of(tx, &project)?;
-            for field in ["title", "notes", "priority", "due", "assignee", "labels", "archived", "status"] {
+            for field in ["title", "priority", "due", "assignee", "labels", "archived", "status"] {
                 let Some(new) = i.get(field) else { continue };
                 if &body[field] == new {
                     continue;
@@ -545,7 +558,7 @@ impl Plugin for Tasks {
             let needle = text(&i, "q").to_lowercase();
             let mut rows: Vec<Doc> = tx.query(TASKS, &q)?.items;
             if !needle.is_empty() {
-                rows.retain(|d| text(&d.body, "title").to_lowercase().contains(&needle) || text(&d.body, "notes").to_lowercase().contains(&needle));
+                rows.retain(|d| text(&d.body, "title").to_lowercase().contains(&needle) || richtext::text_of(d.body.get("description").unwrap_or(&Value::Null)).to_lowercase().contains(&needle));
             }
             let (limit, after) = (i.get("limit").and_then(|l| l.as_u64()).unwrap_or(200) as usize, i.get("after").and_then(|l| l.as_u64()).unwrap_or(0) as usize);
             let total = rows.len();

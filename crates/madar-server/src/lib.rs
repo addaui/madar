@@ -37,16 +37,13 @@ async fn file(State(core): State<Core>, Path(id): Path<String>, headers: HeaderM
 #[derive(Clone)]
 struct Previews {
     core: Core,
-    fetcher: Option<Arc<madar_core::previews::Fetcher>>,
+    fetcher: Arc<madar_core::previews::Fetcher>,
 }
 
-/// A link preview: `previews.get` first (who may ask, is the plugin on), then the fetch, off the async threads
-/// and outside any transaction (ADR 0026). 404 when the server was not set up to fetch.
+/// A link preview: `previews.get` first (who may ask, is the plugin on, is `fetch` set), then the fetch, off the async
+/// threads and outside any transaction (ADR 0026). 404 when the `previews` plugin is not set to fetch.
 async fn preview(State(app): State<Previews>, headers: HeaderMap, Json(body): Json<Value>) -> Result<Response, ApiError> {
     use madar_core::previews::Refusal;
-    let Some(fetcher) = app.fetcher.clone() else {
-        return Err(Error::reason(Category::NotFound, "previews.unavailable", "Link previews are not set up on this server").into());
-    };
     let cred = credential(&headers);
     let core = app.core.clone();
     let url = body["url"].as_str().unwrap_or("").to_string();
@@ -56,6 +53,10 @@ async fn preview(State(app): State<Previews>, headers: HeaderMap, Json(body): Js
         Ok((who, plain))
     })
     .await??;
+    if plain["fetch"] != json!(true) {
+        return Err(Error::reason(Category::NotFound, "previews.unavailable", "Link previews are not turned on for this server").into());
+    }
+    let fetcher = app.fetcher.clone();
     let target = plain["url"].as_str().unwrap_or("").to_string();
     let got = blocking(move || fetcher.get(&who, &target)).await?;
     match got {
@@ -66,8 +67,9 @@ async fn preview(State(app): State<Previews>, headers: HeaderMap, Json(body): Js
     }
 }
 
-/// Madar's extra routes for the `http` Projection. `previews`: fetch link previews from public addresses (off unless asked for).
-pub fn routes(previews: Option<Arc<madar_core::previews::Fetcher>>) -> impl Fn(Core) -> Router + Send + Sync + 'static {
+/// Madar's extra routes for the `http` Projection. `previews` does the fetching for link previews; it only runs when the
+/// `previews` plugin's `fetch` setting is on.
+pub fn routes(previews: Arc<madar_core::previews::Fetcher>) -> impl Fn(Core) -> Router + Send + Sync + 'static {
     move |core| {
         Router::new()
             .route("/files/{id}", get(file).with_state(core.clone()))
@@ -76,9 +78,9 @@ pub fn routes(previews: Option<Arc<madar_core::previews::Fetcher>>) -> impl Fn(C
 }
 
 /// Madar's plugins plus the `http` Projection with Madar's routes.
-pub fn catalog(previews: bool) -> Catalog {
+pub fn catalog() -> Catalog {
     let mut c = madar_core::catalog();
-    let fetcher = previews.then(|| Arc::new(madar_core::previews::Fetcher::new(false, 20)));
+    let fetcher = Arc::new(madar_core::previews::Fetcher::new(false, 20));
     c.0.push(Arc::new(Http::new().with_routes(routes(fetcher))));
     c
 }
@@ -107,8 +109,8 @@ impl nuah_host::Product for Madar {
     fn name(&self) -> &str {
         "madar"
     }
-    fn catalog(&self, with: &[String]) -> Catalog {
-        catalog(with.iter().any(|w| w == "previews"))
+    fn catalog(&self, _with: &[String]) -> Catalog {
+        catalog()
     }
     fn server_profile(&self, db: &str, accounts: Value) -> Profile {
         madar_core::profile_server(db, accounts)
@@ -117,6 +119,10 @@ impl nuah_host::Product for Madar {
         madar_core::profile_server("madar.db", serde_json::json!([]))
     }
     fn configure(&self, profile: &mut Profile, with: &[String]) {
+        // `--with previews` is the old way to turn on link previews; they are the `previews` plugin's `fetch` setting now.
+        if with.iter().any(|w| w == "previews") {
+            profile.settings.entry("previews".into()).or_insert_with(|| json!({}))["fetch"] = json!(true);
+        }
         if with.iter().any(|w| w == "metrics") {
             enable_metrics(profile, std::env::var("MADAR_METRICS_LISTEN").ok(), std::env::var("MADAR_METRICS_TOKEN").is_ok_and(|t| !t.is_empty()));
         }

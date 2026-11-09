@@ -297,7 +297,8 @@ impl Plugin for Previews {
     fn manifest(&self) -> Manifest {
         manifest_of(json!({
             "id": "previews", "version": "0.1.0", "name": "Link previews", "namespaces": ["previews"],
-            "description": "Title, summary and picture of a web address, for the editor's link block. Without the server's fetcher it answers a plain card.",
+            "description": "Title, summary and picture of a web address, for the editor's link block. Off by default: with `fetch` set the server fetches the page, otherwise it answers a plain card.",
+            "settings_schema": {"type": "object", "properties": {"fetch": {"type": "boolean", "description": "Fetch the page behind a link to show its title, summary and picture. The server then makes outbound web requests (public addresses only, rate limited; ADR 0026).", "default": false}}, "additionalProperties": false},
             "operations": {
                 "previews.get": {"kind": "query", "description": "A card for a public http/https address. The server's POST /previews adds the page's own title, summary and picture.",
                     "reasons": {"previews.unavailable": "No preview could be made for that address", "previews.rate_limited": "Too many previews just now, try again in a minute"},
@@ -309,10 +310,11 @@ impl Plugin for Previews {
     fn bind(&self, b: &mut Bindings) {
         // The plain card: no network. The server's POST /previews calls this first (it settles who may ask and
         // whether the plugin is on), then fetches the rich one.
-        b.op("previews.get", |_, i| {
+        b.op("previews.get", |tx, i| {
             // Only the shape here; whether the address is public is the fetcher's call (a test may allow loopback).
             let u = check_url(i["url"].as_str().unwrap_or(""), true).map_err(|_| Error::invalid("url", "is not a web address"))?;
-            Ok(json!({"url": u.as_str(), "title": u.host_str().unwrap_or(""), "site": u.host_str().unwrap_or(""), "description": null, "image": null}))
+            Ok(json!({"url": u.as_str(), "title": u.host_str().unwrap_or(""), "site": u.host_str().unwrap_or(""), "description": null, "image": null,
+                "fetch": tx.settings()["fetch"].as_bool().unwrap_or(false)}))
         });
     }
 }

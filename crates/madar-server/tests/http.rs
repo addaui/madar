@@ -25,14 +25,16 @@ fn start_full(cfg: nuah_http::Config, previews: Option<std::sync::Arc<madar_core
         {"name": "alice", "password_hash": hash, "roles": ["member"]},
         {"name": "bob", "password_hash": hash, "roles": ["member"]},
     ]);
-    let core = Core::start(&madar_core::distribution(madar_core::profile_server(":memory:", accounts))).unwrap_or_else(|p| panic!("{p:#?}"));
+    let mut profile = madar_core::profile_server(":memory:", accounts);
+    profile.settings.insert("previews".into(), json!({"fetch": previews.is_some()}));
+    let core = Core::start(&madar_core::distribution(profile)).unwrap_or_else(|p| panic!("{p:#?}"));
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new().unwrap().block_on(async move {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             tx.send(listener.local_addr().unwrap()).unwrap();
             let _services = core.start_services().unwrap();
-            let routes: nuah_http::RouteFn = std::sync::Arc::new(madar_server::routes(previews));
+            let routes: nuah_http::RouteFn = std::sync::Arc::new(madar_server::routes(previews.unwrap_or_else(|| std::sync::Arc::new(madar_core::previews::Fetcher::new(false, 20)))));
             axum::serve(listener, nuah_http::router_with(core, cfg, &[routes], tokio::sync::watch::channel(false).1)).await.unwrap();
         });
     });
@@ -460,7 +462,7 @@ fn link_previews_are_fetched_for_signed_in_people_and_never_from_private_address
         assert_eq!(real.post("/previews", json!({"url": bad}), &[("Authorization", &bh)]).status, 400, "{bad}");
     }
 
-    // not set up: nothing is fetched
+    // `fetch` not set on the plugin: nothing is fetched
     let off = start();
     let c = off.sign_in("alice");
     assert_eq!(off.post("/previews", json!({"url": "https://example.com/"}), &[("Authorization", &format!("Bearer {c}"))]).status, 404);

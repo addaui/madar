@@ -63,7 +63,7 @@ impl Plugin for Files {
                 "description": "Keep and return bytes. {action: put|get|delete, id, data (base64, for put)}; get answers {data}.",
                 "input": {"type":"object","required":["action","id"]}}}},
             "data": {"collections": [FILES, USES], "version": 1, "indexes": [{"collection": FILES, "field": "owner"}, {"collection": FILES, "field": "project"}, {"collection": USES, "field": "from_key"}, {"collection": USES, "field": "file"}]},
-            "listeners": [{"id": "files.track", "on": ["pages.*", "notes.*", "tasks.*", "discussion.*"], "handler": "files.track"},
+            "listeners": [{"id": "files.track", "on": ["pages.*", "tasks.*", "discussion.*"], "handler": "files.track"},
                            {"id": "files.project_gone", "on": ["projects.deleted"], "handler": "files.project_gone"}],
             "operations": {
                 "files.upload": {"kind": "command", "description": "Upload a file (base64, at most 4 MiB): an image, a PDF or plain text. With `project` it is shared with the project's members.",

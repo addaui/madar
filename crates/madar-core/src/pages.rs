@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-//! `pages`: a tree of rich-text pages, in a project (its knowledge base, `pages.*`) or one person's
-//! own notes (`notes.*`). Both sets of Operations share this code. ADR 0022.
+//! `pages`: a tree of rich-text pages, in a project (its Knowledge, `knowledge.*`) or one person's
+//! own Pages (`pages.*`). Both sets of Operations share this code. ADR 0022. The storage keeps its first
+//! names (`pages.pages` and the `pages.*` Events, for either kind of page).
 
 use crate::content::richtext;
 use crate::util::*;
@@ -29,7 +30,7 @@ fn view(d: &Doc, with_body: bool) -> Value {
     v
 }
 
-/// Where the pages of this call live: one project, or the caller's own notes.
+/// Where the pages of this call live: one project, or the caller's own.
 struct Scope {
     project: Option<String>,
     me: String,
@@ -365,7 +366,7 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
     let doc = json!({"type":"object"});
     let id = json!({"type":"string"});
     let nullable = json!({"type":["string","null"]});
-    let scope = if personal { "your own notes" } else { "this project's pages" };
+    let scope = if personal { "your own pages" } else { "this project's knowledge" };
     add("create", "command", true, &format!("Add a page to {scope}"), json!({"title": title, "body": doc, "parent": nullable, "icon": nullable}), vec!["title"]);
     add("get", "query", false, "One page with its body", json!({"id": id}), vec!["id"]);
     add("list", "query", false, &format!("The tree of {scope}, without bodies"), json!({}), vec![]);
@@ -382,11 +383,11 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
 pub struct Pages;
 impl Plugin for Pages {
     fn manifest(&self) -> Manifest {
-        let mut ops = ops_for("pages", false).as_object().cloned().unwrap();
-        ops.extend(ops_for("notes", true).as_object().cloned().unwrap());
+        let mut ops = ops_for("knowledge", false).as_object().cloned().unwrap();
+        ops.extend(ops_for("pages", true).as_object().cloned().unwrap());
         manifest(json!({
-            "id": "pages", "version": "0.1.0", "name": "Pages", "namespaces": ["pages", "notes"],
-            "description": "A tree of rich-text pages: a project's knowledge base (pages.*) and your own notes (notes.*)",
+            "id": "pages", "version": "0.1.0", "name": "Pages", "namespaces": ["knowledge", "pages"],
+            "description": "A tree of rich-text pages: a project's Knowledge (knowledge.*) and your own Pages (pages.*)",
             "requires": {"plugins": ["projects"], "capabilities": ["emit", "call"]},
             "provides": [{"extension_point": "search.source", "optional": true}],
             "data": {"collections": [PAGES, VERSIONS, COUNTERS], "version": 2,
@@ -435,11 +436,11 @@ impl Plugin for Pages {
             };
             for p in projects["projects"].as_array().cloned().unwrap_or_default() {
                 for d in tx.query(PAGES, &Query::new().eq("project", text(&p, "id")).limit(2000))?.items {
-                    hit(&d, "page", Some(&p));
+                    hit(&d, "knowledge", Some(&p));
                 }
             }
             for d in tx.query(PAGES, &Query::new().eq("owner", me.as_str()).eq("project", Value::Null).limit(2000))?.items {
-                hit(&d, "note", None);
+                hit(&d, "page", None);
             }
             items.sort_by(|a, b| b["score"].as_f64().partial_cmp(&a["score"].as_f64()).unwrap_or(std::cmp::Ordering::Equal));
             items.truncate(50);
@@ -447,7 +448,7 @@ impl Plugin for Pages {
         });
         type H = fn(&mut Tx, &Value, bool) -> Result<Value>;
         let all: [(&str, H); 10] = [("versions", versions), ("version", version), ("restore", restore), ("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search)];
-        for (prefix, personal) in [("pages", false), ("notes", true)] {
+        for (prefix, personal) in [("knowledge", false), ("pages", true)] {
             for (name, f) in all {
                 b.op(&format!("{prefix}.{name}"), move |tx, i| f(tx, &i, personal));
             }

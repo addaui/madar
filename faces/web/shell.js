@@ -36,15 +36,16 @@ function fmtDate(iso) {
 function fmtTime(ms) { return new Date(ms).toLocaleString(lang === "ar" ? "ar" : "en"); }
 
 // ---------- routes ----------
-const TABS = ["board", "list", "overview", "pages"];
-function tabsAvailable() { return TABS.filter((x) => x === "board" || (x === "list" && hasOp("tasks.query")) || (x === "overview" && hasOp("tasks.stats")) || (x === "pages" && hasOp("pages.list"))); }
+const TABS = ["board", "list", "overview", "knowledge"];
+function tabsAvailable() { return TABS.filter((x) => x === "board" || (x === "list" && hasOp("tasks.query")) || (x === "overview" && hasOp("tasks.stats")) || (x === "knowledge" && hasOp("knowledge.list"))); }
 function routeFromHash() {
   const parts = location.hash.replace(/^#\//, "").split("/").filter(Boolean), a = parts[0], b = parts[1];
   if (a === "today" || a === "inbox") return { view: a };
-  if (a === "notes") return { view: "notes", page: b || null };
+  if (a === "pages" || a === "notes") return { view: "pages", page: b || null };
   if (a === "p" && /^[0-9a-f]+$/.test(b || "")) {
     let i = 2, tab = null, page = null, task = null;
-    if (TABS.includes(parts[i])) { tab = parts[i++]; if (tab === "pages" && parts[i] && parts[i] !== "t") page = parts[i++]; }
+    if (parts[i] === "pages") parts[i] = "knowledge"; // links from before the rename
+    if (TABS.includes(parts[i])) { tab = parts[i++]; if (tab === "knowledge" && parts[i] && parts[i] !== "t") page = parts[i++]; }
     if (parts[i] === "t") task = parts[i + 1] || null;
     return { view: b, tab, page, task };
   }
@@ -53,15 +54,15 @@ function routeFromHash() {
 function setHash() {
   let h;
   if (S.view === "today" || S.view === "inbox") h = "#/" + S.view;
-  else if (S.view === "notes") h = "#/notes" + (S.openPage ? "/" + S.openPage.id : "");
-  else h = "#/p/" + S.view + "/" + (S.tab || "board") + (S.tab === "pages" && S.openPage ? "/" + S.openPage.id : "") + (S.openTask ? "/t/" + S.openTask.id : "");
+  else if (S.view === "pages") h = "#/pages" + (S.openPage ? "/" + S.openPage.id : "");
+  else h = "#/p/" + S.view + "/" + (S.tab || "board") + (S.tab === "knowledge" && S.openPage ? "/" + S.openPage.id : "") + (S.openTask ? "/t/" + S.openTask.id : "");
   if (location.hash !== h) history.replaceState(null, "", h);
 }
 function go(view, tab) {
   flushPage();
   S.view = view; S.openTask = null; drawerCache = null; S.panel = null; S.openPage = null; S.wantPage = null;
   if (narrow()) S.side = "closed";
-  const isProject = !["today", "inbox", "notes"].includes(view);
+  const isProject = !["today", "inbox", "pages"].includes(view);
   const want = tab || S.prefs["projects.default_tab"] || "board";
   S.tab = isProject ? (tabsAvailable().includes(want) ? want : "board") : null;
   refreshAll();
@@ -131,13 +132,13 @@ function crumbs() {
   const out = [[t("home"), () => go("today")]];
   if (S.view === "today") return [[t("today")]];
   if (S.view === "inbox") return [[t("inbox")]];
-  if (S.view === "notes") { out.push([t("notes"), S.openPage ? () => { S.openPage = null; setHash(); render(); } : null]); if (S.openPage) out.push([S.openPage.title || t("untitled")]); return out; }
+  if (S.view === "pages") { out.push([t("pages"), S.openPage ? () => { S.openPage = null; setHash(); render(); } : null]); if (S.openPage) out.push([S.openPage.title || t("untitled")]); return out; }
   if (S.project) {
     const w = S.ws && S.ws.placements.find((p) => p.project === S.project.id), wn = w && S.ws.workspaces.find((x) => x.id === w.workspace);
     if (S.ws && hasOp("workspaces.list")) out.push([wn ? (wn.builtin ? t("defaultWs") : wn.name) : t("defaultWs")]);
     out.push([S.project.name, S.tab && S.tab !== "board" || S.openTask ? () => { S.openTask = null; drawerCache = null; S.openPage = null; setHash(); render(); } : null]);
     if (S.tab && S.tab !== "board") out.push([t(S.tab)]);
-    if (S.tab === "pages" && S.openPage) out.push([S.openPage.title || t("untitled")]);
+    if (S.tab === "knowledge" && S.openPage) out.push([S.openPage.title || t("untitled")]);
   }
   return out;
 }
@@ -166,7 +167,7 @@ document.addEventListener("keydown", (e) => {
   if (typing || e.ctrlKey || e.metaKey || e.altKey || document.querySelector(".modal-back") || openMenu.cur) return;
   if (e.key === "?") { e.preventDefault(); openShortcuts(); }
   else if (e.key === "Escape" && S.openTask) { S.openTask = null; drawerCache = null; setHash(); render(); }
-  else if ((e.key === "n" || e.key === "N") && S.project && S.view !== "today" && S.view !== "inbox" && S.view !== "notes" && can(S.project, "projects.write")) { e.preventDefault(); newTaskHere(); }
+  else if ((e.key === "n" || e.key === "N") && S.project && S.view !== "today" && S.view !== "inbox" && S.view !== "pages" && can(S.project, "projects.write")) { e.preventDefault(); newTaskHere(); }
 });
 
 function navItem(label, view, badge, icon, tab) {
@@ -175,7 +176,7 @@ function navItem(label, view, badge, icon, tab) {
 const wsItems = (w) => [{ label: t("renameWs"), icon: "edit", onclick: () => renameWorkspace(w) }, { label: t("deleteWs"), icon: "trash", danger: true, onclick: () => deleteWorkspace(w) }];
 /** Gives a row a context menu (right click, long press) and returns the row. */
 function withContext(el, items) { if (items) bindContext(el, items); return el; }
-const projectContext = (p) => () => [{ label: t("open"), icon: "board", onclick: () => go(p.id, "board") }, { label: t("pages"), icon: "page", onclick: () => go(p.id, "pages") }, { label: t("overview"), icon: "chart", onclick: () => go(p.id, "overview") }, p.key ? "-" : null, p.key ? { label: t("copyId") + " · " + p.key, icon: "link", onclick: () => copyText(p.key) } : null];
+const projectContext = (p) => () => [{ label: t("open"), icon: "board", onclick: () => go(p.id, "board") }, { label: t("knowledge"), icon: "page", onclick: () => go(p.id, "knowledge") }, { label: t("overview"), icon: "chart", onclick: () => go(p.id, "overview") }, p.key ? "-" : null, p.key ? { label: t("copyId") + " · " + p.key, icon: "link", onclick: () => copyText(p.key) } : null];
 function projectItems(list) { return list.map((p) => withContext(navItem(p.name, p.id), projectContext(p))); }
 function sidebar() {
   const canCreate = S.desc.operations["projects.create"] && S.desc.operations["projects.create"].allowed;
@@ -198,16 +199,16 @@ function sidebar() {
     h("div", { class: "side-top" }, h("div", { class: "brand" }, ico("logo"), h("span", { class: "brand-text" }, "Madar")), h("span", { class: "grow" }), iconBtn("side", t("toggleSide"), toggleSide)),
     hasOp("search.query") ? h("button", { class: "search-pill", onclick: openSearch }, ico("search"), h("span", {}, t("search").replace("…", "")), h("kbd", { dir: "ltr" }, "/")) : null,
     h("nav", { class: "side-scroll", "aria-label": t("projects") },
-      navItem(t("today"), "today", null, "today"), navItem(t("inbox"), "inbox", S.inbox.unread, "inbox"), hasOp("notes.list") ? navItem(t("notes"), "notes", null, "notes") : null, ...projects),
+      navItem(t("today"), "today", null, "today"), navItem(t("inbox"), "inbox", S.inbox.unread, "inbox"), hasOp("pages.list") ? navItem(t("pages"), "pages", null, "pages") : null, ...projects),
     h("div", { class: "side-foot" }, h("div", { class: "me" }, avatar(S.who.subject, S.who.display), h("div", { class: "who" }, h("b", { dir: "auto" }, S.who.display), h("small", {}, h("span", { class: "live", "data-state": S.live }), h("span", { class: "live-label" }, S.live === "live" ? t("live") : t("offline"))))),
       iconBtn("gear", t("settings"), openSettings), iconBtn("logout", t("signOut"), signOut)));
 }
 /** Pages and notes use the whole height: the tree, the page and its side panel each scroll on their own (ADR 0030). */
-const pagesMode = () => S.view === "notes" || (!!S.project && S.view !== "today" && S.view !== "inbox" && S.view !== "notes" && tabsAvailable().includes(S.tab) && S.tab === "pages");
+const pagesMode = () => S.view === "pages" || (!!S.project && S.view !== "today" && S.view !== "inbox" && S.view !== "pages" && tabsAvailable().includes(S.tab) && S.tab === "knowledge");
 function shell() {
   let body;
-  if (S.view === "today") body = todayView(); else if (S.view === "inbox") body = inboxView(); else if (S.view === "notes") body = notesView(); else body = projectView();
-  const pane = S.openTask && S.project && !["today", "inbox", "notes"].includes(S.view) ? cachedDrawer() : null;
+  if (S.view === "today") body = todayView(); else if (S.view === "inbox") body = inboxView(); else if (S.view === "pages") body = myPagesView(); else body = projectView();
+  const pane = S.openTask && S.project && !["today", "inbox", "pages"].includes(S.view) ? cachedDrawer() : null;
   return h("div", { class: "app", "data-side": S.side, "data-focus": S.focus ? "1" : "0", "data-pane": pane ? "1" : "0" }, sidebar(),
     h("div", { class: "scrim", onclick: toggleSide }),
     h("div", { class: "main-panel" }, topbar(), h("main", { class: "content" + (pagesMode() ? " pages-mode" : ""), id: "main" }, body)), S.focus ? h("button", { class: "btn focus-exit", onclick: toggleFocus }, ico("focus"), t("exitFocus")) : null, pane);

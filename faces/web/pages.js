@@ -3,8 +3,8 @@
 // editor helpers, the "link to a page or task" picker and the timeline that tasks and pages share.
 S.pagesList = []; S.activeTimeline = null;
 let pageCache = null;   // { id, el, ed, rev, dirty, timer, status }
-const personal = () => S.view === "notes";
-const pgOp = (name) => (personal() ? "notes." : "pages.") + name;
+const personal = () => S.view === "pages";
+const pgOp = (name) => (personal() ? "pages." : "knowledge.") + name;
 const pgIn = (o) => (personal() ? o : { project: S.project.id, ...o });
 const pageWriter = () => personal() || can(S.project, "projects.write");
 
@@ -21,7 +21,7 @@ function refocusEditor(tok) { try { tok.ed.focus(false); } catch (e) { /* editor
 function openRef(kind, id) {
   if (kind === "pages.page") {
     if (personal()) { selectPage(id); return; }
-    S.tab = "pages"; S.wantPage = id; S.openTask = null; drawerCache = null; refreshAll();
+    S.tab = "knowledge"; S.wantPage = id; S.openTask = null; drawerCache = null; refreshAll();
   } else if (kind === "tasks.task") { S.tab = "board"; S.wantTask = id; S.openPage = null; refreshAll(); }
 }
 function pickItem() {
@@ -77,7 +77,7 @@ function treeRow(pg, depth, writer) {
   return [row, ...(open ? kids.flatMap((k) => treeRow(k, depth + 1, writer)) : [])];
 }
 async function newPage(parent) {
-  const title = await askText(personal() ? t("newNote") : t("newPage")); if (!title) return;
+  const title = await askText(personal() ? t("newPage") : t("newPage")); if (!title) return;
   const out = await attempt(() => call(pgOp("create"), pgIn({ title, parent: parent || null }))); if (!out) return;
   if (parent) { const s = openSet(); s.delete("c:" + parent); ls.set("madar.pgopen", JSON.stringify([...s])); }
   await loadPagesData(); await selectPage(out.id);
@@ -190,17 +190,17 @@ async function loadBacklinks(pg, box) {
 }
 function pagesLayout(writer) {
   const roots = childrenOf(null), pg = S.openPage, side = !!pg && S.pageSide;
-  const tree = h("nav", { class: "tree", "aria-label": t("pages"),
+  const tree = h("nav", { class: "tree", "aria-label": personal() ? t("pages") : t("knowledge"),
     ondragover: (e) => { if (writer) e.preventDefault(); },
     ondrop: (e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) movePage(id, null, null); } },
-    writer ? btn(personal() ? t("newNote") : t("newPage"), { kind: "primary", icon: "plus", onclick: () => newPage(null) }) : null,
+    writer ? btn(personal() ? t("newPage") : t("newPage"), { kind: "primary", icon: "plus", onclick: () => newPage(null) }) : null,
     ...(roots.length ? roots.flatMap((r) => treeRow(r, 0, writer)) : [h("div", { class: "muted", style: "padding:8px" }, t("noPages"))]));
   return h("div", { class: "pages-layout", "data-side": side ? "1" : "0" }, tree,
     h("div", { class: "page-pane" }, pg ? pageView(writer) : h("div", { class: "empty", style: "margin:8vh auto" }, ico("book"), h("b", {}, t("noPages")), h("span", {}, t("noPagesHint")))),
     side ? pageSide(pg, writer) : null);
 }
 function pagesTab(p, writer) { return pagesLayout(writer); }
-function notesView() { return h("div", {}, h("div", { class: "head" }, h("h1", {}, t("notes")), h("span", { class: "sub" }, t("notesHint"))), pagesLayout(true)); }
+function myPagesView() { return h("div", {}, h("div", { class: "head" }, h("h1", {}, t("pages")), h("span", { class: "sub" }, t("myPagesHint"))), pagesLayout(true)); }
 
 // ---------- the timeline of a task or a page: comments with threads, updates, and history ----------
 function targetField(target) { return target.type === "tasks.task" ? { task: target.id } : { page: target.id }; }

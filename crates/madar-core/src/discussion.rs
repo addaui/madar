@@ -29,7 +29,7 @@ fn check_target(tx: &mut Tx, project: &str, kind: &str, id: &str) -> Result<()> 
     if kind == "task" {
         tx.call("tasks.get", json!({"project": project, "id": id}))?;
     } else {
-        tx.call("pages.get", json!({"project": project, "id": id}))?;
+        tx.call("knowledge.get", json!({"project": project, "id": id}))?;
     }
     Ok(())
 }

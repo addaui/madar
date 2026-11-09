@@ -731,7 +731,7 @@ fn a_plugin_that_offers_preferences_still_runs_when_the_prefs_plugin_is_off() {
     assert!(core.call_as(&al, "prefs.get", json!({}), None).is_err(), "the Operation is gone with its plugin");
 }
 
-// ---- pages, notes, links, editor (ADR 0019, 0020, 0022) ---------------------------------------------------
+// ---- knowledge, pages, links, editor (ADR 0019, 0020, 0022) ---------------------------------------------------
 
 fn doc_with(text_: &str, refs: &[(&str, &str)]) -> Value {
     let mut kids = vec![json!({"type": "text", "text": text_})];
@@ -748,34 +748,34 @@ fn project_pages_form_a_tree_that_follows_the_projects_access() {
     let p = a.project(&al, "Docs");
     a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
     a.ok(&al, "projects.share", json!({"project": p, "subject": "vera", "level": "viewer"}));
-    let root = a.ok(&al, "pages.create", json!({"project": p, "title": "Guide"}));
+    let root = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Guide"}));
     let (r, ) = (root["id"].as_str().unwrap().to_string(),);
-    let b = a.ok(&bo, "pages.create", json!({"project": p, "title": "Setup", "parent": r}))["id"].as_str().unwrap().to_string();
-    let c = a.ok(&bo, "pages.create", json!({"project": p, "title": "Usage", "parent": r}))["id"].as_str().unwrap().to_string();
-    let titles = |who: &Identity| -> Vec<String> { a.ok(who, "pages.list", json!({"project": p}))["pages"].as_array().unwrap().iter().map(|x| x["title"].as_str().unwrap().to_string()).collect() };
+    let b = a.ok(&bo, "knowledge.create", json!({"project": p, "title": "Setup", "parent": r}))["id"].as_str().unwrap().to_string();
+    let c = a.ok(&bo, "knowledge.create", json!({"project": p, "title": "Usage", "parent": r}))["id"].as_str().unwrap().to_string();
+    let titles = |who: &Identity| -> Vec<String> { a.ok(who, "knowledge.list", json!({"project": p}))["pages"].as_array().unwrap().iter().map(|x| x["title"].as_str().unwrap().to_string()).collect() };
     assert_eq!(titles(&ve), ["Guide", "Setup", "Usage"]);
     // the viewer reads but does not write; a stranger does not even know the project
-    assert_eq!(a.ok(&ve, "pages.get", json!({"project": p, "id": b}))["title"], "Setup");
-    assert_eq!(a.err(&ve, "pages.create", json!({"project": p, "title": "No"})).category, Category::Denied);
-    assert_eq!(a.err(&mal, "pages.list", json!({"project": p})).category, Category::NotFound);
+    assert_eq!(a.ok(&ve, "knowledge.get", json!({"project": p, "id": b}))["title"], "Setup");
+    assert_eq!(a.err(&ve, "knowledge.create", json!({"project": p, "title": "No"})).category, Category::Denied);
+    assert_eq!(a.err(&mal, "knowledge.list", json!({"project": p})).category, Category::NotFound);
     // a page of another project is not reachable through this one
     let q = a.project(&al, "Other");
-    assert_eq!(a.err(&al, "pages.get", json!({"project": q, "id": b})).category, Category::NotFound);
+    assert_eq!(a.err(&al, "knowledge.get", json!({"project": q, "id": b})).category, Category::NotFound);
     // reorder: Usage before Setup
-    a.ok(&bo, "pages.move", json!({"project": p, "id": c, "parent": r, "before": b}));
-    let kids: Vec<String> = a.ok(&al, "pages.list", json!({"project": p}))["pages"].as_array().unwrap().iter().filter(|x| x["parent"] == r.as_str()).map(|x| x["title"].as_str().unwrap().to_string()).collect();
+    a.ok(&bo, "knowledge.move", json!({"project": p, "id": c, "parent": r, "before": b}));
+    let kids: Vec<String> = a.ok(&al, "knowledge.list", json!({"project": p}))["pages"].as_array().unwrap().iter().filter(|x| x["parent"] == r.as_str()).map(|x| x["title"].as_str().unwrap().to_string()).collect();
     assert_eq!(kids, ["Usage", "Setup"]);
     // a page cannot go under itself or its own child
-    assert_eq!(a.err(&al, "pages.move", json!({"project": p, "id": r, "parent": b})).category, Category::Invalid);
-    assert_eq!(a.err(&al, "pages.move", json!({"project": p, "id": r, "parent": r})).category, Category::Invalid);
+    assert_eq!(a.err(&al, "knowledge.move", json!({"project": p, "id": r, "parent": b})).category, Category::Invalid);
+    assert_eq!(a.err(&al, "knowledge.move", json!({"project": p, "id": r, "parent": r})).category, Category::Invalid);
     // move under another page, then delete the branch
-    a.ok(&al, "pages.move", json!({"project": p, "id": b, "parent": c}));
-    let gone = a.ok(&al, "pages.delete", json!({"project": p, "id": c}));
+    a.ok(&al, "knowledge.move", json!({"project": p, "id": b, "parent": c}));
+    let gone = a.ok(&al, "knowledge.delete", json!({"project": p, "id": c}));
     assert_eq!(gone["removed"], 2);
     assert_eq!(titles(&al), ["Guide"]);
     // search by title
-    a.ok(&al, "pages.create", json!({"project": p, "title": "Release notes"}));
-    assert_eq!(a.ok(&al, "pages.search", json!({"project": p, "q": "RELEASE"}))["pages"].as_array().unwrap().len(), 1);
+    a.ok(&al, "knowledge.create", json!({"project": p, "title": "Release notes"}));
+    assert_eq!(a.ok(&al, "knowledge.search", json!({"project": p, "q": "RELEASE"}))["pages"].as_array().unwrap().len(), 1);
 }
 
 #[test]
@@ -785,35 +785,35 @@ fn pages_nest_to_a_limit_and_an_edit_of_a_stale_copy_is_a_conflict() {
     let p = a.project(&al, "Deep");
     let mut parent = Value::Null;
     for n in 1..=12 {
-        let r = a.ok(&al, "pages.create", json!({"project": p, "title": format!("L{n}"), "parent": parent}));
+        let r = a.ok(&al, "knowledge.create", json!({"project": p, "title": format!("L{n}"), "parent": parent}));
         parent = r["id"].clone();
     }
-    assert_eq!(a.err(&al, "pages.create", json!({"project": p, "title": "L13", "parent": parent})).reason.as_deref(), Some("pages.too_deep"));
-    let page = a.ok(&al, "pages.create", json!({"project": p, "title": "Edit me"}));
+    assert_eq!(a.err(&al, "knowledge.create", json!({"project": p, "title": "L13", "parent": parent})).reason.as_deref(), Some("pages.too_deep"));
+    let page = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Edit me"}));
     let (id, rev) = (page["id"].as_str().unwrap(), page["rev"].as_u64().unwrap());
-    a.ok(&al, "pages.update", json!({"project": p, "id": id, "title": "First", "expected_rev": rev}));
-    let e = a.err(&al, "pages.update", json!({"project": p, "id": id, "title": "Second", "expected_rev": rev}));
+    a.ok(&al, "knowledge.update", json!({"project": p, "id": id, "title": "First", "expected_rev": rev}));
+    let e = a.err(&al, "knowledge.update", json!({"project": p, "id": id, "title": "Second", "expected_rev": rev}));
     assert_eq!((e.category, e.reason.as_deref()), (Category::Conflict, Some("pages.stale_revision")));
     // a body that is not a document is refused before anything is stored
-    assert_eq!(a.err(&al, "pages.update", json!({"project": p, "id": id, "body": {"type": "paragraph"}})).category, Category::Invalid);
+    assert_eq!(a.err(&al, "knowledge.update", json!({"project": p, "id": id, "body": {"type": "paragraph"}})).category, Category::Invalid);
 }
 
 #[test]
-fn notes_are_private_to_their_owner() {
+fn personal_pages_are_private_to_their_owner() {
     let a = app();
     let (al, bo) = (who("alice"), who("bob"));
-    let n = a.ok(&al, "notes.create", json!({"title": "Diary", "body": doc_with("secret", &[])}));
+    let n = a.ok(&al, "pages.create", json!({"title": "Diary", "body": doc_with("secret", &[])}));
     let id = n["id"].as_str().unwrap();
-    assert_eq!(a.ok(&al, "notes.get", json!({"id": id}))["title"], "Diary");
-    assert_eq!(a.err(&bo, "notes.get", json!({"id": id})).category, Category::NotFound);
-    assert!(a.ok(&bo, "notes.list", json!({}))["pages"].as_array().unwrap().is_empty());
-    assert_eq!(a.err(&bo, "notes.update", json!({"id": id, "title": "mine now"})).category, Category::NotFound);
+    assert_eq!(a.ok(&al, "pages.get", json!({"id": id}))["title"], "Diary");
+    assert_eq!(a.err(&bo, "pages.get", json!({"id": id})).category, Category::NotFound);
+    assert!(a.ok(&bo, "pages.list", json!({}))["pages"].as_array().unwrap().is_empty());
+    assert_eq!(a.err(&bo, "pages.update", json!({"id": id, "title": "mine now"})).category, Category::NotFound);
     // a note never shows up as a project page, and the other way round
     let p = a.project(&al, "P");
-    assert_eq!(a.err(&al, "pages.get", json!({"project": p, "id": id})).category, Category::NotFound);
+    assert_eq!(a.err(&al, "knowledge.get", json!({"project": p, "id": id})).category, Category::NotFound);
     // nothing about a note reaches another person's live feed
     let (cb, ) = (a.core.pulse_now().unwrap(), );
-    a.ok(&al, "notes.update", json!({"id": id, "title": "Journal"}));
+    a.ok(&al, "pages.update", json!({"id": id, "title": "Journal"}));
     assert!(a.core.pulse(&bo, Some(&cb), 10).unwrap().events.is_empty());
 }
 
@@ -823,27 +823,27 @@ fn references_remember_what_refers_to_what_and_follow_edits() {
     let (al, mal) = (who("alice"), who("mallory"));
     let p = a.project(&al, "Wiki");
     let t = a.task(&al, &p, "Fix login");
-    let target = a.ok(&al, "pages.create", json!({"project": p, "title": "Design"}))["id"].as_str().unwrap().to_string();
+    let target = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Design"}))["id"].as_str().unwrap().to_string();
     let t_id = t["id"].as_str().unwrap().to_string();
-    let src = a.ok(&al, "pages.create", json!({"project": p, "title": "Plan", "body": doc_with("see", &[("pages.page", &target), ("tasks.task", &t_id)])}));
+    let src = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Plan", "body": doc_with("see", &[("pages.page", &target), ("tasks.task", &t_id)])}));
     let src_id = src["id"].as_str().unwrap().to_string();
     a.settle();
     let to = |kind: &str, id: &str| -> Vec<String> { a.ok(&al, "refs.to", json!({"project": p, "kind": kind, "id": id}))["links"].as_array().unwrap().iter().map(|l| l["title"].as_str().unwrap().to_string()).collect() };
     assert_eq!(to("pages.page", &target), ["Plan"]);
     assert_eq!(to("tasks.task", &t_id), ["Plan"]);
     // editing the source to drop one reference removes that link only
-    a.ok(&al, "pages.update", json!({"project": p, "id": src_id, "body": doc_with("see", &[("pages.page", &target)])}));
+    a.ok(&al, "knowledge.update", json!({"project": p, "id": src_id, "body": doc_with("see", &[("pages.page", &target)])}));
     a.settle();
     assert_eq!(to("pages.page", &target), ["Plan"]);
     assert!(to("tasks.task", &t_id).is_empty());
     // deleting the source removes the rest
-    a.ok(&al, "pages.delete", json!({"project": p, "id": src_id}));
+    a.ok(&al, "knowledge.delete", json!({"project": p, "id": src_id}));
     a.settle();
     assert!(to("pages.page", &target).is_empty());
     // backlinks are answered only to people who can see the project
     assert_eq!(a.err(&mal, "refs.to", json!({"project": p, "kind": "pages.page", "id": target})).category, Category::NotFound);
-    // notes: your own, and only yours
-    let n = a.ok(&al, "notes.create", json!({"title": "Idea", "body": doc_with("x", &[("pages.page", "elsewhere")])}));
+    // pages: your own, and only yours
+    let n = a.ok(&al, "pages.create", json!({"title": "Idea", "body": doc_with("x", &[("pages.page", "elsewhere")])}));
     a.settle();
     let mine = a.ok(&al, "refs.mine", json!({"kind": "pages.page", "id": "elsewhere"}));
     assert_eq!(mine["links"][0]["from"]["id"], n["id"]);
@@ -867,14 +867,14 @@ fn switching_pages_off_keeps_its_data_and_the_rest_runs() {
     let al = who("alice");
     let core = start_file(&path, &[]).unwrap();
     let p = core.call_as(&al, "projects.create", json!({"name": "Home"}), None).unwrap().output["id"].as_str().unwrap().to_string();
-    core.call_as(&al, "pages.create", json!({"project": p, "title": "Kept"}), None).unwrap();
+    core.call_as(&al, "knowledge.create", json!({"project": p, "title": "Kept"}), None).unwrap();
     drop(core);
     let core = start_file(&path, &["pages", "refs"]).unwrap_or_else(|p| panic!("{p:#?}"));
-    assert!(core.call_as(&al, "pages.list", json!({"project": p}), None).is_err());
+    assert!(core.call_as(&al, "knowledge.list", json!({"project": p}), None).is_err());
     core.call_as(&al, "tasks.create", json!({"project": p, "title": "still fine"}), None).unwrap();
     drop(core);
     let core = start_file(&path, &[]).unwrap();
-    assert_eq!(core.call_as(&al, "pages.list", json!({"project": p}), None).unwrap().output["pages"][0]["title"], "Kept");
+    assert_eq!(core.call_as(&al, "knowledge.list", json!({"project": p}), None).unwrap().output["pages"][0]["title"], "Kept");
 }
 
 // ---- custom attributes, query, stats, focus, rich descriptions (ADR 0024) -----------------------------------
@@ -987,7 +987,7 @@ fn a_rich_task_description_is_checked_and_its_references_become_links() {
     let a = app();
     let al = who("alice");
     let p = a.project(&al, "Rich");
-    let page = a.ok(&al, "pages.create", json!({"project": p, "title": "Spec"}))["id"].as_str().unwrap().to_string();
+    let page = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Spec"}))["id"].as_str().unwrap().to_string();
     assert_eq!(a.err(&al, "tasks.create", json!({"project": p, "title": "bad", "description": {"type": "paragraph"}})).category, Category::Invalid);
     let t = a.ok(&al, "tasks.create", json!({"project": p, "title": "Implement", "description": doc_with("per the", &[("pages.page", &page)])}));
     a.settle();
@@ -1030,13 +1030,13 @@ fn pages_can_be_discussed_and_their_comments_go_with_them() {
     let a = app();
     let al = who("alice");
     let p = a.project(&al, "Docs");
-    let pg = a.ok(&al, "pages.create", json!({"project": p, "title": "RFC"}))["id"].as_str().unwrap().to_string();
+    let pg = a.ok(&al, "knowledge.create", json!({"project": p, "title": "RFC"}))["id"].as_str().unwrap().to_string();
     a.ok(&al, "discussion.add", json!({"project": p, "page": pg, "body": "looks good"}));
     assert_eq!(a.ok(&al, "discussion.list", json!({"project": p, "page": pg}))["comments"].as_array().unwrap().len(), 1);
     // a page of another project cannot be commented on through this one
     let q = a.project(&al, "Elsewhere");
     assert_eq!(a.err(&al, "discussion.add", json!({"project": q, "page": pg, "body": "no"})).category, Category::NotFound);
-    a.ok(&al, "pages.delete", json!({"project": p, "id": pg}));
+    a.ok(&al, "knowledge.delete", json!({"project": p, "id": pg}));
     a.settle();
     let comments_left = a.core.call_as(&al, "export.project", json!({"project": p}), None).unwrap().output["comments"].as_array().unwrap().len();
     assert_eq!(comments_left, 0);
@@ -1130,22 +1130,22 @@ fn search_finds_what_you_can_see_best_match_first() {
     a.task(&al, &p, "Buy oat milk");
     a.ok(&al, "tasks.create", json!({"project": p, "title": "Errands", "description": rich("remember the MILK and eggs")}));
     a.task(&bo, &secret, "milk run for bob");
-    a.ok(&al, "pages.create", json!({"project": p, "title": "Milk supplier notes", "body": rich("prices of milk")}));
-    a.ok(&al, "notes.create", json!({"title": "Shopping", "body": rich("milk, bread")}));
+    a.ok(&al, "knowledge.create", json!({"project": p, "title": "Milk supplier notes", "body": rich("prices of milk")}));
+    a.ok(&al, "pages.create", json!({"title": "Shopping", "body": rich("milk, bread")}));
     let found = a.ok(&al, "search.query", json!({"q": "milk"}));
     let items = found["items"].as_array().unwrap();
     let titles: Vec<&str> = items.iter().map(|x| x["title"].as_str().unwrap()).collect();
     assert_eq!(items.len(), 4, "{titles:?}");
     assert!(!titles.contains(&"milk run for bob"), "never another person's project");
     assert_eq!(titles[0], "Milk supplier notes", "title hit plus body hits ranks first");
-    assert!(items.iter().any(|x| x["kind"] == "note") && items.iter().any(|x| x["kind"] == "page") && items.iter().any(|x| x["kind"] == "task"));
+    assert!(items.iter().any(|x| x["kind"] == "page") && items.iter().any(|x| x["kind"] == "knowledge") && items.iter().any(|x| x["kind"] == "task"));
     let snippet = items.iter().find(|x| x["title"] == "Errands").unwrap()["snippet"].as_str().unwrap().to_lowercase();
     assert!(snippet.contains("milk"));
     // every word must match; kinds narrow it
     assert!(a.ok(&al, "search.query", json!({"q": "milk zebra"}))["items"].as_array().unwrap().is_empty());
-    assert_eq!(a.ok(&al, "search.query", json!({"q": "milk", "kinds": ["note"]}))["items"].as_array().unwrap().len(), 1);
-    // bob's private note is invisible to alice
-    a.ok(&bo, "notes.create", json!({"title": "Bob diary", "body": rich("milk")}));
+    assert_eq!(a.ok(&al, "search.query", json!({"q": "milk", "kinds": ["page"]}))["items"].as_array().unwrap().len(), 1);
+    // bob's private page is invisible to alice
+    a.ok(&bo, "pages.create", json!({"title": "Bob diary", "body": rich("milk")}));
     assert_eq!(a.ok(&al, "search.query", json!({"q": "milk"}))["items"].as_array().unwrap().len(), 4);
     assert_eq!(a.err(&al, "search.query", json!({"q": "m"})).category, Category::Invalid);
 }
@@ -1155,40 +1155,40 @@ fn a_page_keeps_pictures_of_itself_and_a_restore_can_be_undone() {
     let a = app();
     let al = who("alice");
     let p = a.project(&al, "Docs");
-    let page = a.ok(&al, "pages.create", json!({"project": p, "title": "Plan", "body": rich("one")}));
+    let page = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Plan", "body": rich("one")}));
     let id = page["id"].as_str().unwrap().to_string();
     a.clock.advance(1000);
-    a.ok(&al, "pages.update", json!({"project": p, "id": id, "body": rich("two")}));
+    a.ok(&al, "knowledge.update", json!({"project": p, "id": id, "body": rich("two")}));
     a.clock.advance(1000);
-    a.ok(&al, "pages.update", json!({"project": p, "id": id, "body": rich("three")}));
-    let v = a.ok(&al, "pages.versions", json!({"project": p, "id": id}));
+    a.ok(&al, "knowledge.update", json!({"project": p, "id": id, "body": rich("three")}));
+    let v = a.ok(&al, "knowledge.versions", json!({"project": p, "id": id}));
     assert_eq!(v["versions"].as_array().unwrap().len(), 1, "one picture per editing spell");
     assert_eq!(v["versions"][0]["text"], "one");
     a.clock.advance(11 * 60 * 1000);
-    a.ok(&al, "pages.update", json!({"project": p, "id": id, "body": rich("four")}));
-    let v = a.ok(&al, "pages.versions", json!({"project": p, "id": id}));
+    a.ok(&al, "knowledge.update", json!({"project": p, "id": id, "body": rich("four")}));
+    let v = a.ok(&al, "knowledge.versions", json!({"project": p, "id": id}));
     let list = v["versions"].as_array().unwrap();
     assert_eq!(list.len(), 2);
     assert_eq!(list[0]["text"], "three", "newest first");
     let vid = list[1]["id"].as_str().unwrap().to_string();
-    assert_eq!(a.ok(&al, "pages.version", json!({"project": p, "id": id, "version": vid}))["body"], rich("one"));
+    assert_eq!(a.ok(&al, "knowledge.version", json!({"project": p, "id": id, "version": vid}))["body"], rich("one"));
     a.clock.advance(1000);
-    let back = a.ok(&al, "pages.restore", json!({"project": p, "id": id, "version": vid}));
+    let back = a.ok(&al, "knowledge.restore", json!({"project": p, "id": id, "version": vid}));
     assert_eq!(back["body"], rich("one"));
-    let v = a.ok(&al, "pages.versions", json!({"project": p, "id": id}));
+    let v = a.ok(&al, "knowledge.versions", json!({"project": p, "id": id}));
     assert_eq!(v["versions"][0]["text"], "four", "the page as it was before the restore is kept");
     // a viewer reads versions but cannot restore; a stranger sees nothing
     a.ok(&al, "projects.share", json!({"project": p, "subject": "vera", "level": "viewer"}));
     let vera = viewer("vera");
-    assert_eq!(a.ok(&vera, "pages.versions", json!({"project": p, "id": id}))["versions"].as_array().unwrap().len(), 3);
-    assert_eq!(a.err(&vera, "pages.restore", json!({"project": p, "id": id, "version": vid})).category, Category::Denied);
-    assert_eq!(a.err(&who("mallory"), "pages.versions", json!({"project": p, "id": id})).category, Category::NotFound);
-    // notes keep versions too, and deleting the page deletes them
-    let n = a.ok(&al, "notes.create", json!({"title": "N", "body": rich("a")}));
-    a.ok(&al, "notes.update", json!({"id": n["id"], "body": rich("b")}));
-    assert_eq!(a.ok(&al, "notes.versions", json!({"id": n["id"]}))["versions"].as_array().unwrap().len(), 1);
-    a.ok(&al, "pages.delete", json!({"project": p, "id": id}));
-    assert_eq!(a.err(&al, "pages.versions", json!({"project": p, "id": id})).category, Category::NotFound);
+    assert_eq!(a.ok(&vera, "knowledge.versions", json!({"project": p, "id": id}))["versions"].as_array().unwrap().len(), 3);
+    assert_eq!(a.err(&vera, "knowledge.restore", json!({"project": p, "id": id, "version": vid})).category, Category::Denied);
+    assert_eq!(a.err(&who("mallory"), "knowledge.versions", json!({"project": p, "id": id})).category, Category::NotFound);
+    // personal pages keep versions too, and deleting the page deletes them
+    let n = a.ok(&al, "pages.create", json!({"title": "N", "body": rich("a")}));
+    a.ok(&al, "pages.update", json!({"id": n["id"], "body": rich("b")}));
+    assert_eq!(a.ok(&al, "pages.versions", json!({"id": n["id"]}))["versions"].as_array().unwrap().len(), 1);
+    a.ok(&al, "knowledge.delete", json!({"project": p, "id": id}));
+    assert_eq!(a.err(&al, "knowledge.versions", json!({"project": p, "id": id})).category, Category::NotFound);
 }
 
 #[test]
@@ -1196,19 +1196,19 @@ fn the_history_records_page_changes_but_autosave_is_one_entry() {
     let a = app();
     let al = who("alice");
     let p = a.project(&al, "Docs");
-    let page = a.ok(&al, "pages.create", json!({"project": p, "title": "Plan"}));
+    let page = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Plan"}));
     let id = page["id"].as_str().unwrap().to_string();
     for n in 0..5 {
         a.clock.advance(2000);
-        a.ok(&al, "pages.update", json!({"project": p, "id": id, "body": rich(&format!("v{n}"))}));
+        a.ok(&al, "knowledge.update", json!({"project": p, "id": id, "body": rich(&format!("v{n}"))}));
     }
-    a.ok(&al, "notes.create", json!({"title": "Private"}));
+    a.ok(&al, "pages.create", json!({"title": "Private"}));
     a.settle();
     let h = a.ok(&al, "audit.list", json!({"project": p}));
     let kinds: Vec<&str> = h["entries"].as_array().unwrap().iter().map(|e| e["kind"].as_str().unwrap()).collect();
     assert_eq!(kinds.iter().filter(|k| **k == "pages.updated").count(), 1, "{kinds:?}");
     assert!(kinds.contains(&"pages.created"));
-    assert!(!kinds.iter().any(|k| k.starts_with("notes")), "private notes are never recorded");
+    assert_eq!(kinds.iter().filter(|k| **k == "pages.created").count(), 1, "a private page is never recorded: {kinds:?}");
 }
 
 #[test]
@@ -1328,22 +1328,22 @@ fn deleting_a_page_deletes_the_files_only_it_showed() {
     };
     let (only, shared, elsewhere, stray) = (up(&bo, Some(&p)), up(&bo, Some(&p)), up(&al, Some(&q)), up(&bo, Some(&p)));
     let (u_only, u_shared, u_else) = (format!("/files/{only}"), format!("/files/{shared}"), format!("/files/{elsewhere}"));
-    let one = a.ok(&bo, "pages.create", json!({"project": p, "title": "One", "body": image_doc(&[&u_only, &u_shared, &u_else, "https://example.com/x.png"])}))["id"].as_str().unwrap().to_string();
-    let two = a.ok(&bo, "pages.create", json!({"project": p, "title": "Two", "body": image_doc(&[&u_shared])}))["id"].as_str().unwrap().to_string();
+    let one = a.ok(&bo, "knowledge.create", json!({"project": p, "title": "One", "body": image_doc(&[&u_only, &u_shared, &u_else, "https://example.com/x.png"])}))["id"].as_str().unwrap().to_string();
+    let two = a.ok(&bo, "knowledge.create", json!({"project": p, "title": "Two", "body": image_doc(&[&u_shared])}))["id"].as_str().unwrap().to_string();
     a.settle();
     // editing the picture out does not delete it: an undo or a restored version can bring it back
-    a.ok(&bo, "pages.update", json!({"project": p, "id": two, "body": image_doc(&[])}));
+    a.ok(&bo, "knowledge.update", json!({"project": p, "id": two, "body": image_doc(&[])}));
     a.settle();
     assert!(a.ok(&bo, "files.info", json!({"id": shared}))["id"].is_string());
-    a.ok(&bo, "pages.update", json!({"project": p, "id": two, "body": image_doc(&[&u_shared])}));
+    a.ok(&bo, "knowledge.update", json!({"project": p, "id": two, "body": image_doc(&[&u_shared])}));
     a.settle();
-    a.ok(&bo, "pages.delete", json!({"project": p, "id": one}));
+    a.ok(&bo, "knowledge.delete", json!({"project": p, "id": one}));
     a.settle();
     assert_eq!(a.err(&bo, "files.info", json!({"id": only})).category, Category::NotFound, "only that page showed it");
     assert!(a.ok(&bo, "files.info", json!({"id": shared}))["id"].is_string(), "another page still shows it");
     assert!(a.ok(&al, "files.info", json!({"id": elsewhere}))["id"].is_string(), "a file from another project is never touched");
     assert!(a.ok(&bo, "files.info", json!({"id": stray}))["id"].is_string());
-    a.ok(&bo, "pages.delete", json!({"project": p, "id": two}));
+    a.ok(&bo, "knowledge.delete", json!({"project": p, "id": two}));
     a.settle();
     assert_eq!(a.err(&bo, "files.download", json!({"id": shared})).category, Category::NotFound, "the last page that showed it is gone");
     // the bytes went too, not only the record
@@ -1355,10 +1355,10 @@ fn deleting_a_note_deletes_its_files_and_the_sweep_removes_strays() {
     let a = app();
     let al = who("alice");
     let f = a.ok(&al, "files.upload", json!({"name": "n.png", "data": PNG}))["id"].as_str().unwrap().to_string();
-    let n = a.ok(&al, "notes.create", json!({"title": "Diary", "body": image_doc(&[&format!("/files/{f}")])}))["id"].as_str().unwrap().to_string();
+    let n = a.ok(&al, "pages.create", json!({"title": "Diary", "body": image_doc(&[&format!("/files/{f}")])}))["id"].as_str().unwrap().to_string();
     let stray = a.ok(&al, "files.upload", json!({"name": "s.png", "data": PNG}))["id"].as_str().unwrap().to_string();
     a.settle();
-    a.ok(&al, "notes.delete", json!({"id": n}));
+    a.ok(&al, "pages.delete", json!({"id": n}));
     a.settle();
     assert_eq!(a.err(&al, "files.info", json!({"id": f})).category, Category::NotFound);
     // a stray is young: kept; after a day it goes
@@ -1460,11 +1460,11 @@ fn tasks_and_pages_are_numbered_per_project_and_numbers_are_never_reused() {
     sorted.dedup();
     assert_eq!(numbers.len(), 5, "the repeat left its next task: {numbers:?}");
     assert_eq!(sorted.len(), numbers.len(), "no number is used twice: {numbers:?}");
-    // pages: numbered inside a project, none for personal notes
-    let pg = a.ok(&al, "pages.create", json!({"project": p, "title": "Plan"}));
-    let pg2 = a.ok(&al, "pages.create", json!({"project": p, "title": "Notes"}));
+    // pages: numbered inside a project, none for personal pages
+    let pg = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Plan"}));
+    let pg2 = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Notes"}));
     assert_eq!((pg["number"].clone(), pg2["number"].clone()), (json!(1), json!(2)));
-    assert!(a.ok(&al, "notes.create", json!({"title": "mine"}))["number"].is_null());
+    assert!(a.ok(&al, "pages.create", json!({"title": "mine"}))["number"].is_null());
 }
 
 #[test]
@@ -1472,18 +1472,18 @@ fn a_page_remembers_how_it_is_shown_and_refuses_anything_else() {
     let a = app();
     let al = who("alice");
     let p = a.project(&al, "docs");
-    let pg = a.ok(&al, "pages.create", json!({"project": p, "title": "Guide"}));
+    let pg = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Guide"}));
     assert_eq!(pg["settings"], json!({}));
     let id = pg["id"].as_str().unwrap();
-    let out = a.ok(&al, "pages.update", json!({"project": p, "id": id, "settings": {"font": "serif", "size": 18, "width": "wide"}}));
+    let out = a.ok(&al, "knowledge.update", json!({"project": p, "id": id, "settings": {"font": "serif", "size": 18, "width": "wide"}}));
     assert_eq!(out["settings"], json!({"font": "serif", "size": 18, "width": "wide"}));
-    assert_eq!(a.ok(&al, "pages.get", json!({"project": p, "id": id}))["settings"]["size"], 18);
+    assert_eq!(a.ok(&al, "knowledge.get", json!({"project": p, "id": id}))["settings"]["size"], 18);
     for bad in [json!({"font": "comic"}), json!({"size": 99}), json!({"width": "huge"}), json!({"colour": "red"}), json!("x")] {
-        assert_eq!(a.err(&al, "pages.update", json!({"project": p, "id": id, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
+        assert_eq!(a.err(&al, "knowledge.update", json!({"project": p, "id": id, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
     }
-    // notes keep settings too
-    let n = a.ok(&al, "notes.create", json!({"title": "mine"}));
-    assert_eq!(a.ok(&al, "notes.update", json!({"id": n["id"], "settings": {"font": "mono"}}))["settings"]["font"], "mono");
+    // personal pages keep settings too
+    let n = a.ok(&al, "pages.create", json!({"title": "mine"}));
+    assert_eq!(a.ok(&al, "pages.update", json!({"id": n["id"], "settings": {"font": "mono"}}))["settings"]["font"], "mono");
 }
 
 #[test]

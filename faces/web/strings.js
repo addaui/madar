@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // More words for the web board. English and Arabic (the Arabic is a first draft, not yet reviewed by a speaker).
 Object.assign(STR.en, {
-  home: "Home", notes: "Pages", newNote: "New page", newPage: "New page", untitled: "Untitled", pages: "Knowledge", board: "Board", list: "List", overview: "Overview",
+  home: "Home", pages: "Pages", newPage: "New page", untitled: "Untitled", knowledge: "Knowledge", board: "Board", list: "List", overview: "Overview",
   settings: "Settings", projectSettings: "Project settings", focusMode: "Focus mode", exitFocus: "Exit focus mode", toggleSide: "Show or hide the sidebar",
   startHere: "Start here", alsoOpen: "Also open", assignedAll: "Everything assigned to me", nothingOpen: "Nothing open. Enjoy the quiet.",
   g_appearance: "Appearance", g_account: "Account", g_behaviour: "Behaviour", g_other: "Other", theme: "Theme", yes: "Yes", no: "No",
@@ -17,7 +17,7 @@ Object.assign(STR.en, {
   custom: "Custom fields", body: "Content", icon: "Icon", sureColumn: "Remove this column? Tasks in it must be moved first.",
 });
 Object.assign(STR.ar, {
-  home: "الرئيسية", notes: "الصفحات", newNote: "صفحة جديدة", newPage: "صفحة جديدة", untitled: "بلا عنوان", pages: "المعرفة", board: "اللوحة", list: "القائمة", overview: "نظرة عامة",
+  home: "الرئيسية", pages: "الصفحات", newPage: "صفحة جديدة", untitled: "بلا عنوان", knowledge: "المعرفة", board: "اللوحة", list: "القائمة", overview: "نظرة عامة",
   settings: "الإعدادات", projectSettings: "إعدادات المشروع", focusMode: "وضع التركيز", exitFocus: "الخروج من وضع التركيز", toggleSide: "إظهار الشريط الجانبي أو إخفاؤه",
   startHere: "ابدأ من هنا", alsoOpen: "مفتوحة أيضاً", assignedAll: "كل ما أُسند إليّ", nothingOpen: "لا شيء مفتوح. استمتع بالهدوء.",
   g_appearance: "المظهر", g_account: "الحساب", g_behaviour: "السلوك", g_other: "أخرى", theme: "السمة", yes: "نعم", no: "لا",
@@ -54,7 +54,7 @@ Object.assign(STR.en, {
   kSearch: "Search everything", kNewTask: "New task in this project", kClose: "Close the pane, a menu or a window", kHelp: "Keyboard shortcuts", kMove: "to move", kOpen: "to open",
   searchHint: "Type at least two letters to search tasks, knowledge and pages.", gMorning: "Good morning", gAfternoon: "Good afternoon", gEvening: "Good evening",
   nothingOpenHint: "Tasks assigned to you will show up here.", nothingNewHint: "Mentions and assignments will show up here.", unread: "Unread", remove: "Remove",
-  unsaved: "Unsaved changes", discard: "Discard", noPagesHint: "Knowledge holds what a project knows: guides, decisions, meeting notes.", notesHint: "Only you can see these.",
+  unsaved: "Unsaved changes", discard: "Discard", noPagesHint: "Knowledge holds what a project knows: guides, decisions, meeting notes.", myPagesHint: "Only you can see these.",
   collapse: "Collapse", expand: "Expand", pgUp: "Move up", pgDown: "Move down", pgIndent: "Move inside the page above", pgOutdent: "Move out one level", ascending: "Ascending", descending: "Descending",
 });
 Object.assign(STR.ar, {
@@ -62,6 +62,6 @@ Object.assign(STR.ar, {
   kSearch: "ابحث في كل شيء", kNewTask: "مهمة جديدة في هذا المشروع", kClose: "إغلاق اللوحة أو القائمة أو النافذة", kHelp: "اختصارات لوحة المفاتيح", kMove: "للتنقل", kOpen: "للفتح",
   searchHint: "اكتب حرفين على الأقل للبحث في المهام والمعرفة والصفحات.", gMorning: "صباح الخير", gAfternoon: "طاب يومك", gEvening: "مساء الخير",
   nothingOpenHint: "ستظهر هنا المهام المسندة إليك.", nothingNewHint: "ستظهر هنا الإشارات والإسنادات.", unread: "غير مقروء", remove: "إزالة",
-  unsaved: "تغييرات غير محفوظة", discard: "تجاهل", noPagesHint: "المعرفة تحفظ ما يعرفه المشروع: أدلة وقرارات وملاحظات اجتماعات.", notesHint: "أنت وحدك ترى هذه.",
+  unsaved: "تغييرات غير محفوظة", discard: "تجاهل", noPagesHint: "المعرفة تحفظ ما يعرفه المشروع: أدلة وقرارات وملاحظات اجتماعات.", myPagesHint: "أنت وحدك ترى هذه.",
   collapse: "طيّ", expand: "توسيع", pgUp: "نقل لأعلى", pgDown: "نقل لأسفل", pgIndent: "نقل داخل الصفحة التي فوقها", pgOutdent: "نقل مستوى للخارج", ascending: "تصاعدي", descending: "تنازلي",
 });

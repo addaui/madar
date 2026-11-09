@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! `search`: one box that finds tasks, pages and notes across everything the caller can see.
+//! `search`: one box that finds tasks, knowledge and pages across everything the caller can see.
 //! Whoever holds something searchable answers the Extension point `search.source`. ADR 0025.
 
 use crate::util::*;
@@ -44,15 +44,15 @@ impl Plugin for Search {
     fn manifest(&self) -> Manifest {
         manifest(json!({
             "id": "search", "version": "0.1.0", "name": "Search", "namespaces": ["search"],
-            "description": "One search over tasks, pages and notes: everything you can see, best match first",
+            "description": "One search over tasks, knowledge and pages: everything you can see, best match first",
             "requires": {"capabilities": ["call"], "extension_points": ["search.source"]},
             "defines": {"extension_points": {"search.source": {"policy": "many",
                 "description": "A plugin answers with the things it holds that match {q}: {items: [{kind, id, title, snippet, score, project?, project_name?}]}. It only returns what the caller may see.",
                 "input": {"type":"object","required":["q"]}}}},
             "operations": {
-                "search.query": {"kind": "query", "description": "Find tasks, pages and notes by words in their title or text",
+                "search.query": {"kind": "query", "description": "Find tasks, knowledge and pages by words in their title or text",
                     "input": {"type":"object","required":["q"],"properties":{"q":{"type":"string","minLength":2,"maxLength":100},
-                        "kinds":{"type":"array","items":{"enum":["task","page","note"]},"maxItems":3},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false},
+                        "kinds":{"type":"array","items":{"enum":["task","knowledge","page"]},"maxItems":3},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false},
                     "output": {"type":"object","required":["items"]}}
             }
         }))

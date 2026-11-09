@@ -10,10 +10,6 @@ function cachedDrawer() {
   drawerCache = { key: k, el: drawer() };
   return drawerCache.el;
 }
-function paragraphDoc(text_) {
-  const lines = String(text_ || "").split("\n");
-  return { type: "doc", content: lines.map((l) => (l ? { type: "paragraph", content: [{ type: "text", text: l }] } : { type: "paragraph" })) };
-}
 function customField(a, value, writer) {
   const base = { disabled: !writer, "aria-label": a.label };
   if (a.type === "boolean") return { el: h("input", { ...base, type: "checkbox", checked: value === true }), read: (e) => e.checked };
@@ -36,11 +32,11 @@ function drawer() {
   const bandOf = (n) => (n >= 9 ? "urgent" : n >= 7 ? "high" : n >= 4 ? "medium" : "low");
   const prioShow = h("span", { class: "chip prio", "data-b": task.band }, ico("flag"), t(task.band));
   f.priority.addEventListener("input", () => { const b = bandOf(Number(f.priority.value)); prioShow.dataset.b = b; prioShow.lastChild.textContent = t(b); });
-  // the description is rich text; a task written before that keeps its old plain notes as the first paragraphs
+  // the description is rich text
   let descDirty = false, foot;
   const markDirty = () => { if (foot) foot.hidden = false; };
   const descHost = h("div", { class: "ed-host" });
-  const ed = makeEditor(descHost, task.description || (task.notes ? paragraphDoc(task.notes) : null), writer, () => { descDirty = true; markDirty(); });
+  const ed = makeEditor(descHost, task.description || null, writer, () => { descDirty = true; markDirty(); });
   S.drawerEd = { ed };
   const rep = task.parent ? null : repeatControl(task, writer);
   const attrs = p.attributes || [], custom = attrs.map((a) => ({ a, ...customField(a, (task.custom || {})[a.key], writer) }));

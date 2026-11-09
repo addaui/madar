@@ -6,8 +6,8 @@ function openFound(x) {
   flushPage();
   S.openTask = null; drawerCache = null; S.panel = null; S.openPage = null;
   if (x.kind === "task") { S.view = x.project; S.tab = "board"; S.wantTask = x.id; S.wantPage = null; }
-  else if (x.kind === "page") { S.view = x.project; S.tab = "pages"; S.wantPage = x.id; }
-  else { S.view = "notes"; S.tab = null; S.wantPage = x.id; }
+  else if (x.kind === "knowledge") { S.view = x.project; S.tab = "knowledge"; S.wantPage = x.id; }
+  else { S.view = "pages"; S.tab = null; S.wantPage = x.id; }
   refreshAll();
 }
 function openSearch() {
@@ -23,9 +23,9 @@ function openSearch() {
     if (mine !== seq || !res) return;
     rows = res.items; at = 0;
     out.replaceChildren(...(rows.length ? rows.map((x) => h("button", { class: "found", type: "button", role: "option", onclick: () => pick(x) },
-      h("span", { class: "kind" }, ico(x.kind === "task" ? "task" : x.kind === "note" ? "notes" : "page")),
+      h("span", { class: "kind" }, ico(x.kind === "task" ? "task" : x.kind === "page" ? "pages" : "page")),
       h("span", { class: "grow" }, h("strong", { dir: "auto" }, x.title || t("untitled")), x.snippet ? h("small", { class: "muted", dir: "auto" }, x.snippet) : null),
-      h("span", { class: "where", dir: "auto" }, x.kind === "note" ? t("notes") : x.project_name || ""))) : [h("div", { class: "empty", style: "margin:5vh auto" }, ico("search"), h("b", {}, t("noResults")))]));
+      h("span", { class: "where", dir: "auto" }, x.kind === "page" ? t("pages") : x.project_name || ""))) : [h("div", { class: "empty", style: "margin:5vh auto" }, ico("search"), h("b", {}, t("noResults")))]));
     mark();
   };
   input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(run, 180); });

@@ -12,12 +12,12 @@ S.stats = null;
 
 async function loadTab() {
   if (S.view === "today" || S.view === "inbox") return;
-  if (S.view === "notes") return loadPagesData();
+  if (S.view === "pages") return loadPagesData();
   if (!S.project) return;
   if (!S.tab) S.tab = tabsAvailable().includes(S.prefs["projects.default_tab"]) ? S.prefs["projects.default_tab"] : "board";
   if (S.tab === "list") await loadList(false);
   else if (S.tab === "overview") S.stats = await attempt(() => call("tasks.stats", { project: S.project.id, days: 30 })) || null;
-  else if (S.tab === "pages") await loadPagesData();
+  else if (S.tab === "knowledge") await loadPagesData();
 }
 async function loadList(more) {
   const q = S.listq, input = { project: S.project.id, sort: q.sort, desc: q.desc, limit: 100 };
@@ -30,7 +30,7 @@ async function loadList(more) {
 let listTimer = null;
 function listChanged() { clearTimeout(listTimer); listTimer = setTimeout(async () => { await loadList(false); render(); }, 250); }
 
-const TAB_ICON = { board: "board", list: "list", overview: "chart", pages: "book" };
+const TAB_ICON = { board: "board", list: "list", overview: "chart", knowledge: "book" };
 function projectView() {
   if (!S.project) return h("div", { class: "empty" }, ico("folder"), h("b", {}, t("empty")));
   const p = S.project, writer = can(p, "projects.write"), manager = can(p, "projects.manage");
@@ -39,7 +39,7 @@ function projectView() {
   const toggle = (name, load) => { S.panel = S.panel === name ? null : name; if (S.panel && load) load(); else render(); };
   const head = h("div", { class: "head" }, h("h1", { dir: "auto" }, p.name), p.key ? h("span", { class: "chip key", dir: "ltr", title: t("keyLabel") }, p.key) : null,
     h("button", { class: "btn ghost", onclick: () => toggle("members"), title: t("members"), "aria-label": t("members") + " (" + S.members.length + ")" }, avatarStack(S.members, 4), h("span", {}, String(S.members.length))),
-    writer && tab !== "pages" ? btn(t("newTask"), { kind: "primary", icon: "plus", onclick: newTaskHere }) : null,
+    writer && tab !== "knowledge" ? btn(t("newTask"), { kind: "primary", icon: "plus", onclick: newTaskHere }) : null,
     menuBtn(t("more"), () => [
       place !== null ? { heading: t("moveTo") } : null,
       ...(place !== null ? S.ws.workspaces.map((w) => ({ label: w.builtin ? t("defaultWs") : w.name, icon: "folder", checked: w.id === place, onclick: async () => { if (w.id !== place) { await attempt(() => call("workspaces.place", { project: p.id, workspace: w.id })); refreshAll(); } } })) : []),
@@ -55,7 +55,7 @@ function projectView() {
     ]));
   const tabs = h("div", { class: "tabs", role: "tablist" }, ...tabsAvailable().map((x) => h("button", { role: "tab", "aria-selected": String(x === tab), class: "tab", onclick: async () => { flushPage(); S.tab = x; S.openPage = null; S.openTask = null; drawerCache = null; await loadTab(); setHash(); render(); } }, ico(TAB_ICON[x]), t(x))));
   let body;
-  if (tab === "list") body = listTab(); else if (tab === "overview") body = overviewTab(); else if (tab === "pages") body = pagesTab(p, writer); else body = boardTab(p, writer);
+  if (tab === "list") body = listTab(); else if (tab === "overview") body = overviewTab(); else if (tab === "knowledge") body = pagesTab(p, writer); else body = boardTab(p, writer);
   return h("div", {}, head, tabs, S.panel === "members" ? membersPanel(manager) : null, S.panel === "audit" ? auditPanel() : null, S.panel === "archived" ? archivedPanel(writer) : null, body);
 }
 // "N" and the New task button: put the cursor in the first column's add box (switching to the board first).

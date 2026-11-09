@@ -21,7 +21,7 @@ fn scenario() -> Vec<(&'static str, Value)> {
         ("tasks.create", json!({"project": "$0.id", "title": "Pay rent", "priority": 8})),
         ("tasks.create", json!({"project": "$0.id", "title": "Water plants"})),
         ("tasks.move", json!({"project": "$0.id", "id": "$2.id", "status": "doing", "after": null})),
-        ("tasks.update", json!({"project": "$0.id", "id": "$1.id", "notes": "before the 5th"})),
+        ("tasks.update", json!({"project": "$0.id", "id": "$1.id", "priority": 5})),
         ("discussion.add", json!({"project": "$0.id", "task": "$1.id", "body": "done by phone"})),
         ("tasks.list", json!({"project": "$0.id", "status": "doing"})),
         ("tasks.update", json!({"project": "$0.id", "id": "$1.id", "title": ""})),

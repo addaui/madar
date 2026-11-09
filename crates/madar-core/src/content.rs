@@ -242,11 +242,11 @@ impl Plugin for Refs {
                     "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project","kind","id"],"properties":{"project":{"type":"string"},"kind":{"type":"string","maxLength":60},"id":{"type":"string","maxLength":80}},"additionalProperties":false},
                     "output": {"type":"object","required":["links"]}},
-                "refs.mine": {"kind": "query", "description": "What refers to one of your own notes",
+                "refs.mine": {"kind": "query", "description": "What refers to one of your own pages",
                     "input": {"type":"object","required":["kind","id"],"properties":{"kind":{"type":"string","maxLength":60},"id":{"type":"string","maxLength":80}},"additionalProperties":false},
                     "output": {"type":"object","required":["links"]}}
             },
-            "listeners": [{"id": "refs.record", "on": ["pages.*", "notes.*", "tasks.*", "discussion.*"], "handler": "refs.record"}]
+            "listeners": [{"id": "refs.record", "on": ["pages.*", "tasks.*", "discussion.*"], "handler": "refs.record"}]
         }))
     }
     fn bind(&self, b: &mut Bindings) {
