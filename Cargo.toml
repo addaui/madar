@@ -11,12 +11,12 @@ publish = false
 # Nuah is a dependency, pinned by tag. Madar never edits it; to take an update change this tag (the
 # `nuah-update` workflow opens that pull request when a new tag appears).
 [workspace.dependencies]
-nuah-kernel = { git = "https://github.com/addaui/nuah", tag = "v0.9.0" }
-nuah-adapters = { git = "https://github.com/addaui/nuah", tag = "v0.9.0" }
-nuah-http = { git = "https://github.com/addaui/nuah", tag = "v0.9.0" }
-nuah-shell = { git = "https://github.com/addaui/nuah", tag = "v0.9.0" }
-nuah-console = { git = "https://github.com/addaui/nuah", tag = "v0.9.0" }
-nuah-setup-web = { git = "https://github.com/addaui/nuah", tag = "v0.9.0" }
-nuah-prefs = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.1.7" }
-nuah-appearance = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.1.7" }
-nuah-metric-prometheus = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.1.7" }
+nuah-kernel = { git = "https://github.com/addaui/nuah", tag = "v0.9.1" }
+nuah-adapters = { git = "https://github.com/addaui/nuah", tag = "v0.9.1" }
+nuah-http = { git = "https://github.com/addaui/nuah", tag = "v0.9.1" }
+nuah-shell = { git = "https://github.com/addaui/nuah", tag = "v0.9.1" }
+nuah-console = { git = "https://github.com/addaui/nuah", tag = "v0.9.1" }
+nuah-setup-web = { git = "https://github.com/addaui/nuah", tag = "v0.9.1" }
+nuah-prefs = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.1.8" }
+nuah-appearance = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.1.8" }
+nuah-metric-prometheus = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.1.8" }
