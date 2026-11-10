@@ -30,7 +30,7 @@ fn start_full(cfg: nuah_http::Config, previews: Option<bool>) -> Server {
     let mut catalog = madar_plugins::catalog();
     if let Some(allow_private) = previews {
         profile.enabled.extend(["@madar/previews", "@nuah/net-public"].map(String::from));
-        profile.grants.insert("previews".into(), vec!["net".into()]);
+        profile.grants.insert("@madar/previews".into(), vec!["net".into()]);
         catalog.0.retain(|p| p.manifest().id != "@nuah/net-public");
         catalog.0.push(std::sync::Arc::new(nuah_adapters::NetPublic { allow_private }));
     }

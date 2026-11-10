@@ -12,11 +12,11 @@ struct App {
 
 fn app_on(db: &str) -> App {
     let clock = FixedClock::at(1_700_000_000_000); // 2023-11-14
-    let mut p = profile_test(&[("quota", json!({"max_tasks": 50}))]);
+    let mut p = profile_test(&[("@madar/quota", json!({"max_tasks": 50}))]);
     if db == "sqlite" {
         p.enabled.retain(|e| e != "@nuah/db-memory");
-        p.enabled.push("db-sqlite".into());
-        p.settings.insert("db-sqlite".into(), json!({"path": ":memory:"}));
+        p.enabled.push("@nuah/db-sqlite".into());
+        p.settings.insert("@nuah/db-sqlite".into(), json!({"path": ":memory:"}));
     }
     let dist = distribution_with(p, vec![Arc::new(TestClock(clock.clone())), Arc::new(TestIds)]);
     let core = Core::start(&dist).unwrap_or_else(|p| panic!("{p:#?}"));
@@ -505,7 +505,7 @@ fn sign_in_gives_an_expiring_session() {
     p.enabled.retain(|e| !["@nuah/db-sqlite", "@nuah/clock-system", "@nuah/ids-random"].contains(&e.as_str()));
     p.enabled.extend(["@nuah/db-memory", "@nuah/clock-fixed", "@nuah/ids-sequential"].map(String::from));
     p.settings.remove("db-sqlite");
-    p.settings.insert("auth-password".into(), json!({"session_hours": 1, "accounts": [{"name": "alice", "password_hash": hash, "roles": ["member"]}]}));
+    p.settings.insert("@nuah/auth-password".into(), json!({"session_hours": 1, "accounts": [{"name": "alice", "password_hash": hash, "roles": ["member"]}]}));
     p.grants.insert("auth-password".into(), vec![]);
     let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock.clone())), Arc::new(TestIds)])).unwrap_or_else(|p| panic!("{p:#?}"));
     let call = |cred: Option<&str>, op: &str, input: Value| core.call(CallRequest { credential: cred.map(String::from), op: op.into(), input, key: None, contract: None });
@@ -680,7 +680,7 @@ fn allow_all_ignores_roles_but_not_what_the_project_grants() {
     let clock = FixedClock::at(1_700_000_000_000);
     let mut p = profile_test(&[]);
     p.enabled.retain(|e| e != "@nuah/policy-roles");
-    p.enabled.push("policy-allow-all".into());
+    p.enabled.push("@nuah/policy-allow-all".into());
     let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|p| panic!("{p:#?}"));
     // Nobody has any Role: under allow-all that makes no difference.
     let (owner, viewer, stranger) = (Identity::new("alice", "alice", &[]), Identity::new("bob", "bob", &[]), Identity::new("eve", "eve", &[]));

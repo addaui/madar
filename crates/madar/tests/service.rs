@@ -20,9 +20,9 @@ fn accounts() -> Value {
 /// What an identity file for a server says: the plugins it lists run, and nothing else.
 fn server_profile(port: u16) -> Profile {
     let mut profile = madar_plugins::profile_server(":memory:", accounts());
-    profile.enabled.push("http".into());
-    profile.grants.insert("http".into(), vec!["serve".into()]);
-    profile.settings.insert("http".into(), json!({"listen": format!("127.0.0.1:{port}")}));
+    profile.enabled.push("@nuah/http".into());
+    profile.grants.insert("@nuah/http".into(), vec!["serve".into()]);
+    profile.settings.insert("@nuah/http".into(), json!({"listen": format!("127.0.0.1:{port}")}));
     profile
 }
 
@@ -89,10 +89,10 @@ fn the_host_program_stops_cleanly_on_sigterm() {
     let port = free_port();
     // the identity file lists what runs, and the accounts it starts with
     let mut profile = madar_plugins::profile_server(dir.join("m.db").to_str().unwrap(), accounts());
-    profile.enabled.push("http".into());
-    profile.grants.insert("http".into(), vec!["serve".into()]);
-    profile.settings.insert("http".into(), json!({"listen": format!("127.0.0.1:{port}")}));
-    std::fs::write(dir.join("madar.json"), serde_json::to_string_pretty(&profile).unwrap()).unwrap();
+    profile.enabled.push("@nuah/http".into());
+    profile.grants.insert("@nuah/http".into(), vec!["serve".into()]);
+    profile.settings.insert("@nuah/http".into(), json!({"listen": format!("127.0.0.1:{port}")}));
+    std::fs::write(dir.join("nuah.json"), serde_json::to_string_pretty(&profile).unwrap()).unwrap();
     let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_madar"))
         .args(["serve"])
         .env("NUAH_HOME", &dir)
@@ -126,9 +126,9 @@ fn madar_writes_its_log_to_a_file_and_prometheus_can_scrape_it() {
     let mut profile = server_profile(port);
     // metrics and the log file are plugins the file lists, with their own settings
     profile.enabled.extend(["@nuah/metric-prometheus", "@nuah/log-file"].map(String::from));
-    profile.grants.insert("metric-prometheus".into(), vec!["serve".into()]);
-    profile.settings.insert("metric-prometheus".into(), json!({"listen": format!("127.0.0.1:{metrics_port}")}));
-    profile.settings.insert("log-file".into(), json!({"path": log.display().to_string()}));
+    profile.grants.insert("@nuah/metric-prometheus".into(), vec!["serve".into()]);
+    profile.settings.insert("@nuah/metric-prometheus".into(), json!({"listen": format!("127.0.0.1:{metrics_port}")}));
+    profile.settings.insert("@nuah/log-file".into(), json!({"path": log.display().to_string()}));
     profile.telemetry.level = Some("debug".into());
     let core = Core::start(&Distribution { name: "madar".into(), catalog: Madar.catalog(), profile }).unwrap_or_else(|p| panic!("{p:#?}"));
     let services = core.start_services().unwrap();
