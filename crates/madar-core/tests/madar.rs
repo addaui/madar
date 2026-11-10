@@ -515,7 +515,10 @@ fn sign_in_gives_an_expiring_session() {
     assert_eq!(call(None, "auth.sign_in", json!({"name": "nobody", "password": "x"})).unwrap_err().reason.as_deref(), Some("auth.bad_credentials"), "same answer for an unknown name");
     let s = call(None, "auth.sign_in", json!({"name": "alice", "password": "correct horse"})).unwrap().output;
     let token = s["token"].as_str().unwrap().to_string();
-    assert_eq!(call(Some(&token), "auth.who", json!({})).unwrap().output["subject"], "alice");
+    let who = call(Some(&token), "auth.who", json!({})).unwrap().output;
+    assert_eq!(who["display"], "alice");
+    assert_ne!(who["subject"], "alice", "the subject is an opaque id, not the login name");
+    assert_eq!(who["subject"], s["who"]["subject"]);
     assert!(call(Some(&token), "projects.create", json!({"name": "Home"})).is_ok());
     assert_eq!(call(Some("made-up"), "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated);
     clock.advance(30 * 60 * 1000);

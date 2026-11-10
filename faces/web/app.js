@@ -256,7 +256,7 @@ function membersPanel(manager) {
   return h("div", { class: "panel" }, h("h2", {}, t("members")),
     ...S.members.map((m) => h("div", { class: "list-item" }, avatar(m.subject, m.display), h("span", { class: "grow", dir: "auto" }, m.display || m.subject), h("span", { class: "chip" }, t(m.level)),
       manager && m.level !== "owner" ? iconBtn("close", t("remove"), async () => { await attempt(() => call("projects.unshare", { project: S.project.id, subject: m.subject })); refreshAll(); }, { class: "sm danger" }) : null)),
-    manager ? h("form", { class: "list-item", onsubmit: async (e) => { e.preventDefault(); if (!who.value.trim()) return; await attempt(() => call("projects.share", { project: S.project.id, subject: who.value.trim(), level: level.value })); who.value = ""; refreshAll(); } }, who, level, btn(t("share"), { icon: "plus", type: "submit" })) : null);
+    manager ? h("form", { class: "list-item", onsubmit: async (e) => { e.preventDefault(); if (!who.value.trim()) return; await attempt(() => call("projects.share", { project: S.project.id, name: who.value.trim(), level: level.value })); who.value = ""; refreshAll(); } }, who, level, btn(t("share"), { icon: "plus", type: "submit" })) : null);
 }
 async function loadAudit() { const out = await attempt(() => call("audit.list", { project: S.project.id, limit: 50 })); S.audit = out ? out.entries : []; render(); }
 // A person is shown by display name when they are a current member, otherwise by their sign-in name.

@@ -4,8 +4,8 @@
 
 use madar_server::Madar;
 use nuah_adapters::AuthPassword;
-use nuah_host::{with_http, HttpFlags, Product};
-use nuah_kernel::{Core, Distribution, Services};
+use nuah_host::Product;
+use nuah_kernel::{Core, Distribution, Profile, Services};
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
@@ -17,10 +17,17 @@ fn accounts() -> Value {
     json!([{"name": "alice", "password_hash": AuthPassword::hash_password("pw"), "roles": ["member"]}])
 }
 
+/// What an identity file for a server says: the plugins it lists run, and nothing else.
+fn server_profile(port: u16) -> Profile {
+    let mut profile = madar_core::profile_server(":memory:", accounts());
+    profile.enabled.push("http".into());
+    profile.grants.insert("http".into(), vec!["serve".into()]);
+    profile.settings.insert("http".into(), json!({"listen": format!("127.0.0.1:{port}")}));
+    profile
+}
+
 fn start(port: u16) -> Result<(Core, Services), String> {
-    let mut profile = Madar.server_profile(":memory:", accounts());
-    with_http(&mut profile, HttpFlags { listen: Some(format!("127.0.0.1:{port}")), hosts: vec![], secure_cookie: false, faces: vec![] });
-    let core = Core::start(&Distribution { name: "madar".into(), catalog: Madar.catalog(&[]), profile }).map_err(|p| format!("{p:?}"))?;
+    let core = Core::start(&Distribution { name: "madar".into(), catalog: Madar.catalog(), profile: server_profile(port) }).map_err(|p| format!("{p:?}"))?;
     let services = core.start_services().map_err(|e| e.message)?;
     Ok((core, services))
 }
@@ -79,10 +86,16 @@ fn stopping_does_not_wait_for_an_open_pulse_stream() {
 fn the_host_program_stops_cleanly_on_sigterm() {
     let dir = std::env::temp_dir().join(format!("madar-host-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("accounts.json"), accounts().to_string()).unwrap();
     let port = free_port();
+    // the identity file lists what runs, and the accounts it starts with
+    let mut profile = madar_core::profile_server(dir.join("m.db").to_str().unwrap(), accounts());
+    profile.enabled.push("http".into());
+    profile.grants.insert("http".into(), vec!["serve".into()]);
+    profile.settings.insert("http".into(), json!({"listen": format!("127.0.0.1:{port}")}));
+    std::fs::write(dir.join("madar.json"), serde_json::to_string_pretty(&profile).unwrap()).unwrap();
     let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_madar-server"))
-        .args(["serve", "--db", dir.join("m.db").to_str().unwrap(), "--accounts", dir.join("accounts.json").to_str().unwrap(), "--listen", &format!("127.0.0.1:{port}")])
+        .args(["serve"])
+        .env("NUAH_HOME", &dir)
         .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap();
@@ -110,12 +123,14 @@ fn madar_writes_its_log_to_a_file_and_prometheus_can_scrape_it() {
     let dir = std::env::temp_dir().join(format!("madar-telemetry-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("madar.log");
-    let mut profile = Madar.server_profile(":memory:", accounts());
-    with_http(&mut profile, HttpFlags { listen: Some(format!("127.0.0.1:{port}")), hosts: vec![], secure_cookie: false, faces: vec![] });
-    madar_server::enable_metrics(&mut profile, Some(format!("127.0.0.1:{metrics_port}")), false);
-    let mut catalog = Madar.catalog(&[]);
-    nuah_host::with_logging(&mut catalog, &mut profile, Some("debug".into()), Some(log.display().to_string()));
-    let core = Core::start(&Distribution { name: "madar".into(), catalog, profile }).unwrap_or_else(|p| panic!("{p:#?}"));
+    let mut profile = server_profile(port);
+    // metrics and the log file are plugins the file lists, with their own settings
+    profile.enabled.extend(["metric-prometheus", "log-file"].map(String::from));
+    profile.grants.insert("metric-prometheus".into(), vec!["serve".into()]);
+    profile.settings.insert("metric-prometheus".into(), json!({"listen": format!("127.0.0.1:{metrics_port}")}));
+    profile.settings.insert("log-file".into(), json!({"path": log.display().to_string()}));
+    profile.telemetry.level = Some("debug".into());
+    let core = Core::start(&Distribution { name: "madar".into(), catalog: Madar.catalog(), profile }).unwrap_or_else(|p| panic!("{p:#?}"));
     let services = core.start_services().unwrap();
     let signed = agent()
         .post(&format!("http://127.0.0.1:{port}/link/call/auth.sign_in"))

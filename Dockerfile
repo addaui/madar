@@ -8,7 +8,7 @@ RUN set -eu; \
     cargo build --release --locked -p madar-server; \
     cp target/release/madar-server /madar-server; \
     nuah="$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name=="nuah-host") | .manifest_path' | xargs dirname)/../.."; \
-    mkdir -p /faces && cp -r "$nuah/faces/console" "$nuah/faces/setup" /faces/
+    mkdir -p /faces && cp -r "$nuah/faces/console" "$nuah/faces/startup-setup-web" /faces/
 
 FROM debian:bookworm-slim
 LABEL org.opencontainers.image.source="https://github.com/addaui/madar"
@@ -17,8 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=build /madar-server /usr/local/bin/madar-server
 COPY --from=build /faces /app/faces
 COPY faces/web /app/faces/web
-ENV NUAH_LISTEN=0.0.0.0:3000 NUAH_HOME=/data NUAH_FACES=/app/faces
-WORKDIR /data
+# The identity file and the database are in /data; the Faces are ./faces/<plugin id> next to the program.
+ENV NUAH_LISTEN=0.0.0.0:3000 NUAH_HOME=/data
+WORKDIR /app
 USER madar
 VOLUME /data
 EXPOSE 3000

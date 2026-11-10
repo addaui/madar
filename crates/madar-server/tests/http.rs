@@ -19,22 +19,29 @@ fn start_with(cfg: nuah_http::Config) -> Server {
     start_full(cfg, None)
 }
 
-fn start_full(cfg: nuah_http::Config, previews: Option<std::sync::Arc<madar_core::previews::Fetcher>>) -> Server {
+/// `previews`: `None` leaves the previews plugin out; `Some(allow_private)` enables it with the `net-public` Adapter, which tests may let reach this machine.
+fn start_full(cfg: nuah_http::Config, previews: Option<bool>) -> Server {
     let hash = AuthPassword::hash_password("correct horse");
     let accounts = json!([
         {"name": "alice", "password_hash": hash, "roles": ["member"]},
         {"name": "bob", "password_hash": hash, "roles": ["member"]},
     ]);
     let mut profile = madar_core::profile_server(":memory:", accounts);
-    profile.settings.insert("previews".into(), json!({"fetch": previews.is_some()}));
-    let core = Core::start(&madar_core::distribution(profile)).unwrap_or_else(|p| panic!("{p:#?}"));
+    let mut catalog = madar_core::catalog();
+    if let Some(allow_private) = previews {
+        profile.enabled.extend(["previews", "net-public"].map(String::from));
+        profile.grants.insert("previews".into(), vec!["net".into()]);
+        catalog.0.retain(|p| p.manifest().id != "net-public");
+        catalog.0.push(std::sync::Arc::new(nuah_adapters::NetPublic { allow_private }));
+    }
+    let core = Core::start(&nuah_kernel::Distribution { name: "madar".into(), catalog, profile }).unwrap_or_else(|p| panic!("{p:#?}"));
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new().unwrap().block_on(async move {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             tx.send(listener.local_addr().unwrap()).unwrap();
             let _services = core.start_services().unwrap();
-            let routes: nuah_http::RouteFn = std::sync::Arc::new(madar_server::routes(previews.unwrap_or_else(|| std::sync::Arc::new(madar_core::previews::Fetcher::new(false, 20)))));
+            let routes: nuah_http::RouteFn = std::sync::Arc::new(madar_server::routes());
             axum::serve(listener, nuah_http::router_with(core, cfg, &[routes], tokio::sync::watch::channel(false).1)).await.unwrap();
         });
     });
@@ -71,13 +78,6 @@ impl Server {
             req = req.header(*k, *v);
         }
         read(req.send(input.to_string()).unwrap())
-    }
-    fn post(&self, path: &str, body: Value, extra: &[(&str, &str)]) -> Reply {
-        let mut req = agent().post(&format!("{}{path}", self.base)).header("Content-Type", "application/json").header("X-Nuah-Face", "test");
-        for (k, v) in extra {
-            req = req.header(*k, *v);
-        }
-        read(req.send(body.to_string()).unwrap())
     }
     fn get(&self, path: &str, extra: &[(&str, &str)]) -> Reply {
         let mut req = agent().get(&format!("{}{path}", self.base));
@@ -134,7 +134,7 @@ fn a_browser_session_lives_in_an_httponly_cookie_the_page_never_sees() {
     assert!(set.starts_with("nuah_session=") && set.contains("HttpOnly") && set.contains("SameSite=Strict"), "{set}");
     let pair = set.split(';').next().unwrap().to_string();
     let me = s.call("auth.who", json!({}), &[("Cookie", &pair)]);
-    assert_eq!(me.body["output"]["subject"], "alice");
+    assert_eq!(me.body["output"]["display"], "alice");
     assert_eq!(s.call("projects.create", json!({"name": "Home"}), &[("Cookie", &pair)]).status, 200);
     assert!(s.get("/link/client.ts", &[("Cookie", &pair)]).body.as_str().unwrap().contains("export class NuahClient"));
     // refresh and sign-out work without the Face ever naming its token
@@ -214,7 +214,7 @@ fn pulse_streams_only_what_the_person_may_see_and_resumes() {
     assert!(seen.contains("event:") || seen.contains("projects.created"));
     // bob is not a member, so he hears nothing; share, and he hears the sharing
     assert!(wait_for(&bob, "projects.created").is_none(), "an outsider hears nothing");
-    s.call("projects.share", json!({"project": p, "subject": "bob", "level": "viewer"}), &[("Authorization", auth_a.as_str())]);
+    s.call("projects.share", json!({"project": p, "name": "bob", "level": "viewer"}), &[("Authorization", auth_a.as_str())]);
     assert!(wait_for(&bob, "projects.").is_some(), "after being shared in, bob hears the project's events");
     // a stream that starts from an old cursor replays what it missed
     let again = stream(&ta, Some("c0"));
@@ -434,12 +434,12 @@ fn tiny_site() -> String {
 
 #[test]
 fn link_previews_are_fetched_for_signed_in_people_and_never_from_private_addresses() {
-    // set up for the test to reach a loopback site; the same server without the fetcher answers 404
+    // the test lets the net Adapter reach this machine; the real one refuses (below)
     let site = tiny_site();
-    let on = start_full(nuah_http::Config::default(), Some(std::sync::Arc::new(madar_core::previews::Fetcher::new(true, 4))));
+    let on = start_full(nuah_http::Config::default(), Some(true));
     let a = on.sign_in("alice");
     let ah = format!("Bearer {a}");
-    let ask = |url: &str, h: &[(&str, &str)]| on.post("/previews", json!({"url": url}), h);
+    let ask = |url: &str, h: &[(&str, &str)]| on.call("previews.get", json!({"url": url}), h);
     assert_eq!(ask(&format!("{site}/page"), &[]).status, 401, "signed in only");
     let r = ask(&format!("{site}/page"), &[("Authorization", &ah)]);
     assert_eq!(r.status, 200, "{:?}", r.body);
@@ -450,20 +450,17 @@ fn link_previews_are_fetched_for_signed_in_people_and_never_from_private_address
     assert_eq!(ask(&format!("{site}/img"), &[("Authorization", &ah)]).status, 404, "not a page");
     assert_eq!(ask(&format!("{site}/nothing"), &[("Authorization", &ah)]).status, 404);
     assert_eq!(ask("ftp://example.com/x", &[("Authorization", &ah)]).status, 400, "only web addresses");
-    // the fourth fetch of the minute is the last (the cached /page does not count)
-    let limited = ask(&format!("{site}/other"), &[("Authorization", &ah)]);
-    assert_eq!(limited.body["error"]["reason"], "previews.rate_limited", "{:?}", limited.body);
 
-    // the real configuration: loopback and the private network are refused outright
-    let real = start_full(nuah_http::Config::default(), Some(std::sync::Arc::new(madar_core::previews::Fetcher::new(false, 20))));
+    // the real Adapter: loopback and the private network are refused outright
+    let real = start_full(nuah_http::Config::default(), Some(false));
     let b = real.sign_in("bob");
     let bh = format!("Bearer {b}");
     for bad in [format!("{site}/page"), "http://127.0.0.1/".into(), "http://169.254.169.254/latest/meta-data/".into(), "http://[::1]/".into(), "http://localhost/".into()] {
-        assert_eq!(real.post("/previews", json!({"url": bad}), &[("Authorization", &bh)]).status, 400, "{bad}");
+        assert_eq!(real.call("previews.get", json!({"url": bad}), &[("Authorization", &bh)]).status, 400, "{bad}");
     }
 
-    // `fetch` not set on the plugin: nothing is fetched
+    // a distribution that does not list the plugin has no such Operation
     let off = start();
     let c = off.sign_in("alice");
-    assert_eq!(off.post("/previews", json!({"url": "https://example.com/"}), &[("Authorization", &format!("Bearer {c}"))]).status, 404);
+    assert_eq!(off.call("previews.get", json!({"url": "https://example.com/"}), &[("Authorization", &format!("Bearer {c}"))]).status, 404);
 }

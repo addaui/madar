@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Madar's server: the Madar plugins, the `http` Projection with Madar's own routes (file downloads, link
-//! previews), and the product description the host needs. Nothing here edits Nuah.
+//! Madar's server: the Madar plugins, the `http` Projection with Madar's own route (file downloads), the
+//! plugins that publish its Faces, and the product description the host needs. Nothing here edits Nuah.
 
 use axum::extract::{Path, State};
 use axum::http::{header, HeaderMap, HeaderValue};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
-use axum::{Json, Router};
-use nuah_http::{blocking, credential, no_store, ApiError, Http};
-use nuah_kernel::{CallRequest, Catalog, Category, Core, Error, Profile};
-use serde_json::{json, Value};
+use axum::routing::get;
+use axum::Router;
+use nuah_http::{blocking, credential, ApiError, Http};
+use nuah_kernel::{CallRequest, Catalog, Core, Error, Manifest, Plugin, Profile};
+use serde_json::json;
 use std::sync::Arc;
 
 /// An uploaded file. Images show inline; everything else downloads. A file never runs as a page.
@@ -34,72 +34,33 @@ async fn file(State(core): State<Core>, Path(id): Path<String>, headers: HeaderM
         .into_response())
 }
 
-#[derive(Clone)]
-struct Previews {
-    core: Core,
-    fetcher: Arc<madar_core::previews::Fetcher>,
+/// Madar's extra routes for the `http` Projection: file downloads. Everything else is an Operation.
+pub fn routes() -> impl Fn(Core) -> Router + Send + Sync + 'static {
+    move |core| Router::new().route("/files/{id}", get(file).with_state(core))
 }
 
-/// A link preview: `previews.get` first (who may ask, is the plugin on, is `fetch` set), then the fetch, off the async
-/// threads and outside any transaction (ADR 0026). 404 when the `previews` plugin is not set to fetch.
-async fn preview(State(app): State<Previews>, headers: HeaderMap, Json(body): Json<Value>) -> Result<Response, ApiError> {
-    use madar_core::previews::Refusal;
-    let cred = credential(&headers);
-    let core = app.core.clone();
-    let url = body["url"].as_str().unwrap_or("").to_string();
-    let (who, plain) = blocking(move || -> nuah_kernel::Result<(String, Value)> {
-        let who = core.authenticate(cred.as_deref())?.subject;
-        let plain = core.call(CallRequest { credential: cred, op: "previews.get".into(), input: json!({"url": url}), key: None, contract: None })?.output;
-        Ok((who, plain))
-    })
-    .await??;
-    if plain["fetch"] != json!(true) {
-        return Err(Error::reason(Category::NotFound, "previews.unavailable", "Link previews are not turned on for this server").into());
-    }
-    let fetcher = app.fetcher.clone();
-    let target = plain["url"].as_str().unwrap_or("").to_string();
-    let got = blocking(move || fetcher.get(&who, &target)).await?;
-    match got {
-        Ok(v) => Ok(no_store(Json(json!({"ok": true, "output": v})))),
-        Err(Refusal::RateLimited) => Err(Error::reason(Category::Denied, "previews.rate_limited", "Too many previews just now, try again in a minute").into()),
-        Err(Refusal::Invalid) => Err(Error::invalid("url", "is not a public web address").into()),
-        Err(_) => Err(Error::reason(Category::NotFound, "previews.unavailable", "No preview could be made for that address").into()),
+/// The plugin that publishes the web Face (`./faces/web` unless the Profile says otherwise).
+pub struct Web;
+
+impl Plugin for Web {
+    fn manifest(&self) -> Manifest {
+        serde_json::from_value(json!({
+            "id": "web", "version": "0.3.0", "name": "Web", "runtime": "data",
+            "description": "Madar's web app, published as the Face `web`, shown at /",
+            "requires": {"plugins": ["http"]},
+            "face": "web"
+        }))
+        .unwrap()
     }
 }
 
-/// Madar's extra routes for the `http` Projection. `previews` does the fetching for link previews; it only runs when the
-/// `previews` plugin's `fetch` setting is on.
-pub fn routes(previews: Arc<madar_core::previews::Fetcher>) -> impl Fn(Core) -> Router + Send + Sync + 'static {
-    move |core| {
-        Router::new()
-            .route("/files/{id}", get(file).with_state(core.clone()))
-            .route("/previews", post(preview).layer(axum::extract::DefaultBodyLimit::max(4 * 1024)).with_state(Previews { core, fetcher: previews.clone() }))
-    }
-}
-
-/// Madar's plugins plus the `http` Projection with Madar's routes.
+/// Madar's plugins, the `http` Projection with Madar's routes, and the plugins that publish Faces.
 pub fn catalog() -> Catalog {
     let mut c = madar_core::catalog();
-    let fetcher = Arc::new(madar_core::previews::Fetcher::new(false, 20));
-    c.0.push(Arc::new(Http::new().with_routes(routes(fetcher))));
+    c.0.push(Arc::new(Http::new().with_routes(routes())));
+    c.0.push(Arc::new(Web));
+    c.0.push(Arc::new(nuah_console::Console));
     c
-}
-
-/// `--with metrics`: Prometheus can scrape the Core on its own port (default 127.0.0.1:9464), with a bearer token
-/// when `MADAR_METRICS_TOKEN` is set. The token stays a reference to the environment; it is not copied into the Profile.
-pub fn enable_metrics(profile: &mut Profile, listen: Option<String>, token: bool) {
-    if !profile.enabled.iter().any(|p| p == "metric-prometheus") {
-        profile.enabled.push("metric-prometheus".into());
-    }
-    let grants = profile.grants.entry("metric-prometheus".into()).or_default();
-    if !grants.iter().any(|g| g == "serve") {
-        grants.push("serve".into());
-    }
-    let mut s = json!({"listen": listen.unwrap_or_else(|| "127.0.0.1:9464".into())});
-    if token {
-        s["token"] = json!({"$env": "MADAR_METRICS_TOKEN"});
-    }
-    profile.settings.entry("metric-prometheus".into()).or_insert(s);
 }
 
 /// Madar as the host sees it.
@@ -109,22 +70,21 @@ impl nuah_host::Product for Madar {
     fn name(&self) -> &str {
         "madar"
     }
-    fn catalog(&self, _with: &[String]) -> Catalog {
+    fn catalog(&self) -> Catalog {
         catalog()
     }
-    fn server_profile(&self, db: &str, accounts: Value) -> Profile {
-        madar_core::profile_server(db, accounts)
+    /// What setup starts from: Madar on SQLite in the home directory, with the web app and the console. No
+    /// accounts: the first administrator is asked for during setup.
+    fn starting_point(&self, home: &std::path::Path) -> Profile {
+        let db = home.join("madar.db");
+        let mut p = madar_core::profile_server(&db.to_string_lossy(), json!([]));
+        p.enabled.extend(["http", "web", "console"].map(String::from));
+        p.grants.insert("http".into(), vec!["serve".into()]);
+        // the console changes the identity file (administrators only) and asks the host to restart
+        p.grants.insert("console".into(), vec!["host".into()]);
+        p
     }
-    fn starting_point(&self) -> Profile {
-        madar_core::profile_server("madar.db", serde_json::json!([]))
-    }
-    fn configure(&self, profile: &mut Profile, with: &[String]) {
-        // `--with previews` is the old way to turn on link previews; they are the `previews` plugin's `fetch` setting now.
-        if with.iter().any(|w| w == "previews") {
-            profile.settings.entry("previews".into()).or_insert_with(|| json!({}))["fetch"] = json!(true);
-        }
-        if with.iter().any(|w| w == "metrics") {
-            enable_metrics(profile, std::env::var("MADAR_METRICS_LISTEN").ok(), std::env::var("MADAR_METRICS_TOKEN").is_ok_and(|t| !t.is_empty()));
-        }
+    fn bootstrap(&self) -> Option<Box<dyn nuah_host::Bootstrap>> {
+        Some(Box::new(nuah_setup_web::SetupWeb::new()))
     }
 }
