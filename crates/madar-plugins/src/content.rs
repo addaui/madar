@@ -146,7 +146,7 @@ pub struct Editor;
 impl Plugin for Editor {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "editor", "version": "0.1.0", "name": "Editor", "namespaces": ["editor"],
+            "id": "@madar/editor", "version": "0.1.0", "name": "Editor", "namespaces": ["editor"],
             "description": "Which blocks the rich-text editor offers; other plugins add blocks (editor.block)",
             "requires": {"extension_points": ["editor.block"]},
             "defines": {"extension_points": {"editor.block": {"policy": "many",
@@ -187,9 +187,9 @@ pub struct EditorBasic;
 impl Plugin for EditorBasic {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "editor-basic", "version": "0.1.0", "name": "Basic blocks", "namespaces": ["editor-basic"],
+            "id": "@madar/editor-basic", "version": "0.1.0", "name": "Basic blocks", "namespaces": ["editor-basic"],
             "description": "Headings, lists, quote, code, checklist, toggle, callouts, image, file, embeds and references",
-            "requires": {"plugins": ["editor"]},
+            "requires": {"plugins": ["@madar/editor"]},
             "provides": [{"extension_point": "editor.block"}]
         }))
     }
@@ -232,9 +232,9 @@ pub struct Refs;
 impl Plugin for Refs {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "refs", "version": "0.1.0", "name": "References", "namespaces": ["refs"],
+            "id": "@madar/refs", "version": "0.1.0", "name": "References", "namespaces": ["refs"],
             "description": "Remembers what refers to what, so every item can show what refers to it",
-            "requires": {"plugins": ["projects"]},
+            "requires": {"plugins": ["@madar/projects"]},
             "data": {"collections": [LINKS], "version": 1,
                      "indexes": [{"collection": LINKS, "field": "from_key"}, {"collection": LINKS, "field": "to_key"}]},
             "operations": {

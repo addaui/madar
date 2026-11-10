@@ -4,7 +4,7 @@ Madar itself is under the [Apache License 2.0](LICENSE). It bundles the followin
 
 ## Fonts
 
-Bundled in `faces/web/fonts/`, each under the SIL Open Font License 1.1. The license text of each font is in the same folder (`OFL-*.txt`).
+Bundled in `faces/madar/web/fonts/`, each under the SIL Open Font License 1.1. The license text of each font is in the same folder (`OFL-*.txt`).
 
 | Font | Copyright |
 |---|---|
@@ -18,7 +18,7 @@ Bundled in `faces/web/fonts/`, each under the SIL Open Font License 1.1. The lic
 
 ## Editor bundle
 
-`faces/web/vendor/editor.js` is built from `faces/editor-src` and contains the following open-source packages. Package names are from the package manager's metadata; the file is minified, so the exact set follows from the dependencies listed in `faces/editor-src/package.json`.
+`faces/madar/web/vendor/editor.js` is built from `faces/editor-src` and contains the following open-source packages. Package names are from the package manager's metadata; the file is minified, so the exact set follows from the dependencies listed in `faces/editor-src/package.json`.
 
 | Package | License | Copyright |
 |---|---|---|

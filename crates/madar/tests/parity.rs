@@ -4,7 +4,7 @@
 
 use nuah_adapters::{FixedClock, TestClock, TestIds};
 use nuah_kernel::Core;
-use madar_core::{distribution_with, profile_test};
+use madar_plugins::{distribution_with, profile_test};
 use serde_json::{json, Value};
 use std::sync::{mpsc, Arc};
 

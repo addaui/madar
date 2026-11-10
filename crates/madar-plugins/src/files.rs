@@ -56,9 +56,9 @@ pub struct Files;
 impl Plugin for Files {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "files", "version": "0.1.0", "name": "Files", "namespaces": ["files"],
+            "id": "@madar/files", "version": "0.1.0", "name": "Files", "namespaces": ["files"],
             "description": "Uploaded images, PDFs and text files, kept by whichever plugin provides files.store",
-            "requires": {"plugins": ["projects"], "capabilities": ["call"], "extension_points": ["files.store"]},
+            "requires": {"plugins": ["@madar/projects"], "capabilities": ["call"], "extension_points": ["files.store"]},
             "defines": {"extension_points": {"files.store": {"policy": "single",
                 "description": "Keep and return bytes. {action: put|get|delete, id, data (base64, for put)}; get answers {data}.",
                 "input": {"type":"object","required":["action","id"]}}}},
@@ -190,9 +190,9 @@ pub struct FilesDb;
 impl Plugin for FilesDb {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "files-db", "version": "0.1.0", "name": "Files in the database", "namespaces": ["files-db"],
+            "id": "@madar/files-db", "version": "0.1.0", "name": "Files in the database", "namespaces": ["files-db"],
             "description": "Keeps uploaded bytes in the database. Swap for a disk or bucket provider for big deployments.",
-            "requires": {"plugins": ["files"]},
+            "requires": {"plugins": ["@madar/files"]},
             "provides": [{"extension_point": "files.store"}],
             "data": {"collections": [BLOBS], "version": 1}
         }))

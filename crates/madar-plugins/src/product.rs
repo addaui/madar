@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Madar's server: the Madar plugins, the `http` Projection with Madar's own route (file downloads), the
-//! plugins that publish its Faces, and the product description the host needs. Nothing here edits Nuah.
+//! The product description the shell needs, the `http` Projection with Madar's own route (file downloads) and the
+//! plugin that publishes the web Face. Nothing here edits Nuah.
 
 use axum::extract::{Path, State};
 use axum::http::{header, HeaderMap, HeaderValue};
@@ -39,15 +39,15 @@ pub fn routes() -> impl Fn(Core) -> Router + Send + Sync + 'static {
     move |core| Router::new().route("/files/{id}", get(file).with_state(core))
 }
 
-/// The plugin that publishes the web Face (`./faces/web` unless the Profile says otherwise).
+/// The plugin that publishes the web Face (`./faces/madar/web`, under the faces directory).
 pub struct Web;
 
 impl Plugin for Web {
     fn manifest(&self) -> Manifest {
         serde_json::from_value(json!({
-            "id": "web", "version": "0.3.0", "name": "Web", "runtime": "data",
+            "id": "@madar/web", "version": "0.3.0", "name": "Web", "runtime": "data",
             "description": "Madar's web app, published as the Face `web`, shown at /",
-            "requires": {"plugins": ["http"]},
+            "requires": {"plugins": ["@nuah/http"]},
             "face": "web"
         }))
         .unwrap()
@@ -55,36 +55,36 @@ impl Plugin for Web {
 }
 
 /// Madar's plugins, the `http` Projection with Madar's routes, and the plugins that publish Faces.
-pub fn catalog() -> Catalog {
-    let mut c = madar_core::catalog();
+pub fn full_catalog() -> Catalog {
+    let mut c = crate::catalog();
     c.0.push(Arc::new(Http::new().with_routes(routes())));
     c.0.push(Arc::new(Web));
     c.0.push(Arc::new(nuah_console::Console));
     c
 }
 
-/// Madar as the host sees it.
+/// Madar as the shell sees it.
 pub struct Madar;
 
-impl nuah_host::Product for Madar {
+impl nuah_shell::Product for Madar {
     fn name(&self) -> &str {
         "madar"
     }
     fn catalog(&self) -> Catalog {
-        catalog()
+        full_catalog()
     }
     /// What setup starts from: Madar on SQLite in the home directory, with the web app and the console. No
     /// accounts: the first administrator is asked for during setup.
     fn starting_point(&self, home: &std::path::Path) -> Profile {
         let db = home.join("madar.db");
-        let mut p = madar_core::profile_server(&db.to_string_lossy(), json!([]));
-        p.enabled.extend(["http", "web", "console"].map(String::from));
-        p.grants.insert("http".into(), vec!["serve".into()]);
-        // the console changes the identity file (administrators only) and asks the host to restart
-        p.grants.insert("console".into(), vec!["host".into()]);
+        let mut p = crate::profile_server(&db.to_string_lossy(), json!([]));
+        p.enabled.extend(["@nuah/http", "@madar/web", "@nuah/console"].map(String::from));
+        p.grants.insert("@nuah/http".into(), vec!["serve".into()]);
+        // the console changes the identity file (administrators only) and asks the shell to restart
+        p.grants.insert("@nuah/console".into(), vec!["shell".into()]);
         p
     }
-    fn bootstrap(&self) -> Option<Box<dyn nuah_host::Bootstrap>> {
+    fn bootstrap(&self) -> Option<Box<dyn nuah_shell::Bootstrap>> {
         Some(Box::new(nuah_setup_web::SetupWeb::new()))
     }
 }

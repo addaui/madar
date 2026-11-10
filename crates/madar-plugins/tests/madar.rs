@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use nuah_adapters::*;
 use nuah_kernel::*;
-use madar_core::*;
+use madar_plugins::*;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -14,7 +14,7 @@ fn app_on(db: &str) -> App {
     let clock = FixedClock::at(1_700_000_000_000); // 2023-11-14
     let mut p = profile_test(&[("quota", json!({"max_tasks": 50}))]);
     if db == "sqlite" {
-        p.enabled.retain(|e| e != "db-memory");
+        p.enabled.retain(|e| e != "@nuah/db-memory");
         p.enabled.push("db-sqlite".into());
         p.settings.insert("db-sqlite".into(), json!({"path": ":memory:"}));
     }
@@ -477,14 +477,14 @@ fn a_viewer_role_sees_what_they_may_do_in_describe() {
     assert_eq!(d["operations"]["prefs.get"]["allowed"], true);
     assert_eq!(d["permissions"]["projects.read"]["held"], true);
     let kinds: std::collections::BTreeMap<String, String> = d["plugins"].as_array().unwrap().iter().filter(|p| p["state"] == "active").map(|p| (p["id"].as_str().unwrap().to_string(), p["kind"].as_str().unwrap().to_string())).collect();
-    assert_eq!(kinds["notify-inbox"], "provider");
-    assert_eq!(kinds["theme-phantom-onyx"], "theme");
-    assert_eq!(kinds["db-memory"], "adapter");
-    assert_eq!(kinds["tasks"], "feature");
+    assert_eq!(kinds["@madar/notify-inbox"], "provider");
+    assert_eq!(kinds["@nuah/theme-phantom-onyx"], "theme");
+    assert_eq!(kinds["@nuah/db-memory"], "adapter");
+    assert_eq!(kinds["@madar/tasks"], "feature");
     assert_eq!(d["themes"].as_array().unwrap().len(), 9);
-    let onyx = d["themes"].as_array().unwrap().iter().find(|t| t["id"] == "theme-phantom-onyx").expect("the default preset is there");
+    let onyx = d["themes"].as_array().unwrap().iter().find(|t| t["id"] == "@nuah/theme-phantom-onyx").expect("the default preset is there");
     assert_eq!(onyx["tokens"]["schema"], "theme/1");
-    assert_eq!(d["extension_points"]["notify.channel"]["providers"], json!(["notify-inbox"]));
+    assert_eq!(d["extension_points"]["notify.channel"]["providers"], json!(["@madar/notify-inbox"]));
 }
 
 #[test]
@@ -502,8 +502,8 @@ fn sign_in_gives_an_expiring_session() {
     let clock = FixedClock::at(1_700_000_000_000);
     let hash = AuthPassword::hash_password("correct horse");
     let mut p = profile_server(":memory:", json!([{"name": "alice", "password_hash": hash, "roles": ["member"]}]));
-    p.enabled.retain(|e| !["db-sqlite", "clock-system", "ids-random"].contains(&e.as_str()));
-    p.enabled.extend(["db-memory", "clock-fixed", "ids-sequential"].map(String::from));
+    p.enabled.retain(|e| !["@nuah/db-sqlite", "@nuah/clock-system", "@nuah/ids-random"].contains(&e.as_str()));
+    p.enabled.extend(["@nuah/db-memory", "@nuah/clock-fixed", "@nuah/ids-sequential"].map(String::from));
     p.settings.remove("db-sqlite");
     p.settings.insert("auth-password".into(), json!({"session_hours": 1, "accounts": [{"name": "alice", "password_hash": hash, "roles": ["member"]}]}));
     p.grants.insert("auth-password".into(), vec![]);
@@ -548,8 +548,10 @@ fn uuid_like() -> String {
 }
 fn start_file(path: &str, without: &[&str]) -> std::result::Result<Core, Vec<Problem>> {
     let mut p = profile_embedded(path);
-    p.enabled.retain(|e| !without.contains(&e.as_str()));
-    p.grants.retain(|k, _| !without.contains(&k.as_str()));
+    // `without` names plugins by their short names
+    let hit = |id: &str| without.iter().any(|w| id == *w || id.ends_with(&format!("/{w}")));
+    p.enabled.retain(|e| !hit(e));
+    p.grants.retain(|k, _| !hit(k));
     Core::start(&distribution(p))
 }
 
@@ -606,13 +608,13 @@ impl Plugin for Pin {
 }
 
 fn pin_with(slots: Value) -> Arc<dyn Plugin> {
-    Arc::new(Pin(json!({"id": "pin", "version": "0.1.0", "name": "Pin", "namespaces": ["pin"],
-        "requires": {"plugins": ["tasks"]}, "slots": slots})))
+    Arc::new(Pin(json!({"id": "@acme/pin", "version": "0.1.0", "name": "Pin", "namespaces": ["pin"],
+        "requires": {"plugins": ["@madar/tasks"]}, "slots": slots})))
 }
 
 fn slot_problems(slots: Value) -> Vec<Problem> {
     let mut p = profile_embedded(":memory:");
-    p.enabled.push("pin".into());
+    p.enabled.push("@acme/pin".into());
     Core::check(&distribution_with(p, vec![pin_with(slots)]))
 }
 
@@ -624,7 +626,7 @@ fn archive_item() -> Value {
 #[test]
 fn a_plugin_adds_a_button_by_declaring_it_and_nobody_else_changes() {
     let mut p = profile_test(&[]);
-    p.enabled.push("pin".into());
+    p.enabled.push("@acme/pin".into());
     let dist = distribution_with(p, vec![pin_with(json!([archive_item()])), Arc::new(TestClock(FixedClock::at(1_700_000_000_000))), Arc::new(TestIds)]);
     let core = Core::start(&dist).unwrap_or_else(|p| panic!("{p:#?}"));
     let d = core.describe(&who("alice"));
@@ -632,7 +634,7 @@ fn a_plugin_adds_a_button_by_declaring_it_and_nobody_else_changes() {
     // Madar's export item and the new one, in their Slots, each in the caller's reach.
     assert!(items.iter().any(|i| i["id"] == "export.project" && i["slot"] == "project.actions"));
     let mine = items.iter().find(|i| i["id"] == "pin.archive").expect("the new item is listed");
-    assert_eq!((mine["slot"].as_str(), mine["operation"].as_str(), mine["plugin"].as_str()), (Some("task.actions"), Some("tasks.update"), Some("pin")));
+    assert_eq!((mine["slot"].as_str(), mine["operation"].as_str(), mine["plugin"].as_str()), (Some("task.actions"), Some("tasks.update"), Some("@acme/pin")));
     assert_eq!(mine["label"]["en"], "Archive now");
     // The item does what its Operation does: run it the way a Face would, with the context filled in.
     let al = who("alice");
@@ -677,7 +679,7 @@ fn the_resolver_rejects_slot_items_that_cannot_work() {
 fn allow_all_ignores_roles_but_not_what_the_project_grants() {
     let clock = FixedClock::at(1_700_000_000_000);
     let mut p = profile_test(&[]);
-    p.enabled.retain(|e| e != "policy-roles");
+    p.enabled.retain(|e| e != "@nuah/policy-roles");
     p.enabled.push("policy-allow-all".into());
     let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|p| panic!("{p:#?}"));
     // Nobody has any Role: under allow-all that makes no difference.
@@ -861,7 +863,7 @@ fn the_editor_offers_the_blocks_plugins_declare() {
     for want in ["heading1", "codeBlock", "taskList", "toggle", "calloutWarning", "image", "youtube", "entityRef"] {
         assert!(ids.contains(&want), "{want} in {ids:?}");
     }
-    assert_eq!(blocks["blocks"][0]["plugin"], "editor-basic");
+    assert_eq!(blocks["blocks"][0]["plugin"], "@madar/editor-basic");
 }
 
 #[test]
@@ -956,7 +958,7 @@ fn the_overview_counts_columns_bands_overdue_and_completions_per_day() {
 }
 
 fn date_of_clock(a: &App) -> String {
-    madar_core::util::date_of(a.core.now())
+    madar_plugins::util::date_of(a.core.now())
 }
 
 #[test]
@@ -970,7 +972,7 @@ fn focus_ranks_your_open_tasks_by_urgency_in_two_lists() {
     mk("low and undated", 0, Value::Null);
     mk("urgent but far", 9, json!("2099-01-01"));
     mk("due today", 3, json!(today));
-    mk("a week late", 3, json!(madar_core::util::days_before(&today, 7)));
+    mk("a week late", 3, json!(madar_plugins::util::days_before(&today, 7)));
     for n in 0..8 {
         mk(&format!("filler {n}"), 1, Value::Null);
     }
@@ -1255,7 +1257,7 @@ fn intervals_step_over_short_months() {
     assert_eq!(add_interval_for_test("2023-12-30", 2, "week"), "2024-01-13");
 }
 fn add_interval_for_test(d: &str, n: i64, u: &str) -> String {
-    madar_core::add_interval(d, n, u)
+    madar_plugins::add_interval(d, n, u)
 }
 
 const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -1298,7 +1300,7 @@ fn files_are_sniffed_limited_and_only_shown_to_who_may_see_them() {
 #[test]
 fn search_and_files_can_be_switched_off_without_touching_the_rest() {
     let mut p = profile_test(&[]);
-    p.enabled.retain(|e| e != "search" && e != "files" && e != "files-db");
+    p.enabled.retain(|e| e != "@madar/search" && e != "@madar/files" && e != "@madar/files-db");
     p.grants.remove("search");
     p.grants.remove("files");
     let dist = distribution_with(p, vec![Arc::new(TestClock(FixedClock::at(1_700_000_000_000))), Arc::new(TestIds)]);
@@ -1492,10 +1494,10 @@ fn a_page_remembers_how_it_is_shown_and_refuses_anything_else() {
 #[test]
 fn a_postgres_url_selects_the_postgres_adapter_and_a_path_selects_sqlite() {
     let pg = profile_server("postgres://u:p@db/madar", json!([]));
-    assert!(pg.enabled.iter().any(|e| e == "db-postgres") && !pg.enabled.iter().any(|e| e == "db-sqlite"));
-    assert_eq!(pg.settings["db-postgres"], json!({"url": "postgres://u:p@db/madar"}));
+    assert!(pg.enabled.iter().any(|e| e == "@nuah/db-postgres") && !pg.enabled.iter().any(|e| e == "@nuah/db-sqlite"));
+    assert_eq!(pg.settings["@nuah/db-postgres"], json!({"url": "postgres://u:p@db/madar"}));
     let lite = profile_server("/data/madar.db", json!([]));
-    assert!(lite.enabled.iter().any(|e| e == "db-sqlite") && !lite.enabled.iter().any(|e| e == "db-postgres"));
-    assert_eq!(lite.settings["db-sqlite"], json!({"path": "/data/madar.db"}));
-    assert!(catalog().0.iter().any(|p| p.manifest().id == "db-postgres"));
+    assert!(lite.enabled.iter().any(|e| e == "@nuah/db-sqlite") && !lite.enabled.iter().any(|e| e == "@nuah/db-postgres"));
+    assert_eq!(lite.settings["@nuah/db-sqlite"], json!({"path": "/data/madar.db"}));
+    assert!(catalog().0.iter().any(|p| p.manifest().id == "@nuah/db-postgres"));
 }

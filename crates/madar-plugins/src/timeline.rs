@@ -10,9 +10,9 @@ pub struct Timeline;
 impl Plugin for Timeline {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "timeline", "version": "0.1.0", "name": "Timeline", "namespaces": ["timeline"],
+            "id": "@madar/timeline", "version": "0.1.0", "name": "Timeline", "namespaces": ["timeline"],
             "description": "One feed about a task or page: comments, updates and (for owners) history, newest first",
-            "requires": {"plugins": ["projects"], "capabilities": ["call"], "extension_points": ["timeline.source"]},
+            "requires": {"plugins": ["@madar/projects"], "capabilities": ["call"], "extension_points": ["timeline.source"]},
             "defines": {"extension_points": {"timeline.source": {"policy": "many",
                 "description": "A plugin answers with its newest items about a target before a moment: {items: [{at, source, kind, id, actor, ..}]}",
                 "input": {"type":"object","required":["project","target"]}}}},

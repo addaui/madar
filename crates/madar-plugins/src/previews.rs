@@ -155,7 +155,7 @@ fn unavailable() -> Error {
 impl Plugin for Previews {
     fn manifest(&self) -> Manifest {
         serde_json::from_value(json!({
-            "id": "previews", "version": "0.2.0", "name": "Link previews", "namespaces": ["previews"],
+            "id": "@madar/previews", "version": "0.2.0", "name": "Link previews", "namespaces": ["previews"],
             "description": "Title, summary and picture of a web address, for the editor's link block. Makes outbound web requests through the net Port.",
             "requires": {"capabilities": ["net"]},
             "operations": {

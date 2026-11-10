@@ -22,7 +22,7 @@ fn start(existing: Option<Value>) -> Wizard {
     if let Some(v) = existing {
         std::fs::write(&file, serde_json::to_string_pretty(&v).unwrap()).unwrap();
     }
-    let store = std::sync::Arc::new(nuah_host::edit::ProfileStore::new("madar", madar_server::catalog(), madar_core::profile_embedded("madar.db"), file.clone()));
+    let store = std::sync::Arc::new(nuah_shell::edit::ProfileStore::new("madar", madar_plugins::full_catalog(), madar_plugins::profile_embedded("madar.db"), file.clone()));
     let cfg = SetupConfig { store, code: CODE.into(), server: Default::default() };
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
@@ -60,7 +60,7 @@ impl Wizard {
 }
 
 fn server_profile(hash: &str) -> Value {
-    let mut p = serde_json::to_value(madar_core::profile_server("data.db", json!([{"name": "alice", "password_hash": hash, "roles": ["admin"]}]))).unwrap();
+    let mut p = serde_json::to_value(madar_plugins::profile_server("data.db", json!([{"name": "alice", "password_hash": hash, "roles": ["admin"]}]))).unwrap();
     p["name"] = json!("server");
     p
 }
@@ -90,9 +90,9 @@ fn state_lists_the_catalog_and_never_returns_secrets() {
     assert_eq!(body["problems"], json!([]));
     assert_eq!(body["file_exists"], true);
     assert!(body["plugins"].as_array().unwrap().len() >= 17);
-    assert!(body["plugins"].as_array().unwrap().iter().any(|p| p["id"] == "tasks" && p["kind"] == "feature"));
+    assert!(body["plugins"].as_array().unwrap().iter().any(|p| p["id"] == "@madar/tasks" && p["kind"] == "feature"));
     assert!(!body.to_string().contains(&hash), "the password hash must not leave the server");
-    assert_eq!(body["profile"]["settings"]["auth-password"]["accounts"], json!({"$secret": true}));
+    assert_eq!(body["profile"]["plugins"]["@nuah/auth-password"]["settings"]["accounts"], json!({"$secret": true}));
 }
 
 #[test]
@@ -109,19 +109,19 @@ fn a_draft_with_the_marker_keeps_the_stored_secret() {
     assert!(!body.to_string().contains(&hash));
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(&w.file).unwrap()).unwrap();
     assert_eq!(saved["name"], "renamed");
-    assert_eq!(saved["settings"]["auth-password"]["accounts"][0]["password_hash"], hash.as_str());
+    assert_eq!(saved["plugins"]["@nuah/auth-password"]["settings"]["accounts"][0]["password_hash"], hash.as_str());
 }
 
 #[test]
 fn only_a_profile_that_resolves_is_saved() {
     let w = start(None);
-    let before = madar_core::profile_embedded("madar.db");
+    let before = madar_plugins::profile_embedded("madar.db");
     let mut draft = serde_json::to_value(&before).unwrap();
-    draft["enabled"].as_array_mut().unwrap().push(json!("no-such-plugin"));
+    draft["plugins"]["@acme/no-such-plugin"] = json!({"enabled": true});
     let (status, body) = w.post("/setup/save", &draft, Some(CODE));
     assert_eq!(status, 422);
     assert_eq!(body["problems"][0]["code"], "unknown_plugin");
-    assert_eq!(body["problems"][0]["plugins"], json!(["no-such-plugin"]));
+    assert_eq!(body["problems"][0]["plugins"], json!(["@acme/no-such-plugin"]));
     assert!(!w.file.exists(), "nothing is written when there are problems");
     // A typo in a key is an error, not a plugin silently switched off.
     draft["enabeld"] = json!([]);
@@ -132,16 +132,16 @@ fn only_a_profile_that_resolves_is_saved() {
 #[test]
 fn a_saved_profile_starts_a_core_and_is_private() {
     let w = start(None);
-    let draft = serde_json::to_value(madar_core::profile_test(&[])).unwrap();
+    let draft = serde_json::to_value(madar_plugins::profile_test(&[])).unwrap();
     // The test profile uses plugins the wizard's catalog does not ship (fixed clock): the wizard says so.
     assert_eq!(w.post("/setup/save", &draft, Some(CODE)).0, 422);
-    let mut p = serde_json::to_value(madar_core::profile_embedded(":memory:")).unwrap();
+    let mut p = serde_json::to_value(madar_plugins::profile_embedded(":memory:")).unwrap();
     p["name"] = json!("mine");
     let (status, body) = w.post("/setup/save", &p, Some(CODE));
     assert_eq!(status, 200, "{body}");
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(&w.file).unwrap()).unwrap();
     let profile = nuah_kernel::setup::profile_from_json(&saved).unwrap();
-    nuah_kernel::Core::start(&madar_core::distribution(profile)).unwrap_or_else(|p| panic!("{p:#?}"));
+    nuah_kernel::Core::start(&madar_plugins::distribution(profile)).unwrap_or_else(|p| panic!("{p:#?}"));
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -151,10 +151,10 @@ fn a_saved_profile_starts_a_core_and_is_private() {
 
 #[test]
 fn the_first_administrator_is_asked_for_and_stored_hashed_so_nobody_pastes_a_hash() {
-    use nuah_host::Product;
+    use nuah_shell::Product;
     let w = start(None);
-    let mut draft = serde_json::to_value(madar_server::Madar.starting_point(std::path::Path::new("/tmp"))).unwrap();
-    draft["settings"]["db-sqlite"]["path"] = json!(":memory:");
+    let mut draft = serde_json::to_value(madar_plugins::Madar.starting_point(std::path::Path::new("/tmp"))).unwrap();
+    draft["plugins"]["@nuah/db-sqlite"]["settings"]["path"] = json!(":memory:");
     // no account yet: setup says what is missing, and writes nothing
     let (_, checked) = w.post("/setup/check", &draft, Some(CODE));
     assert!(checked["problems"].as_array().unwrap().iter().any(|p| p["code"] == "first_account_missing"), "{checked}");
@@ -168,7 +168,7 @@ fn the_first_administrator_is_asked_for_and_stored_hashed_so_nobody_pastes_a_has
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(&w.file).unwrap()).unwrap();
     assert!(!saved.to_string().contains("correct horse"), "only the hash is stored");
     // and the saved file runs: she signs in, and is an administrator
-    let core = nuah_kernel::Core::start(&nuah_kernel::Distribution { name: "madar".into(), catalog: madar_server::catalog(), profile: nuah_kernel::setup::profile_from_json(&saved).unwrap() }).unwrap_or_else(|p| panic!("{p:#?}"));
+    let core = nuah_kernel::Core::start(&nuah_kernel::Distribution { name: "madar".into(), catalog: madar_plugins::full_catalog(), profile: nuah_kernel::setup::profile_from_json(&saved).unwrap() }).unwrap_or_else(|p| panic!("{p:#?}"));
     let anon = nuah_kernel::Identity::new("", "", &[]);
     let who = core.call_as(&anon, "auth.sign_in", json!({"name": "ada", "password": "correct horse"}), None).unwrap().output["who"].clone();
     assert_eq!(who["roles"], json!(["admin"]));

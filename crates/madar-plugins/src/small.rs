@@ -15,9 +15,9 @@ pub struct Audit;
 impl Plugin for Audit {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "audit", "version": "0.2.0", "name": "Audit", "namespaces": ["audit"],
+            "id": "@madar/audit", "version": "0.2.0", "name": "Audit", "namespaces": ["audit"],
             "description": "A history of everything that happened in a project, for its owners",
-            "requires": {"plugins": ["projects"]},
+            "requires": {"plugins": ["@madar/projects"]},
             "provides": [{"extension_point": "timeline.source", "optional": true}],
             "data": {"collections": [ENTRIES], "version": 1, "indexes": [{"collection": ENTRIES, "field": "project"}]},
             "operations": {
@@ -95,9 +95,9 @@ pub struct Quota;
 impl Plugin for Quota {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "quota", "version": "0.2.0", "name": "Quota", "namespaces": ["quota"],
+            "id": "@madar/quota", "version": "0.2.0", "name": "Quota", "namespaces": ["quota"],
             "description": "Limits how many tasks a project holds",
-            "requires": {"plugins": ["tasks"]},
+            "requires": {"plugins": ["@madar/tasks"]},
             "data": {"reads": ["tasks.tasks"]},
             "settings_schema": {"type":"object","properties":{"max_tasks":{"type":"integer","minimum":1,"maximum":1000000}},"additionalProperties":false},
             "hooks": [{"stage": "before", "on": "tasks.create", "order": 20, "handler": "quota.check", "reasons": {"quota.exceeded": "The project is full"}}]
@@ -121,9 +121,9 @@ pub struct Export;
 impl Plugin for Export {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "export", "version": "0.2.0", "name": "Export", "namespaces": ["export"],
+            "id": "@madar/export", "version": "0.2.0", "name": "Export", "namespaces": ["export"],
             "description": "A whole project as one JSON document",
-            "requires": {"plugins": ["projects", "tasks", "discussion"], "capabilities": ["call"]},
+            "requires": {"plugins": ["@madar/projects", "@madar/tasks", "@madar/discussion"], "capabilities": ["call"]},
             "slots": [{"slot": "project.actions", "id": "export.project", "order": 10,
                 "label": {"en": "Export", "ar": "تصدير"},
                 "operation": "export.project", "args": {"project": "$project.id"},
@@ -169,7 +169,7 @@ pub struct Notify;
 impl Plugin for Notify {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "notify", "version": "0.2.0", "name": "Notifications", "namespaces": ["notify"],
+            "id": "@madar/notify", "version": "0.2.0", "name": "Notifications", "namespaces": ["notify"],
             "description": "Tells people when something is assigned to them or finished, through whatever fills notify.channel",
             "requires": {"extension_points": ["notify.channel"]},
             "defines": {"extension_points": {"notify.channel": {"policy": "many", "description": "A way to reach a person",
@@ -197,9 +197,9 @@ pub struct NotifyInbox;
 impl Plugin for NotifyInbox {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "notify-inbox", "version": "0.2.0", "name": "Inbox", "namespaces": ["inbox"],
+            "id": "@madar/notify-inbox", "version": "0.2.0", "name": "Inbox", "namespaces": ["inbox"],
             "description": "Keeps messages for each person to read in the app",
-            "requires": {"plugins": ["notify"], "capabilities": ["emit"]},
+            "requires": {"plugins": ["@madar/notify"], "capabilities": ["emit"]},
             "provides": [{"extension_point": "notify.channel"}],
             "data": {"collections": [MESSAGES], "version": 1, "indexes": [{"collection": MESSAGES, "field": "to"}]},
             "events": {"inbox.received": {}},

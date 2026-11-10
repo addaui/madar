@@ -43,7 +43,7 @@ pub struct Search;
 impl Plugin for Search {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "search", "version": "0.1.0", "name": "Search", "namespaces": ["search"],
+            "id": "@madar/search", "version": "0.1.0", "name": "Search", "namespaces": ["search"],
             "description": "One search over tasks, knowledge and pages: everything you can see, best match first",
             "requires": {"capabilities": ["call"], "extension_points": ["search.source"]},
             "defines": {"extension_points": {"search.source": {"policy": "many",

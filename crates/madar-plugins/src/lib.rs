@@ -15,6 +15,8 @@ pub mod search;
 pub mod timeline;
 pub mod workspaces;
 pub mod util;
+pub mod product;
+pub use product::{full_catalog, routes, Madar, Web};
 
 use nuah_adapters::*;
 use nuah_kernel::*;
@@ -37,32 +39,32 @@ pub fn catalog() -> Catalog {
     Catalog(list)
 }
 
-const FEATURES: [&str; 19] = ["projects", "tasks", "discussion", "audit", "quota", "prefs", "export", "notify", "notify-inbox", "appearance", "editor", "editor-basic", "refs", "pages", "timeline", "workspaces", "search", "files", "files-db"];
+const FEATURES: [&str; 19] = ["@madar/projects", "@madar/tasks", "@madar/discussion", "@madar/audit", "@madar/quota", "@nuah/prefs", "@madar/export", "@madar/notify", "@madar/notify-inbox", "@nuah/appearance", "@madar/editor", "@madar/editor-basic", "@madar/refs", "@madar/pages", "@madar/timeline", "@madar/workspaces", "@madar/search", "@madar/files", "@madar/files-db"];
 
 fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     let mut enabled: Vec<String> = adapters.iter().map(|s| s.to_string()).collect();
     enabled.extend(FEATURES.iter().map(|s| s.to_string()));
     enabled.extend(nuah_appearance::theme_ids());
     let mut p = Profile { name: name.into(), enabled, ..Default::default() };
-    p.grants.insert("projects".into(), vec!["emit".into()]);
-    p.grants.insert("tasks".into(), vec!["emit".into(), "call".into()]);
-    p.grants.insert("discussion".into(), vec!["emit".into(), "call".into()]);
-    p.grants.insert("prefs".into(), vec!["emit".into()]);
-    p.grants.insert("appearance".into(), vec!["emit".into()]);
-    p.grants.insert("pages".into(), vec!["emit".into(), "call".into()]);
-    p.grants.insert("search".into(), vec!["call".into()]);
-    p.grants.insert("files".into(), vec!["call".into()]);
-    p.grants.insert("timeline".into(), vec!["call".into()]);
-    p.grants.insert("workspaces".into(), vec!["emit".into()]);
-    p.grants.insert("export".into(), vec!["call".into()]);
-    p.grants.insert("notify-inbox".into(), vec!["emit".into()]);
+    p.grants.insert("@madar/projects".into(), vec!["emit".into()]);
+    p.grants.insert("@madar/tasks".into(), vec!["emit".into(), "call".into()]);
+    p.grants.insert("@madar/discussion".into(), vec!["emit".into(), "call".into()]);
+    p.grants.insert("@nuah/prefs".into(), vec!["emit".into()]);
+    p.grants.insert("@nuah/appearance".into(), vec!["emit".into()]);
+    p.grants.insert("@madar/pages".into(), vec!["emit".into(), "call".into()]);
+    p.grants.insert("@madar/search".into(), vec!["call".into()]);
+    p.grants.insert("@madar/files".into(), vec!["call".into()]);
+    p.grants.insert("@madar/timeline".into(), vec!["call".into()]);
+    p.grants.insert("@madar/workspaces".into(), vec!["emit".into()]);
+    p.grants.insert("@madar/export".into(), vec!["call".into()]);
+    p.grants.insert("@madar/notify-inbox".into(), vec!["emit".into()]);
     p
 }
 
 /// One person, one file, always signed in. For a Core only that person can reach.
 pub fn profile_embedded(db_path: &str) -> Profile {
-    let mut p = base_profile("embedded", &["db-sqlite", "auth-local", "policy-roles", "clock-system", "ids-random", "log-console"]);
-    p.settings.insert("db-sqlite".into(), json!({"path": db_path}));
+    let mut p = base_profile("embedded", &["@nuah/db-sqlite", "@nuah/auth-local", "@nuah/policy-roles", "@nuah/clock-system", "@nuah/ids-random", "@nuah/log-console"]);
+    p.settings.insert("@nuah/db-sqlite".into(), json!({"path": db_path}));
     p
 }
 
@@ -70,18 +72,18 @@ pub fn profile_embedded(db_path: &str) -> Profile {
 /// file, or a `postgres://` URL to run on PostgreSQL (one Madar process per database).
 pub fn profile_server(db: &str, accounts: serde_json::Value) -> Profile {
     let postgres = db.starts_with("postgres://") || db.starts_with("postgresql://");
-    let adapter = if postgres { "db-postgres" } else { "db-sqlite" };
-    let mut p = base_profile("server", &[adapter, "auth-password", "policy-roles", "clock-system", "ids-random", "log-console"]);
+    let adapter = if postgres { "@nuah/db-postgres" } else { "@nuah/db-sqlite" };
+    let mut p = base_profile("server", &[adapter, "@nuah/auth-password", "@nuah/policy-roles", "@nuah/clock-system", "@nuah/ids-random", "@nuah/log-console"]);
     p.settings.insert(adapter.into(), if postgres { json!({"url": db}) } else { json!({"path": db}) });
-    p.settings.insert("auth-password".into(), json!({"accounts": accounts}));
-    p.settings.insert("quota".into(), json!({"max_tasks": 5000}));
-    p.enabled.push("quota".into());
+    p.settings.insert("@nuah/auth-password".into(), json!({"accounts": accounts}));
+    p.settings.insert("@madar/quota".into(), json!({"max_tasks": 5000}));
+    p.enabled.push("@madar/quota".into());
     p
 }
 
 /// In memory with predictable ids and a clock the test controls.
 pub fn profile_test(extra_settings: &[(&str, serde_json::Value)]) -> Profile {
-    let mut p = base_profile("test", &["db-memory", "auth-local", "policy-roles", "clock-fixed", "ids-sequential"]);
+    let mut p = base_profile("test", &["@nuah/db-memory", "@nuah/auth-local", "@nuah/policy-roles", "@nuah/clock-fixed", "@nuah/ids-sequential"]);
     for (k, v) in extra_settings {
         p.settings.insert((*k).into(), v.clone());
     }

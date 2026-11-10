@@ -1,12 +1,18 @@
 [package]
-name = "madar-core"
+name = "madar-plugins"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
+axum = "0.8.9"
+nuah-console = { workspace = true }
+nuah-http = { workspace = true }
 nuah-kernel = { workspace = true }
+nuah-setup-web = { workspace = true }
+nuah-shell = { workspace = true }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
 nuah-adapters = { workspace = true }
 nuah-prefs = { workspace = true }
 nuah-appearance = { workspace = true }

@@ -2,9 +2,9 @@
 //! The `http` plugin as a service (ADR 0031): it starts with the Core, stops with it, frees its port,
 //! never hangs on an open Pulse stream, and the host program stops cleanly on SIGTERM.
 
-use madar_server::Madar;
+use madar_plugins::Madar;
 use nuah_adapters::AuthPassword;
-use nuah_host::Product;
+use nuah_shell::Product;
 use nuah_kernel::{Core, Distribution, Profile, Services};
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
@@ -19,7 +19,7 @@ fn accounts() -> Value {
 
 /// What an identity file for a server says: the plugins it lists run, and nothing else.
 fn server_profile(port: u16) -> Profile {
-    let mut profile = madar_core::profile_server(":memory:", accounts());
+    let mut profile = madar_plugins::profile_server(":memory:", accounts());
     profile.enabled.push("http".into());
     profile.grants.insert("http".into(), vec!["serve".into()]);
     profile.settings.insert("http".into(), json!({"listen": format!("127.0.0.1:{port}")}));
@@ -40,7 +40,7 @@ fn agent() -> ureq::Agent {
 fn the_http_plugin_serves_while_the_core_runs_and_frees_its_port_when_it_stops() {
     let port = free_port();
     let (_core, services) = start(port).unwrap();
-    assert!(services.running().contains(&"http"));
+    assert!(services.running().contains(&"@nuah/http"));
     let ok = agent().get(&format!("http://127.0.0.1:{port}/healthz")).call().unwrap();
     assert_eq!(ok.status().as_u16(), 200);
     services.stop();
@@ -88,12 +88,12 @@ fn the_host_program_stops_cleanly_on_sigterm() {
     std::fs::create_dir_all(&dir).unwrap();
     let port = free_port();
     // the identity file lists what runs, and the accounts it starts with
-    let mut profile = madar_core::profile_server(dir.join("m.db").to_str().unwrap(), accounts());
+    let mut profile = madar_plugins::profile_server(dir.join("m.db").to_str().unwrap(), accounts());
     profile.enabled.push("http".into());
     profile.grants.insert("http".into(), vec!["serve".into()]);
     profile.settings.insert("http".into(), json!({"listen": format!("127.0.0.1:{port}")}));
     std::fs::write(dir.join("madar.json"), serde_json::to_string_pretty(&profile).unwrap()).unwrap();
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_madar-server"))
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_madar"))
         .args(["serve"])
         .env("NUAH_HOME", &dir)
         .stderr(std::process::Stdio::null())
@@ -125,7 +125,7 @@ fn madar_writes_its_log_to_a_file_and_prometheus_can_scrape_it() {
     let log = dir.join("madar.log");
     let mut profile = server_profile(port);
     // metrics and the log file are plugins the file lists, with their own settings
-    profile.enabled.extend(["metric-prometheus", "log-file"].map(String::from));
+    profile.enabled.extend(["@nuah/metric-prometheus", "@nuah/log-file"].map(String::from));
     profile.grants.insert("metric-prometheus".into(), vec!["serve".into()]);
     profile.settings.insert("metric-prometheus".into(), json!({"listen": format!("127.0.0.1:{metrics_port}")}));
     profile.settings.insert("log-file".into(), json!({"path": log.display().to_string()}));

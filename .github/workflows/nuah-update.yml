@@ -42,7 +42,7 @@ jobs:
             sed -E -i "s#(^nuah-(prefs|appearance|metric-prometheus) = .*tag = \")[^\"]*\"#\1${{ steps.tags.outputs.plugins }}\"#" Cargo.toml; changed=yes
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
-          if [ "$changed" = yes ]; then cargo update -p nuah-kernel -p nuah-adapters -p nuah-http -p nuah-host -p nuah-console -p nuah-setup-web -p nuah-prefs -p nuah-appearance -p nuah-metric-prometheus; fi
+          if [ "$changed" = yes ]; then cargo update -p nuah-kernel -p nuah-adapters -p nuah-http -p nuah-shell -p nuah-console -p nuah-setup-web -p nuah-prefs -p nuah-appearance -p nuah-metric-prometheus; fi
       - uses: peter-evans/create-pull-request@v7
         if: steps.move.outputs.changed == 'yes'
         with:

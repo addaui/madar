@@ -1,4 +1,5 @@
-# Copy this folder to the server, create ./data/accounts.json (see the README), then: docker compose up -d
+# Copy this folder to the server and run: docker compose up -d
+# The first start has no nuah.json yet: it runs a setup page and prints a setup code in the log (docker compose logs).
 # A reverse proxy in front handles TLS and forwards to 127.0.0.1:3000.
 services:
   madar:
@@ -6,14 +7,9 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
-      # - "127.0.0.1:9464:9464"             # metrics, see below
     volumes:
-      - ./data:/data
+      - ./data:/data                        # nuah.json and the database
     environment:
-      NUAH_ALLOW_HOSTS: madar.example.com   # the name the proxy serves, more with commas
-      NUAH_SECURE_COOKIE: "true"            # the proxy terminates TLS
-      NUAH_WITH: previews                   # link previews; add ",metrics" for Prometheus
-      NUAH_LOG_LEVEL: info
-      # MADAR_METRICS_LISTEN: 0.0.0.0:9464  # with metrics; publish the port only to your monitoring network
-      # MADAR_METRICS_TOKEN: change-me
+      NUAH_ALLOW_HOSTS: madar.example.com   # the name the proxy serves, more with commas (setup only; later it is in nuah.json)
+      # NUAH_DATABASE_URL: postgres://...   # a nuah.json setting can read it: {"$env": "NUAH_DATABASE_URL"}
     stop_grace_period: 15s

@@ -18,36 +18,28 @@ mkdir madar && cd madar && mkdir data && sudo chown 10001 data
 curl -O https://raw.githubusercontent.com/addaui/madar/main/deploy/compose.yml
 ```
 
-Create the first account. The password hash is made by the image itself:
-
-```bash
-HASH=$(printf '%s' 'a long password' | docker run --rm -i ghcr.io/addaui/madar hash-password)
-printf '[{"name": "admin", "password_hash": "%s", "roles": ["admin"]}]\n' "$HASH" > data/accounts.json
-```
-
-Replace `madar.example.com` in `NUAH_ALLOW_HOSTS` in `compose.yml` with the name your proxy serves, then:
+Replace `madar.example.com` in `compose.yml` with the name your proxy serves, then:
 
 ```bash
 docker compose up -d
 docker compose logs -f
 ```
 
-It listens on `127.0.0.1:3000`. Point the proxy there and open the site. On a LAN without a proxy, set
-`NUAH_SECURE_COOKIE: "false"`, publish the port as `3000:3000` and add the box address to `NUAH_ALLOW_HOSTS`.
+The first start has no `data/nuah.json`, so it runs a setup page on port 3000 and prints a setup code in the log. Open the page, type the code and answer the questions (name, storage, sign-in, features); the first administrator is created there. When you save, Madar starts on its own. Point the proxy at `127.0.0.1:3000`.
+
+Everything it runs is in `data/nuah.json`: the plugins that are on, their settings and what they are allowed to do. Sign in, open `/faces/nuah/console/` and use "Plugins and settings" to change it; the change takes effect after a restart (a button there). A setting can read an environment variable instead of holding a value: `{"$env": "NAME"}`.
+
+Locked out: stop the container, then `docker compose run --rm madar reset-password NAME` (reads the new password on stdin).
 
 Update: `docker compose pull && docker compose up -d`. Backup: stop the container and copy `data/`.
 
 | Variable | Meaning |
 |---|---|
-| `NUAH_ALLOW_HOSTS` | host names it answers to, comma separated |
-| `NUAH_SECURE_COOKIE` | `true` behind a TLS proxy |
-| `NUAH_WITH` | `previews`, `metrics` |
-| `NUAH_LOG_LEVEL` | `error`, `warn`, `info`, `debug`, `trace` |
-| `NUAH_LOG_FILE` | also write JSON lines to this file |
+| `NUAH_HOME` | the folder with `nuah.json` (`/data` in the image) |
 | `NUAH_LISTEN` | address inside the container, default `0.0.0.0:3000` |
-| `NUAH_PROFILE` | a Profile file instead of `--db` and `--accounts` |
-| `MADAR_METRICS_LISTEN` | with `metrics`; in a container use `0.0.0.0:9464` and publish the port |
-| `MADAR_METRICS_TOKEN` | bearer token for the metrics endpoint, 8 characters or more |
+| `NUAH_ALLOW_HOSTS` | host names for the setup page, comma separated |
+| `NUAH_FACES` | where the Faces are (`/app/faces` in the image) |
+| `NUAH_LOG_LEVEL` | `error`, `warn`, `info`, `debug`, `trace` |
 
 Health: `GET /healthz` (alive) and `GET /readyz` (can read its data).
 
@@ -55,15 +47,15 @@ Health: `GET /healthz` (alive) and `GET /readyz` (can read its data).
 
 ```bash
 cargo test --workspace
-cargo run -p madar-server -- serve --db madar.db --accounts accounts.json --web faces/web
+cargo run -p madar -- serve   # setup runs first; the Faces are looked for in ./faces/nuah and ./faces/madar
 ```
 
 ## Layout
 
-- `crates/madar-core`: the plugins
-- `crates/madar-server`: the server program
-- `crates/madar-cli`: the `madar` command
-- `faces/web`: the web board
+- `crates/madar-plugins`: the plugins
+- `crates/madar`: the program (only `main`)
+- `crates/madar-cli`: the `madar-cli` command
+- `faces/madar/web`: the web board (the console and the setup page come from Nuah: copy its `faces/nuah` to `faces/nuah` for a run from source)
 - `faces/editor-src`: editor source
 - `deploy`: compose file
 

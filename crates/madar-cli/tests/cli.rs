@@ -8,7 +8,7 @@ use std::sync::mpsc;
 
 fn server() -> String {
     let hash = AuthPassword::hash_password("pw");
-    let core = Core::start(&madar_core::distribution(madar_core::profile_server(":memory:", json!([{"name": "alice", "password_hash": hash, "roles": ["member"]}])))).unwrap();
+    let core = Core::start(&madar_plugins::distribution(madar_plugins::profile_server(":memory:", json!([{"name": "alice", "password_hash": hash, "roles": ["member"]}])))).unwrap();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new().unwrap().block_on(async move {
@@ -22,7 +22,7 @@ fn server() -> String {
 }
 
 fn madar(args: &[&str], envs: &[(&str, &str)], stdin: Option<&str>) -> (i32, String, String) {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_madar"));
+    let mut c = Command::new(env!("CARGO_BIN_EXE_madar-cli"));
     c.args(args).envs(envs.iter().copied()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = c.spawn().unwrap();
     if let Some(s) = stdin {

@@ -48,10 +48,10 @@ impl Plugin for Discussion {
     fn manifest(&self) -> Manifest {
         let pr = json!({"type":"string"});
         manifest(json!({
-            "id": "discussion", "version": "0.3.0", "name": "Discussion", "namespaces": ["discussion"],
+            "id": "@madar/discussion", "version": "0.3.0", "name": "Discussion", "namespaces": ["discussion"],
             "description": "Comments on tasks and pages with threads (one level of replies), and updates",
             "provides": [{"extension_point": "timeline.source", "optional": true}],
-            "requires": {"plugins": ["projects", "tasks"], "capabilities": ["emit", "call"]},
+            "requires": {"plugins": ["@madar/projects", "@madar/tasks"], "capabilities": ["emit", "call"]},
             "data": {"collections": [COMMENTS], "version": 1, "indexes": [{"collection": COMMENTS, "field": "task"}, {"collection": COMMENTS, "field": "page"}]},
             "events": {"discussion.added": {}, "discussion.removed": {}},
             "operations": {

@@ -156,10 +156,10 @@ impl Plugin for Tasks {
         let date = json!({"type":["string","null"]});
         let proj = json!({"type":"string"});
         manifest(json!({
-            "id": "tasks", "version": "0.3.0", "name": "Tasks", "namespaces": ["tasks"],
+            "id": "@madar/tasks", "version": "0.3.0", "name": "Tasks", "namespaces": ["tasks"],
             "provides": [{"extension_point": "prefs.item", "optional": true}, {"extension_point": "search.source", "optional": true}],
             "description": "Tasks on a board: columns, order, subtasks, labels, and a Today view",
-            "requires": {"plugins": ["projects"], "capabilities": ["emit", "call"]},
+            "requires": {"plugins": ["@madar/projects"], "capabilities": ["emit", "call"]},
             "data": {"collections": [TASKS, LABELS, COUNTERS], "version": 3,
                      "indexes": [{"collection": TASKS, "field": "project"}, {"collection": TASKS, "field": "assignee"}, {"collection": TASKS, "field": "parent"}]},
             "events": {

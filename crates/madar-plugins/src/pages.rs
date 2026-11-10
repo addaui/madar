@@ -386,9 +386,9 @@ impl Plugin for Pages {
         let mut ops = ops_for("knowledge", false).as_object().cloned().unwrap();
         ops.extend(ops_for("pages", true).as_object().cloned().unwrap());
         manifest(json!({
-            "id": "pages", "version": "0.1.0", "name": "Pages", "namespaces": ["knowledge", "pages"],
+            "id": "@madar/pages", "version": "0.1.0", "name": "Pages", "namespaces": ["knowledge", "pages"],
             "description": "A tree of rich-text pages: a project's Knowledge (knowledge.*) and your own Pages (pages.*)",
-            "requires": {"plugins": ["projects"], "capabilities": ["emit", "call"]},
+            "requires": {"plugins": ["@madar/projects"], "capabilities": ["emit", "call"]},
             "provides": [{"extension_point": "search.source", "optional": true}],
             "data": {"collections": [PAGES, VERSIONS, COUNTERS], "version": 2,
                      "indexes": [{"collection": PAGES, "field": "project"}, {"collection": PAGES, "field": "owner"}, {"collection": PAGES, "field": "parent"}, {"collection": VERSIONS, "field": "page"}]},

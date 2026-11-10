@@ -26,12 +26,12 @@ fn start_full(cfg: nuah_http::Config, previews: Option<bool>) -> Server {
         {"name": "alice", "password_hash": hash, "roles": ["member"]},
         {"name": "bob", "password_hash": hash, "roles": ["member"]},
     ]);
-    let mut profile = madar_core::profile_server(":memory:", accounts);
-    let mut catalog = madar_core::catalog();
+    let mut profile = madar_plugins::profile_server(":memory:", accounts);
+    let mut catalog = madar_plugins::catalog();
     if let Some(allow_private) = previews {
-        profile.enabled.extend(["previews", "net-public"].map(String::from));
+        profile.enabled.extend(["@madar/previews", "@nuah/net-public"].map(String::from));
         profile.grants.insert("previews".into(), vec!["net".into()]);
-        catalog.0.retain(|p| p.manifest().id != "net-public");
+        catalog.0.retain(|p| p.manifest().id != "@nuah/net-public");
         catalog.0.push(std::sync::Arc::new(nuah_adapters::NetPublic { allow_private }));
     }
     let core = Core::start(&nuah_kernel::Distribution { name: "madar".into(), catalog, profile }).unwrap_or_else(|p| panic!("{p:#?}"));
@@ -41,7 +41,7 @@ fn start_full(cfg: nuah_http::Config, previews: Option<bool>) -> Server {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             tx.send(listener.local_addr().unwrap()).unwrap();
             let _services = core.start_services().unwrap();
-            let routes: nuah_http::RouteFn = std::sync::Arc::new(madar_server::routes());
+            let routes: nuah_http::RouteFn = std::sync::Arc::new(madar_plugins::routes());
             axum::serve(listener, nuah_http::router_with(core, cfg, &[routes], tokio::sync::watch::channel(false).1)).await.unwrap();
         });
     });
@@ -290,8 +290,8 @@ fn failed_sign_ins_are_throttled_per_account_and_a_success_clears_them() {
 #[test]
 fn the_web_board_declares_every_slot_madar_fills() {
     // ADR 0016: what plugins put into Slots must be something the board says it can show.
-    let decl: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../faces/web/slots.json")).unwrap()).unwrap();
-    let core = Core::start(&madar_core::distribution(madar_core::profile_embedded(":memory:"))).unwrap();
+    let decl: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../faces/madar/web/slots.json")).unwrap()).unwrap();
+    let core = Core::start(&madar_plugins::distribution(madar_plugins::profile_embedded(":memory:"))).unwrap();
     let me = nuah_kernel::Identity::new("me", "me", &["admin"]);
     let d = core.describe(&me);
     assert!(d["slots"].as_array().unwrap().iter().any(|i| i["id"] == "export.project" && i["slot"] == "project.actions"), "{}", d["slots"]);

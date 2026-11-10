@@ -135,7 +135,7 @@ const DEFAULT_THEME = "phantom-onyx";
 /** The preset the person chose (or the default), from the plugins `describe` lists. */
 function currentPreset() {
   const list = (S.desc && S.desc.themes) || [], name = S.prefs.theme || DEFAULT_THEME;
-  const th = list.find((x) => x.id === "theme-" + name || x.id === name) || list.find((x) => x.id === "theme-" + DEFAULT_THEME) || list[0];
+  const th = list.find((x) => x.id === "@nuah/theme-" + name || x.id === name) || list.find((x) => x.id === "@nuah/theme-" + DEFAULT_THEME) || list[0];
   return th && th.tokens && th.tokens.schema === "theme/1" ? th.tokens : null;
 }
 function applyTheme() {

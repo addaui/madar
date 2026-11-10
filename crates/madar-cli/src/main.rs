@@ -87,7 +87,7 @@ fn main() {
     let path = session_path(&a);
     let link: Box<dyn Link> = match &a.db {
         Some(db) => {
-            let core = Core::start(&madar_core::distribution(madar_core::profile_embedded(db))).unwrap_or_else(|p| {
+            let core = Core::start(&madar_plugins::distribution(madar_plugins::profile_embedded(db))).unwrap_or_else(|p| {
                 for p in &p {
                     eprintln!("{}: {}", p.code, p.message);
                 }

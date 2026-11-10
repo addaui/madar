@@ -103,7 +103,7 @@ impl Plugin for Projects {
             "type":{"enum":["text","number","date","boolean","choice"]},"choices":{"type":"array","maxItems":30,"items":{"type":"string","minLength":1,"maxLength":40}}},"additionalProperties":false}});
         let project_out = json!({"type":"object","required":["id","rev","name","statuses","level"]});
         manifest(json!({
-            "id": "projects", "version": "0.3.0", "name": "Projects", "namespaces": ["projects"],
+            "id": "@madar/projects", "version": "0.3.0", "name": "Projects", "namespaces": ["projects"],
             "provides": [{"extension_point": "prefs.item", "optional": true}],
             "description": "Projects, their members and Access levels",
             "requires": {"capabilities": ["emit"]},

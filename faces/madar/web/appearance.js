@@ -16,7 +16,7 @@ Object.assign(STR.ar, {
 
 /** The presets `describe` lists, default first. */
 function presetList() {
-  const list = ((S.desc && S.desc.themes) || []).filter((x) => x.tokens && x.tokens.schema === "theme/1"), first = "theme-" + DEFAULT_THEME;
+  const list = ((S.desc && S.desc.themes) || []).filter((x) => x.tokens && x.tokens.schema === "theme/1"), first = "@nuah/theme-" + DEFAULT_THEME;
   return list.sort((a, b) => (a.id === first ? -1 : b.id === first ? 1 : (a.name || "").localeCompare(b.name || "")));
 }
 
@@ -25,7 +25,7 @@ async function openAppearance() {
   if (!schema) return;
   let theme = S.prefs.theme || DEFAULT_THEME, scheme = S.prefs.scheme || "auto", draft = { ...(S.overrides || {}) }, saved = false;
   const presets = presetList(), known = new Set(schema.items.map((i) => i.key));
-  const preset = () => (presets.find((x) => x.id === "theme-" + theme) || presets[0]).tokens;
+  const preset = () => (presets.find((x) => x.id === "@nuah/theme-" + theme) || presets[0]).tokens;
   const sc = () => TH.resolve(preset(), draft, scheme, lang === "ar").sc;
   const baseOf = (k) => { // what the preset itself says for a token
     const p = preset(), [s, n] = k.includes(":") ? k.split(":") : [null, k];
@@ -66,7 +66,7 @@ async function openAppearance() {
     const groups = schema.groups.map((g) => h("details", { "data-g": g.id, open: first ? ["colour", "shape"].includes(g.id) : open.has(g.id) }, h("summary", {}, g.label[lang] || g.label.en),
       ...schema.items.filter((i) => i.group === g.id && (g.id !== "colour" || i.basic || true)).map((i) => row(i, control(i), i.per_scheme ? sc() + ":" + i.key : i.key))));
     body.replaceChildren(
-      h("div", { class: "arow stack" }, h("b", {}, t("preset")), h("div", { class: "pchips" }, ...presets.map((p) => chip(p.id.replace(/^theme-/, ""), p.name, theme, (v) => { theme = v; draft = {}; preview(); build(); })))),
+      h("div", { class: "arow stack" }, h("b", {}, t("preset")), h("div", { class: "pchips" }, ...presets.map((p) => chip(p.id.replace(/^(@nuah\/)?theme-/, ""), p.name, theme, (v) => { theme = v; draft = {}; preview(); build(); })))),
       h("div", { class: "arow stack" }, h("b", {}, t("mode")), h("div", { class: "pchips" }, chip("auto", t("modeAuto"), scheme, (v) => { scheme = v; preview(); build(); }), chip("light", t("modeLight"), scheme, (v) => { scheme = v; preview(); build(); }), chip("dark", t("modeDark"), scheme, (v) => { scheme = v; preview(); build(); }))),
       ...groups, readout);
     preview();
@@ -76,7 +76,7 @@ async function openAppearance() {
   const importBox = h("textarea", { rows: 6, placeholder: t("importPh"), "aria-label": t("importLook"), dir: "ltr", style: "width:100%" });
   const importWrap = h("div", { hidden: true }, importBox, h("div", { class: "btn-row" }, btn(t("applyImport"), { onclick: () => {
     try { const j = JSON.parse(importBox.value); if (!j || typeof j !== "object" || typeof j.overrides !== "object") throw 0;
-      if (j.theme && presets.some((p) => p.id === "theme-" + j.theme)) theme = j.theme; if (["auto", "light", "dark"].includes(j.scheme)) scheme = j.scheme;
+      if (j.theme && presets.some((p) => p.id === "@nuah/theme-" + j.theme)) theme = j.theme; if (["auto", "light", "dark"].includes(j.scheme)) scheme = j.scheme;
       draft = Object.fromEntries(Object.entries(j.overrides).filter(([k]) => known.has(k.replace(/^(light|dark):/, "")))); importWrap.hidden = true; build();
     } catch (e) { toast(t("lookBad")); } } })));
   const actions = h("div", { class: "btn-row sticky" },

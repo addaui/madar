@@ -23,9 +23,9 @@ impl Plugin for Workspaces {
     fn manifest(&self) -> Manifest {
         let name = json!({"type":"string","minLength":1,"maxLength":60});
         manifest(json!({
-            "id": "workspaces", "version": "0.1.0", "name": "Workspaces", "namespaces": ["workspaces"],
+            "id": "@madar/workspaces", "version": "0.1.0", "name": "Workspaces", "namespaces": ["workspaces"],
             "description": "Group the projects you can see into your own workspaces (work, personal, ...); off, everything is in one list",
-            "requires": {"plugins": ["projects"], "capabilities": ["emit"]},
+            "requires": {"plugins": ["@madar/projects"], "capabilities": ["emit"]},
             "data": {"collections": [WORKSPACES, PLACEMENTS], "version": 1,
                      "indexes": [{"collection": WORKSPACES, "field": "owner"}, {"collection": PLACEMENTS, "field": "person"}, {"collection": PLACEMENTS, "field": "project"}, {"collection": PLACEMENTS, "field": "workspace"}]},
             "events": {"workspaces.changed": {}},
