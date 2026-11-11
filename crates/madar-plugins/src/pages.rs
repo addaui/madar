@@ -609,6 +609,14 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
     add("version", "query", false, "One earlier picture of a page, with its body", json!({"id": id, "version": id}), vec!["id", "version"]);
     add("restore", "command", true, "Put an earlier picture back", json!({"id": id, "version": id}), vec!["id", "version"]);
     add("search", "query", false, &format!("Find pages in {scope} by title"), json!({"q": {"type":"string","minLength":1,"maxLength":100}}), vec!["q"]);
+    // what each operation returns, from `schemas` (the Core checks it; the Face's client is generated from it)
+    for (name, out) in [("create", crate::schemas::page()), ("get", crate::schemas::page()), ("list", crate::schemas::pages()), ("update", crate::schemas::page()),
+        ("move", crate::schemas::page_item()), ("delete", crate::schemas::removed()), ("restore", crate::schemas::page()), ("tasks", crate::schemas::page_tasks()),
+        ("set_space", crate::schemas::page_item()), ("styles", crate::schemas::page_styles()), ("style_delete", crate::schemas::removed())] {
+        if let Some(op) = m.get_mut(&format!("{prefix}.{name}")) {
+            op["output"] = out;
+        }
+    }
     Value::Object(m)
 }
 

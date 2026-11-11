@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - tldts-core@7.4.21
+verifyDepsBeforeRun: false

@@ -6,6 +6,7 @@
 pub mod content;
 pub mod discussion;
 pub mod pages;
+pub mod schemas;
 pub mod projects;
 pub mod small;
 pub mod tasks;

@@ -1,0 +1,6090 @@
+{
+ "contract": "a02ed699848def52",
+ "envelope": 1,
+ "events": {
+  "appearance.changed": {
+   "data": null,
+   "description": "",
+   "plugin": "@nuah/appearance"
+  },
+  "discussion.added": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/discussion"
+  },
+  "discussion.removed": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/discussion"
+  },
+  "inbox.received": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/notify-inbox"
+  },
+  "pages.created": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/pages"
+  },
+  "pages.moved": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/pages"
+  },
+  "pages.removed": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/pages"
+  },
+  "pages.style.removed": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/pages"
+  },
+  "pages.style.saved": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/pages"
+  },
+  "pages.updated": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/pages"
+  },
+  "prefs.changed": {
+   "data": null,
+   "description": "",
+   "plugin": "@nuah/prefs"
+  },
+  "projects.created": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/projects"
+  },
+  "projects.deleted": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/projects"
+  },
+  "projects.shared": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/projects"
+  },
+  "projects.unshared": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/projects"
+  },
+  "projects.updated": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/projects"
+  },
+  "tasks.assigned": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/tasks"
+  },
+  "tasks.completed": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/tasks"
+  },
+  "tasks.created": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/tasks"
+  },
+  "tasks.label_created": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/tasks"
+  },
+  "tasks.label_removed": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/tasks"
+  },
+  "tasks.moved": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/tasks"
+  },
+  "tasks.recurred": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/tasks"
+  },
+  "tasks.removed": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/tasks"
+  },
+  "tasks.updated": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/tasks"
+  },
+  "workspaces.changed": {
+   "data": null,
+   "description": "",
+   "plugin": "@madar/workspaces"
+  }
+ },
+ "extension_points": {
+  "editor.block": {
+   "owner": "@madar/editor",
+   "policy": "many",
+   "providers": [
+    "@madar/editor-basic"
+   ]
+  },
+  "emoji.set": {
+   "owner": "@nuah/emoji",
+   "policy": "many",
+   "providers": [
+    "@nuah/emoji"
+   ]
+  },
+  "files.store": {
+   "owner": "@madar/files",
+   "policy": "single",
+   "providers": [
+    "@madar/files-db"
+   ]
+  },
+  "notify.channel": {
+   "owner": "@madar/notify",
+   "policy": "many",
+   "providers": [
+    "@madar/notify-inbox"
+   ]
+  },
+  "prefs.item": {
+   "owner": "@nuah/prefs",
+   "policy": "many",
+   "providers": [
+    "@madar/projects",
+    "@madar/tasks",
+    "@nuah/appearance",
+    "@nuah/emoji",
+    "@nuah/prefs"
+   ]
+  },
+  "search.source": {
+   "owner": "@madar/search",
+   "policy": "many",
+   "providers": [
+    "@madar/pages",
+    "@madar/tasks"
+   ]
+  },
+  "timeline.source": {
+   "owner": "@madar/timeline",
+   "policy": "many",
+   "providers": [
+    "@madar/audit",
+    "@madar/discussion"
+   ]
+  }
+ },
+ "operations": {
+  "appearance.get": {
+   "description": "Your overrides of the theme preset",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "overrides"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/appearance",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "appearance.reset": {
+   "description": "Drop all your overrides and return to the preset",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "overrides"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/appearance",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "appearance.save": {
+   "description": "Replace your overrides; every value is checked, nothing unknown is kept",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "overrides": {
+      "maxProperties": 120,
+      "type": "object"
+     }
+    },
+    "required": [
+     "overrides"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "overrides"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/appearance",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "appearance.schema": {
+   "description": "Every token a person may change, with its range or choices",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "items"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/appearance",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "audit.list": {
+   "description": "The history of a project (owners only)",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "after": {
+      "minimum": 0,
+      "type": "integer"
+     },
+     "limit": {
+      "maximum": 500,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "entries": {
+      "items": {
+       "properties": {
+        "actor": {
+         "type": "string"
+        },
+        "at": {
+         "type": "integer"
+        },
+        "data": {
+         "type": "object"
+        },
+        "id": {
+         "type": "string"
+        },
+        "kind": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "kind",
+        "actor",
+        "at"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "next": {}
+    },
+    "required": [
+     "entries"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.manage",
+   "plugin": "@madar/audit",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "auth.account.create": {
+   "description": "Create an account",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "display": {
+      "maxLength": 200,
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     },
+     "password": {
+      "maxLength": 1000,
+      "minLength": 8,
+      "type": "string"
+     },
+     "roles": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "name",
+     "password"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "subject"
+    ],
+    "type": "object"
+   },
+   "permission": "auth.manage",
+   "plugin": "@nuah/auth-password",
+   "public": false,
+   "reasons": {
+    "auth.name_taken": "That name is already used"
+   },
+   "resource": null
+  },
+  "auth.account.list": {
+   "description": "Every account, without passwords",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "query",
+   "output": null,
+   "permission": "auth.manage",
+   "plugin": "@nuah/auth-password",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "auth.account.set_password": {
+   "description": "Set the password of an account",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "password": {
+      "maxLength": 1000,
+      "minLength": 8,
+      "type": "string"
+     },
+     "subject": {
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "subject",
+     "password"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "auth.manage",
+   "plugin": "@nuah/auth-password",
+   "public": false,
+   "reasons": {
+    "auth.no_account": "There is no such account"
+   },
+   "resource": null
+  },
+  "auth.account.update": {
+   "description": "Rename an account, change its display name or roles, disable or enable it",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "disabled": {
+      "type": "boolean"
+     },
+     "display": {
+      "maxLength": 200,
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     },
+     "roles": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "subject": {
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "subject"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "auth.manage",
+   "plugin": "@nuah/auth-password",
+   "public": false,
+   "reasons": {
+    "auth.last_admin": "At least one enabled administrator must remain",
+    "auth.name_taken": "That name is already used",
+    "auth.no_account": "There is no such account"
+   },
+   "resource": null
+  },
+  "auth.refresh": {
+   "description": "Extend a session you hold",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "token": {
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "token"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "expires_at"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/auth-password",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "auth.sign_in": {
+   "description": "Exchange a name and password for a session",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     },
+     "password": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "password"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "token",
+     "expires_at",
+     "who"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/auth-password",
+   "public": true,
+   "reasons": {
+    "auth.bad_credentials": "The name or password is wrong"
+   },
+   "resource": null
+  },
+  "auth.sign_out": {
+   "description": "End a session you hold",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "token": {
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "token"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/auth-password",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "auth.who": {
+   "description": "Who am I?",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "subject"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/auth-password",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "discussion.add": {
+   "description": "Write a comment or an update on a task",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "block": {
+      "maxLength": 40,
+      "minLength": 1,
+      "type": "string"
+     },
+     "body": {
+      "type": [
+       "string",
+       "object"
+      ]
+     },
+     "kind": {
+      "enum": [
+       "comment",
+       "update"
+      ]
+     },
+     "page": {
+      "type": "string"
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "project": {
+      "type": "string"
+     },
+     "task": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "body"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "id",
+     "body"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/discussion",
+   "public": false,
+   "reasons": {
+    "discussion.bad_parent": "Replies go to a top-level comment of the same task"
+   },
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "discussion.block_counts": {
+   "description": "How many threads each block of a page has",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "page": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "page"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "counts"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/discussion",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "discussion.list": {
+   "description": "The comments on a task or page; roots only with roots=true, or the replies of one thread with parent",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "before": {
+      "type": "integer"
+     },
+     "block": {
+      "maxLength": 40,
+      "minLength": 1,
+      "type": "string"
+     },
+     "limit": {
+      "maximum": 500,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "page": {
+      "type": "string"
+     },
+     "parent": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     },
+     "roots": {
+      "type": "boolean"
+     },
+     "task": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "comments"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/discussion",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "discussion.remove": {
+   "description": "Remove a comment (its author or the project's owner)",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "projects.write",
+   "plugin": "@madar/discussion",
+   "public": false,
+   "reasons": {
+    "discussion.not_yours": "Only the author or the project owner can remove a comment"
+   },
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "editor.blocks": {
+   "description": "The blocks the editor offers, for the slash menu",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "blocks"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/editor",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "emoji.asset": {
+   "description": "A file a set ships (a font), as base64: {content_type, data}",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "enum": [
+       "twemoji.woff2"
+      ]
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "data"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/emoji",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "emoji.catalog": {
+   "description": "Every emoji with its name, search words and group (for a picker); {lang, groups: [{key, name}], items: [[emoji, name, words, group]]}",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "lang": {
+      "maxLength": 8,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "items"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/emoji",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "emoji.sets": {
+   "description": "The emoji sets the plugins offer",
+   "input": {
+    "additionalProperties": false,
+    "properties": {},
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "sets"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/emoji",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "export.project": {
+   "description": "Download a project, its tasks, labels and comments",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "project",
+     "tasks",
+     "labels",
+     "comments"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/export",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "files.download": {
+   "description": "A file's bytes (base64) with its type; the server turns this into GET /files/{id}",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "data",
+     "type"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/files",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "files.info": {
+   "description": "A file's name, type and size",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/files",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "files.remove": {
+   "description": "Delete a file (its uploader, or a project owner)",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": null,
+   "plugin": "@madar/files",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "files.sweep": {
+   "description": "Delete your own uploads that no page, task or comment shows (older than `older_than_days`, default 1)",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "older_than_days": {
+      "maximum": 365,
+      "minimum": 0,
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "removed"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/files",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "files.upload": {
+   "description": "Upload a file (base64, at most 4 MiB): an image, a PDF or plain text. With `project` it is shared with the project's members.",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "data": {
+      "maxLength": 5900000,
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 200,
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "data"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "id",
+     "url"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/files",
+   "public": false,
+   "reasons": {
+    "files.bad_type": "Only images (PNG, JPEG, GIF, WebP), PDFs and plain text can be uploaded",
+    "files.not_allowed": "You cannot add files to that project",
+    "files.too_big": "That file is larger than 4 MiB"
+   },
+   "resource": null
+  },
+  "inbox.list": {
+   "description": "Your notifications",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "limit": {
+      "maximum": 200,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "unread": {
+      "type": "boolean"
+     }
+    },
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "messages": {
+      "items": {
+       "properties": {
+        "at": {
+         "type": "integer"
+        },
+        "id": {
+         "type": "string"
+        },
+        "link": {},
+        "read": {
+         "type": "boolean"
+        },
+        "text": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "text",
+        "read",
+        "at"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "unread": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "messages",
+     "unread"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/notify-inbox",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "inbox.read": {
+   "description": "Mark notifications as read",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": null,
+   "plugin": "@madar/notify-inbox",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "knowledge.create": {
+   "description": "Add a page to this project's knowledge",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "project": {
+      "type": "string"
+     },
+     "space": {
+      "maxLength": 60,
+      "type": "string"
+     },
+     "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "title"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder",
+     "body"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.delete": {
+   "description": "Delete a page and everything under it",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "removed": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "removed"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.get": {
+   "description": "One page with its body",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder",
+     "body"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.list": {
+   "description": "The tree of this project's knowledge, without bodies; your own pages can be limited to one Space",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "pages": {
+      "items": {
+       "properties": {
+        "created_at": {
+         "type": "integer"
+        },
+        "created_by": {
+         "type": "string"
+        },
+        "folder": {
+         "type": "boolean"
+        },
+        "icon": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "id": {
+         "type": "string"
+        },
+        "number": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "parent": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "position": {
+         "type": "number"
+        },
+        "project": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "rev": {
+         "type": "integer"
+        },
+        "settings": {
+         "type": "object"
+        },
+        "space": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "title": {
+         "type": "string"
+        },
+        "updated_at": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "id",
+        "rev",
+        "title",
+        "folder"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "pages"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.move": {
+   "description": "Move a page under another (or to the top), before a sibling",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "before": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.restore": {
+   "description": "Put an earlier picture back",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     },
+     "version": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id",
+     "version"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder",
+     "body"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.search": {
+   "description": "Find pages in this project's knowledge by title",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     },
+     "q": {
+      "maxLength": 100,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "q"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": null,
+   "permission": "projects.read",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.set_task": {
+   "description": "Tick or untick a checklist item of a page, found by its block id",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "block": {
+      "maxLength": 40,
+      "minLength": 1,
+      "type": "string"
+     },
+     "checked": {
+      "type": "boolean"
+     },
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id",
+     "block",
+     "checked"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "projects.write",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.update": {
+   "description": "Change a page's title, body or icon",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "expected_rev": {
+      "minimum": 1,
+      "type": "integer"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder",
+     "body"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.version": {
+   "description": "One earlier picture of a page, with its body",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     },
+     "version": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id",
+     "version"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": null,
+   "permission": "projects.read",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "knowledge.versions": {
+   "description": "The saved earlier pictures of a page, newest first",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": null,
+   "permission": "projects.read",
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "pages.create": {
+   "description": "Add a page to your own pages",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "space": {
+      "maxLength": 60,
+      "type": "string"
+     },
+     "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder",
+     "body"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.delete": {
+   "description": "Delete a page and everything under it",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "removed": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "removed"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.get": {
+   "description": "One page with its body",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder",
+     "body"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.list": {
+   "description": "The tree of your own pages, without bodies; your own pages can be limited to one Space",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "space": {
+      "maxLength": 60,
+      "type": "string"
+     }
+    },
+    "required": [],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "pages": {
+      "items": {
+       "properties": {
+        "created_at": {
+         "type": "integer"
+        },
+        "created_by": {
+         "type": "string"
+        },
+        "folder": {
+         "type": "boolean"
+        },
+        "icon": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "id": {
+         "type": "string"
+        },
+        "number": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "parent": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "position": {
+         "type": "number"
+        },
+        "project": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "rev": {
+         "type": "integer"
+        },
+        "settings": {
+         "type": "object"
+        },
+        "space": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "title": {
+         "type": "string"
+        },
+        "updated_at": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "id",
+        "rev",
+        "title",
+        "folder"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "pages"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.move": {
+   "description": "Move a page under another (or to the top), before a sibling",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "before": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.restore": {
+   "description": "Put an earlier picture back",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "version": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "version"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder",
+     "body"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.search": {
+   "description": "Find pages in your own pages by title",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "q": {
+      "maxLength": 100,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "q"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": null,
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.set_space": {
+   "description": "Move one of your pages, with the pages under it, into another Space",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "space": {
+      "maxLength": 60,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "space"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.set_task": {
+   "description": "Tick or untick a checklist item of a page, found by its block id",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "block": {
+      "maxLength": 40,
+      "minLength": 1,
+      "type": "string"
+     },
+     "checked": {
+      "type": "boolean"
+     },
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "block",
+     "checked"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.style_delete": {
+   "description": "Delete one of your saved page styles",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "removed": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "removed"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.style_save": {
+   "description": "Save a page style under a name (a new one, or replace one of yours)",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 40,
+      "minLength": 1,
+      "type": "string"
+     },
+     "settings": {
+      "type": "object"
+     }
+    },
+    "required": [
+     "name",
+     "settings"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.styles": {
+   "description": "The page styles you saved",
+   "input": {
+    "additionalProperties": false,
+    "properties": {},
+    "required": [],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "styles": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        },
+        "settings": {
+         "type": "object"
+        }
+       },
+       "required": [
+        "id",
+        "name",
+        "settings"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "styles"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.tasks": {
+   "description": "The open checklist items on your pages (of one Space) and on the pages of your projects",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "limit": {
+      "maximum": 300,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "space": {
+      "maxLength": 60,
+      "type": "string"
+     }
+    },
+    "required": [],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "items": {
+      "items": {
+       "properties": {
+        "block": {
+         "type": "string"
+        },
+        "checked": {
+         "type": "boolean"
+        },
+        "icon": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "page": {
+         "type": "string"
+        },
+        "project": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "project_name": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "text": {
+         "type": "string"
+        },
+        "title": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "page",
+        "block",
+        "text"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.update": {
+   "description": "Change a page's title, body or icon",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "expected_rev": {
+      "minimum": 1,
+      "type": "integer"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "body": {
+      "type": "object"
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "folder": {
+      "type": "boolean"
+     },
+     "icon": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "project": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "settings": {
+      "type": "object"
+     },
+     "space": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "title",
+     "folder",
+     "body"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.version": {
+   "description": "One earlier picture of a page, with its body",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "version": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "version"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": null,
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "pages.versions": {
+   "description": "The saved earlier pictures of a page, newest first",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": null,
+   "permission": null,
+   "plugin": "@madar/pages",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "prefs.get": {
+   "description": "Your preferences: every declared key with your value or its default",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "language"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/prefs",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "prefs.schema": {
+   "description": "Every preference the enabled plugins declare, to build a settings window",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "items"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/prefs",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "prefs.set": {
+   "description": "Change some of your preferences; each key must be declared and its value valid",
+   "input": {
+    "maxProperties": 40,
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "language"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@nuah/prefs",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "projects.create": {
+   "description": "Start a project; you become its owner",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "attributes": {
+      "items": {
+       "additionalProperties": false,
+       "properties": {
+        "choices": {
+         "items": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+         },
+         "maxItems": 30,
+         "type": "array"
+        },
+        "key": {
+         "maxLength": 30,
+         "minLength": 1,
+         "type": "string"
+        },
+        "label": {
+         "maxLength": 60,
+         "minLength": 1,
+         "type": "string"
+        },
+        "type": {
+         "enum": [
+          "text",
+          "number",
+          "date",
+          "boolean",
+          "choice"
+         ]
+        }
+       },
+       "required": [
+        "key",
+        "label",
+        "type"
+       ],
+       "type": "object"
+      },
+      "maxItems": 30,
+      "type": "array"
+     },
+     "key": {
+      "maxLength": 6,
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 100,
+      "minLength": 1,
+      "type": "string"
+     },
+     "statuses": {
+      "items": {
+       "additionalProperties": false,
+       "properties": {
+        "color": {
+         "maxLength": 20,
+         "type": "string"
+        },
+        "id": {
+         "maxLength": 40,
+         "minLength": 1,
+         "type": "string"
+        },
+        "name": {
+         "maxLength": 60,
+         "minLength": 1,
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "name"
+       ],
+       "type": "object"
+      },
+      "maxItems": 12,
+      "minItems": 2,
+      "type": "array"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "attributes": {
+      "items": {
+       "properties": {
+        "choices": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "key": {
+         "type": "string"
+        },
+        "label": {
+         "type": "string"
+        },
+        "type": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "key",
+        "label",
+        "type"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "can": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "id": {
+      "type": "string"
+     },
+     "key": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "level": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "statuses": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "name"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "name",
+     "statuses",
+     "level"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.create",
+   "plugin": "@madar/projects",
+   "public": false,
+   "reasons": {
+    "projects.key_taken": "Another project already uses that key"
+   },
+   "resource": null
+  },
+  "projects.delete": {
+   "description": "Delete a project and everything in it",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "projects.manage",
+   "plugin": "@madar/projects",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "projects.get": {
+   "description": "One project",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "attributes": {
+      "items": {
+       "properties": {
+        "choices": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "key": {
+         "type": "string"
+        },
+        "label": {
+         "type": "string"
+        },
+        "type": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "key",
+        "label",
+        "type"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "can": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "id": {
+      "type": "string"
+     },
+     "key": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "level": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "statuses": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "name"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "name",
+     "statuses",
+     "level"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/projects",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "projects.leave": {
+   "description": "Leave a project you were shared into",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "projects.read",
+   "plugin": "@madar/projects",
+   "public": false,
+   "reasons": {
+    "projects.owner_fixed": "The owner cannot leave"
+   },
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "projects.list": {
+   "description": "The projects you belong to",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "projects": {
+      "items": {
+       "properties": {
+        "attributes": {
+         "items": {
+          "properties": {
+           "choices": {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           "key": {
+            "type": "string"
+           },
+           "label": {
+            "type": "string"
+           },
+           "type": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "key",
+           "label",
+           "type"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        },
+        "can": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "created_by": {
+         "type": "string"
+        },
+        "id": {
+         "type": "string"
+        },
+        "key": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "level": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        },
+        "rev": {
+         "type": "integer"
+        },
+        "statuses": {
+         "items": {
+          "properties": {
+           "id": {
+            "type": "string"
+           },
+           "name": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "id",
+           "name"
+          ],
+          "type": "object"
+         },
+         "type": "array"
+        }
+       },
+       "required": [
+        "id",
+        "rev",
+        "name",
+        "statuses",
+        "level"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "projects"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/projects",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "projects.members": {
+   "description": "Who is in a project, and their access",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "members": {
+      "items": {
+       "properties": {
+        "display": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "level": {
+         "type": "string"
+        },
+        "subject": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "subject",
+        "level"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "members"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/projects",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "projects.share": {
+   "description": "Give someone access to a project",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "level": {
+      "enum": [
+       "editor",
+       "viewer"
+      ]
+     },
+     "name": {
+      "description": "The name the person signs in with",
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     },
+     "subject": {
+      "description": "Their stable id, when you already have it",
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "level"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "projects.manage",
+   "plugin": "@madar/projects",
+   "public": false,
+   "reasons": {
+    "projects.no_such_person": "Nobody signs in under that name",
+    "projects.owner_fixed": "The owner's level cannot be changed"
+   },
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "projects.unshare": {
+   "description": "Take someone's access away",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     },
+     "subject": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "subject"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "projects.manage",
+   "plugin": "@madar/projects",
+   "public": false,
+   "reasons": {
+    "projects.owner_fixed": "The owner cannot be removed"
+   },
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "projects.update": {
+   "description": "Rename a project or change its columns",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "attributes": {
+      "items": {
+       "additionalProperties": false,
+       "properties": {
+        "choices": {
+         "items": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+         },
+         "maxItems": 30,
+         "type": "array"
+        },
+        "key": {
+         "maxLength": 30,
+         "minLength": 1,
+         "type": "string"
+        },
+        "label": {
+         "maxLength": 60,
+         "minLength": 1,
+         "type": "string"
+        },
+        "type": {
+         "enum": [
+          "text",
+          "number",
+          "date",
+          "boolean",
+          "choice"
+         ]
+        }
+       },
+       "required": [
+        "key",
+        "label",
+        "type"
+       ],
+       "type": "object"
+      },
+      "maxItems": 30,
+      "type": "array"
+     },
+     "expected_rev": {
+      "minimum": 1,
+      "type": "integer"
+     },
+     "key": {
+      "maxLength": 6,
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 100,
+      "minLength": 1,
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     },
+     "statuses": {
+      "items": {
+       "additionalProperties": false,
+       "properties": {
+        "color": {
+         "maxLength": 20,
+         "type": "string"
+        },
+        "id": {
+         "maxLength": 40,
+         "minLength": 1,
+         "type": "string"
+        },
+        "name": {
+         "maxLength": 60,
+         "minLength": 1,
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "name"
+       ],
+       "type": "object"
+      },
+      "maxItems": 12,
+      "minItems": 2,
+      "type": "array"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "attributes": {
+      "items": {
+       "properties": {
+        "choices": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "key": {
+         "type": "string"
+        },
+        "label": {
+         "type": "string"
+        },
+        "type": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "key",
+        "label",
+        "type"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "can": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "id": {
+      "type": "string"
+     },
+     "key": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "level": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "statuses": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "name"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "name",
+     "statuses",
+     "level"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.manage",
+   "plugin": "@madar/projects",
+   "public": false,
+   "reasons": {
+    "projects.key_taken": "Another project already uses that key",
+    "tasks.status_in_use": "A column that still holds tasks cannot be removed"
+   },
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "refs.mine": {
+   "description": "What refers to one of your own pages",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "maxLength": 80,
+      "type": "string"
+     },
+     "kind": {
+      "maxLength": 60,
+      "type": "string"
+     }
+    },
+    "required": [
+     "kind",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "links"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/refs",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "refs.to": {
+   "description": "What refers to an item, inside one project",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "maxLength": 80,
+      "type": "string"
+     },
+     "kind": {
+      "maxLength": 60,
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "kind",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "links"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/refs",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "search.query": {
+   "description": "Find tasks, knowledge and pages by words in their title or text",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "kinds": {
+      "items": {
+       "enum": [
+        "task",
+        "knowledge",
+        "page"
+       ]
+      },
+      "maxItems": 3,
+      "type": "array"
+     },
+     "limit": {
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "q": {
+      "maxLength": 100,
+      "minLength": 2,
+      "type": "string"
+     },
+     "space": {
+      "maxLength": 60,
+      "type": "string"
+     }
+    },
+    "required": [
+     "q"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "items": {
+      "items": {
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "kind": {
+         "type": "string"
+        },
+        "project": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "project_name": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "score": {
+         "type": "number"
+        },
+        "snippet": {
+         "type": "string"
+        },
+        "space": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "title": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "kind",
+        "id",
+        "title"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/search",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "tasks.create": {
+   "description": "Add a task to a project, optionally as a subtask",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "assignee": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "custom": {
+      "type": "object"
+     },
+     "description": {
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "due": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "labels": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 20,
+      "type": "array"
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "priority": {
+      "maximum": 10,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     },
+     "repeat": {
+      "additionalProperties": false,
+      "properties": {
+       "every": {
+        "maximum": 365,
+        "minimum": 1,
+        "type": "integer"
+       },
+       "unit": {
+        "enum": [
+         "day",
+         "week",
+         "month"
+        ]
+       }
+      },
+      "required": [
+       "every",
+       "unit"
+      ],
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "status": {
+      "type": "string"
+     },
+     "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "title"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "archived": {
+      "type": "boolean"
+     },
+     "assignee": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "band": {
+      "type": "string"
+     },
+     "can": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "completed_at": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "custom": {
+      "type": "object"
+     },
+     "description": {
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "due": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "labels": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "priority": {
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     },
+     "repeat": {
+      "properties": {
+       "every": {
+        "type": "integer"
+       },
+       "unit": {
+        "type": "string"
+       }
+      },
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "status": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "project",
+     "title",
+     "status",
+     "priority",
+     "labels",
+     "archived"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {
+    "quota.exceeded": "The project is full",
+    "tasks.assignee_not_member": "Only members can be assigned",
+    "tasks.bad_parent": "A subtask needs a top-level task of the same project as its parent",
+    "tasks.bad_status": "That column does not exist",
+    "tasks.unknown_label": "That label is not in this project"
+   },
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.focus": {
+   "description": "Where to start the day: your open tasks ranked by urgency, the top few and then some more",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "today": {
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "also": {
+      "items": {
+       "properties": {
+        "archived": {
+         "type": "boolean"
+        },
+        "assignee": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "band": {
+         "type": "string"
+        },
+        "bucket": {
+         "type": "string"
+        },
+        "can": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "completed_at": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "created_at": {
+         "type": "integer"
+        },
+        "created_by": {
+         "type": "string"
+        },
+        "custom": {
+         "type": "object"
+        },
+        "description": {
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "due": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "id": {
+         "type": "string"
+        },
+        "labels": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "number": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "parent": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "position": {
+         "type": "number"
+        },
+        "priority": {
+         "type": "integer"
+        },
+        "project": {
+         "type": "string"
+        },
+        "project_name": {
+         "type": "string"
+        },
+        "repeat": {
+         "properties": {
+          "every": {
+           "type": "integer"
+          },
+          "unit": {
+           "type": "string"
+          }
+         },
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "rev": {
+         "type": "integer"
+        },
+        "status": {
+         "type": "string"
+        },
+        "title": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "rev",
+        "project",
+        "title",
+        "status",
+        "priority",
+        "labels",
+        "archived"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "open": {
+      "type": "integer"
+     },
+     "start": {
+      "items": {
+       "properties": {
+        "archived": {
+         "type": "boolean"
+        },
+        "assignee": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "band": {
+         "type": "string"
+        },
+        "bucket": {
+         "type": "string"
+        },
+        "can": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "completed_at": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "created_at": {
+         "type": "integer"
+        },
+        "created_by": {
+         "type": "string"
+        },
+        "custom": {
+         "type": "object"
+        },
+        "description": {
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "due": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "id": {
+         "type": "string"
+        },
+        "labels": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "number": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "parent": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "position": {
+         "type": "number"
+        },
+        "priority": {
+         "type": "integer"
+        },
+        "project": {
+         "type": "string"
+        },
+        "project_name": {
+         "type": "string"
+        },
+        "repeat": {
+         "properties": {
+          "every": {
+           "type": "integer"
+          },
+          "unit": {
+           "type": "string"
+          }
+         },
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "rev": {
+         "type": "integer"
+        },
+        "status": {
+         "type": "string"
+        },
+        "title": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "rev",
+        "project",
+        "title",
+        "status",
+        "priority",
+        "labels",
+        "archived"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "today": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "start",
+     "also",
+     "today"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "tasks.get": {
+   "description": "One task",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "archived": {
+      "type": "boolean"
+     },
+     "assignee": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "band": {
+      "type": "string"
+     },
+     "can": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "completed_at": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "custom": {
+      "type": "object"
+     },
+     "description": {
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "due": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "labels": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "priority": {
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     },
+     "repeat": {
+      "properties": {
+       "every": {
+        "type": "integer"
+       },
+       "unit": {
+        "type": "string"
+       }
+      },
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "status": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "project",
+     "title",
+     "status",
+     "priority",
+     "labels",
+     "archived"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.labels.create": {
+   "description": "Add a label to a project",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "color": {
+      "maxLength": 20,
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 40,
+      "minLength": 1,
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "name"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "color": {
+      "type": "string"
+     },
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "name"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.labels.list": {
+   "description": "The labels of a project",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "labels": {
+      "items": {
+       "properties": {
+        "color": {
+         "type": "string"
+        },
+        "id": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "name"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "labels"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.labels.remove": {
+   "description": "Remove a label from a project and from its tasks",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "projects.write",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.list": {
+   "description": "Tasks of a project, filtered and paged",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "after": {
+      "minimum": 0,
+      "type": "integer"
+     },
+     "archived": {
+      "type": "boolean"
+     },
+     "assignee": {
+      "type": "string"
+     },
+     "label": {
+      "type": "string"
+     },
+     "limit": {
+      "maximum": 500,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "project": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "next": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "tasks": {
+      "items": {
+       "properties": {
+        "archived": {
+         "type": "boolean"
+        },
+        "assignee": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "band": {
+         "type": "string"
+        },
+        "can": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "completed_at": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "created_at": {
+         "type": "integer"
+        },
+        "created_by": {
+         "type": "string"
+        },
+        "custom": {
+         "type": "object"
+        },
+        "description": {
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "due": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "id": {
+         "type": "string"
+        },
+        "labels": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "number": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "parent": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "position": {
+         "type": "number"
+        },
+        "priority": {
+         "type": "integer"
+        },
+        "project": {
+         "type": "string"
+        },
+        "repeat": {
+         "properties": {
+          "every": {
+           "type": "integer"
+          },
+          "unit": {
+           "type": "string"
+          }
+         },
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "rev": {
+         "type": "integer"
+        },
+        "status": {
+         "type": "string"
+        },
+        "title": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "rev",
+        "project",
+        "title",
+        "status",
+        "priority",
+        "labels",
+        "archived"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "tasks"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.move": {
+   "description": "Move a task to a column and a place in it",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "after": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "archived": {
+      "type": "boolean"
+     },
+     "assignee": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "band": {
+      "type": "string"
+     },
+     "can": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "completed_at": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "custom": {
+      "type": "object"
+     },
+     "description": {
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "due": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "labels": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "priority": {
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     },
+     "repeat": {
+      "properties": {
+       "every": {
+        "type": "integer"
+       },
+       "unit": {
+        "type": "string"
+       }
+      },
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "status": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "project",
+     "title",
+     "status",
+     "priority",
+     "labels",
+     "archived"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {
+    "tasks.archived": "An archived task can only be restored",
+    "tasks.bad_status": "That column does not exist",
+    "tasks.unknown_attribute": "That attribute is not defined in this project"
+   },
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.my": {
+   "description": "Today: what is assigned to you, across projects",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "today": {
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "tasks": {
+      "items": {
+       "properties": {
+        "archived": {
+         "type": "boolean"
+        },
+        "assignee": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "band": {
+         "type": "string"
+        },
+        "bucket": {
+         "type": "string"
+        },
+        "can": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "completed_at": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "created_at": {
+         "type": "integer"
+        },
+        "created_by": {
+         "type": "string"
+        },
+        "custom": {
+         "type": "object"
+        },
+        "description": {
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "due": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "id": {
+         "type": "string"
+        },
+        "labels": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "number": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "parent": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "position": {
+         "type": "number"
+        },
+        "priority": {
+         "type": "integer"
+        },
+        "project": {
+         "type": "string"
+        },
+        "project_name": {
+         "type": "string"
+        },
+        "repeat": {
+         "properties": {
+          "every": {
+           "type": "integer"
+          },
+          "unit": {
+           "type": "string"
+          }
+         },
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "rev": {
+         "type": "integer"
+        },
+        "status": {
+         "type": "string"
+        },
+        "title": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "rev",
+        "project",
+        "title",
+        "status",
+        "priority",
+        "labels",
+        "archived"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "today": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "tasks",
+     "today"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "tasks.query": {
+   "description": "Find tasks in a project: filter, sort (also by custom attributes), page",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "after": {
+      "minimum": 0,
+      "type": "integer"
+     },
+     "archived": {
+      "type": "boolean"
+     },
+     "assignee": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "custom": {
+      "type": "object"
+     },
+     "desc": {
+      "type": "boolean"
+     },
+     "done": {
+      "type": "boolean"
+     },
+     "due_after": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "due_before": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "label": {
+      "type": "string"
+     },
+     "limit": {
+      "maximum": 500,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "priority_min": {
+      "maximum": 10,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     },
+     "q": {
+      "maxLength": 100,
+      "type": "string"
+     },
+     "sort": {
+      "maxLength": 40,
+      "type": "string"
+     },
+     "status": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "next": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "tasks": {
+      "items": {
+       "properties": {
+        "archived": {
+         "type": "boolean"
+        },
+        "assignee": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "band": {
+         "type": "string"
+        },
+        "can": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "completed_at": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "created_at": {
+         "type": "integer"
+        },
+        "created_by": {
+         "type": "string"
+        },
+        "custom": {
+         "type": "object"
+        },
+        "description": {
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "due": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "id": {
+         "type": "string"
+        },
+        "labels": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "number": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "parent": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "position": {
+         "type": "number"
+        },
+        "priority": {
+         "type": "integer"
+        },
+        "project": {
+         "type": "string"
+        },
+        "repeat": {
+         "properties": {
+          "every": {
+           "type": "integer"
+          },
+          "unit": {
+           "type": "string"
+          }
+         },
+         "type": [
+          "object",
+          "null"
+         ]
+        },
+        "rev": {
+         "type": "integer"
+        },
+        "status": {
+         "type": "string"
+        },
+        "title": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "rev",
+        "project",
+        "title",
+        "status",
+        "priority",
+        "labels",
+        "archived"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "tasks"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.remove": {
+   "description": "Delete a task and its subtasks",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "projects.write",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.stats": {
+   "description": "Numbers for a project's overview: per column, per priority band, overdue, and completions per day",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "days": {
+      "maximum": 120,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "by_band": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object"
+     },
+     "by_status": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object"
+     },
+     "completed_per_day": {
+      "items": {
+       "properties": {
+        "date": {
+         "type": "string"
+        },
+        "n": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "date",
+        "n"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "done": {
+      "type": "integer"
+     },
+     "open": {
+      "type": "integer"
+     },
+     "overdue": {
+      "type": "integer"
+     },
+     "today": {
+      "type": "string"
+     },
+     "total": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "total",
+     "open",
+     "done",
+     "overdue",
+     "by_status",
+     "by_band",
+     "completed_per_day"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "tasks.update": {
+   "description": "Change a task's fields; pass expected_rev to refuse overwriting someone else's edit",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "archived": {
+      "type": "boolean"
+     },
+     "assignee": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "custom": {
+      "type": "object"
+     },
+     "description": {
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "due": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "expected_rev": {
+      "minimum": 1,
+      "type": "integer"
+     },
+     "id": {
+      "type": "string"
+     },
+     "labels": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 20,
+      "type": "array"
+     },
+     "priority": {
+      "maximum": 10,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     },
+     "repeat": {
+      "additionalProperties": false,
+      "properties": {
+       "every": {
+        "maximum": 365,
+        "minimum": 1,
+        "type": "integer"
+       },
+       "unit": {
+        "enum": [
+         "day",
+         "week",
+         "month"
+        ]
+       }
+      },
+      "required": [
+       "every",
+       "unit"
+      ],
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "status": {
+      "type": "string"
+     },
+     "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "properties": {
+     "archived": {
+      "type": "boolean"
+     },
+     "assignee": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "band": {
+      "type": "string"
+     },
+     "can": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "completed_at": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "created_by": {
+      "type": "string"
+     },
+     "custom": {
+      "type": "object"
+     },
+     "description": {
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "due": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "labels": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "number": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "parent": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "position": {
+      "type": "number"
+     },
+     "priority": {
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     },
+     "repeat": {
+      "properties": {
+       "every": {
+        "type": "integer"
+       },
+       "unit": {
+        "type": "string"
+       }
+      },
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "rev": {
+      "type": "integer"
+     },
+     "status": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "rev",
+     "project",
+     "title",
+     "status",
+     "priority",
+     "labels",
+     "archived"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.write",
+   "plugin": "@madar/tasks",
+   "public": false,
+   "reasons": {
+    "tasks.archived": "An archived task can only be restored",
+    "tasks.assignee_not_member": "Only members can be assigned",
+    "tasks.bad_status": "That column does not exist",
+    "tasks.stale_revision": "The task changed since you read it",
+    "tasks.unknown_label": "That label is not in this project"
+   },
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "timeline.feed": {
+   "description": "The newest items about a task or page; pass `before` (the last `at` you have) for older ones",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "before": {
+      "type": "integer"
+     },
+     "limit": {
+      "maximum": 100,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "project": {
+      "type": "string"
+     },
+     "target": {
+      "additionalProperties": false,
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "type": {
+        "enum": [
+         "tasks.task",
+         "pages.page"
+        ]
+       }
+      },
+      "required": [
+       "type",
+       "id"
+      ],
+      "type": "object"
+     }
+    },
+    "required": [
+     "project",
+     "target"
+    ],
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "required": [
+     "items"
+    ],
+    "type": "object"
+   },
+   "permission": "projects.read",
+   "plugin": "@madar/timeline",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "workspaces.create": {
+   "description": "Add a workspace of your own",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "maxLength": 60,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": {
+    "required": [
+     "id",
+     "name"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/workspaces",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "workspaces.delete": {
+   "description": "Delete one of your workspaces; it must hold no project",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": null,
+   "plugin": "@madar/workspaces",
+   "public": false,
+   "reasons": {
+    "workspaces.not_empty": "Move its projects elsewhere first"
+   },
+   "resource": null
+  },
+  "workspaces.list": {
+   "description": "Your workspaces (the built-in default first) and where each project you see is placed",
+   "input": {
+    "additionalProperties": false,
+    "type": "object"
+   },
+   "kind": "query",
+   "output": {
+    "properties": {
+     "placements": {
+      "items": {
+       "properties": {
+        "project": {
+         "type": "string"
+        },
+        "workspace": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "project",
+        "workspace"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "workspaces": {
+      "items": {
+       "properties": {
+        "builtin": {
+         "type": "boolean"
+        },
+        "id": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id",
+        "name"
+       ],
+       "type": "object"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "workspaces",
+     "placements"
+    ],
+    "type": "object"
+   },
+   "permission": null,
+   "plugin": "@madar/workspaces",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  },
+  "workspaces.place": {
+   "description": "Put a project you can see into one of your workspaces (or `default`)",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "project": {
+      "type": "string"
+     },
+     "workspace": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "project",
+     "workspace"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": "projects.read",
+   "plugin": "@madar/workspaces",
+   "public": false,
+   "reasons": {},
+   "resource": {
+    "id": "project",
+    "type": "projects.project"
+   }
+  },
+  "workspaces.rename": {
+   "description": "Rename one of your workspaces",
+   "input": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 60,
+      "minLength": 1,
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "name"
+    ],
+    "type": "object"
+   },
+   "kind": "command",
+   "output": null,
+   "permission": null,
+   "plugin": "@madar/workspaces",
+   "public": false,
+   "reasons": {},
+   "resource": null
+  }
+ },
+ "permissions": {
+  "auth.manage": {
+   "held": true,
+   "roles": [
+    "admin"
+   ]
+  },
+  "projects.create": {
+   "held": true,
+   "roles": [
+    "admin",
+    "member"
+   ]
+  },
+  "projects.manage": {
+   "held": true,
+   "roles": [
+    "admin",
+    "member"
+   ]
+  },
+  "projects.read": {
+   "held": true,
+   "roles": [
+    "admin",
+    "member",
+    "viewer"
+   ]
+  },
+  "projects.write": {
+   "held": true,
+   "roles": [
+    "admin",
+    "member"
+   ]
+  }
+ },
+ "profile": "server"
+}

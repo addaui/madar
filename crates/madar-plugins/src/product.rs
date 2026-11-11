@@ -54,11 +54,28 @@ impl Plugin for Web {
     }
 }
 
+/// The plugin that publishes the React web Face (`./faces/madar/web-react`), built from `web/`. It lives beside the
+/// frozen `@madar/web` until it does everything that Face does (ADR 0058); enable it to see it at `/faces/web-react/`.
+pub struct WebReact;
+
+impl Plugin for WebReact {
+    fn manifest(&self) -> Manifest {
+        serde_json::from_value(json!({
+            "id": "@madar/web-react", "version": "0.1.0", "name": "Web (React)", "runtime": "data",
+            "description": "Madar's web app rebuilt on React 19, published as the Face `web-react`, shown at /faces/web-react/",
+            "requires": {"plugins": ["@nuah/http"]},
+            "face": "web-react"
+        }))
+        .unwrap()
+    }
+}
+
 /// Madar's plugins, the `http` Projection with Madar's routes, and the plugins that publish Faces.
 pub fn full_catalog() -> Catalog {
     let mut c = crate::catalog();
     c.0.push(Arc::new(Http::new().with_routes(routes())));
     c.0.push(Arc::new(Web));
+    c.0.push(Arc::new(WebReact));
     c.0.push(Arc::new(nuah_console::Console));
     c
 }

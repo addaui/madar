@@ -31,7 +31,7 @@ impl Plugin for Workspaces {
             "events": {"workspaces.changed": {}},
             "operations": {
                 "workspaces.list": {"kind": "query", "description": "Your workspaces (the built-in default first) and where each project you see is placed",
-                    "output": {"type":"object","required":["workspaces","placements"]}},
+                    "output": crate::schemas::workspaces()},
                 "workspaces.create": {"kind": "command", "description": "Add a workspace of your own",
                     "input": {"type":"object","required":["name"],"properties":{"name":name},"additionalProperties":false}, "output": {"type":"object","required":["id","name"]}},
                 "workspaces.rename": {"kind": "command", "description": "Rename one of your workspaces",

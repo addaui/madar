@@ -53,7 +53,7 @@ impl Plugin for Search {
                 "search.query": {"kind": "query", "description": "Find tasks, knowledge and pages by words in their title or text",
                     "input": {"type":"object","required":["q"],"properties":{"q":{"type":"string","minLength":2,"maxLength":100},
                         "kinds":{"type":"array","items":{"enum":["task","knowledge","page"]},"maxItems":3},"space":{"type":"string","maxLength":60},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false},
-                    "output": {"type":"object","required":["items"]}}
+                    "output": crate::schemas::search_items()}
             }
         }))
     }

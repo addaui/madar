@@ -101,7 +101,7 @@ impl Plugin for Projects {
         let attrs = json!({"type":"array","maxItems":30,"items":{"type":"object","required":["key","label","type"],"properties":{
             "key":{"type":"string","minLength":1,"maxLength":30},"label":{"type":"string","minLength":1,"maxLength":60},
             "type":{"enum":["text","number","date","boolean","choice"]},"choices":{"type":"array","maxItems":30,"items":{"type":"string","minLength":1,"maxLength":40}}},"additionalProperties":false}});
-        let project_out = json!({"type":"object","required":["id","rev","name","statuses","level"]});
+        let project_out = crate::schemas::project();
         manifest(json!({
             "id": "@madar/projects", "version": "0.3.0", "name": "Projects", "namespaces": ["projects"],
             "provides": [{"extension_point": "prefs.item", "optional": true}],
@@ -127,7 +127,7 @@ impl Plugin for Projects {
                     "input": {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":100},"key":{"type":"string","maxLength":6},"statuses":statuses,"attributes":attrs},"additionalProperties":false},
                     "output": project_out, "affordances": {"type":"projects.project","id":"id"}},
                 "projects.list": {"kind": "query", "description": "The projects you belong to",
-                    "output": {"type":"object","required":["projects"]}, "affordances": {"type":"projects.project","id":"id","at":"projects"}},
+                    "output": crate::schemas::projects(), "affordances": {"type":"projects.project","id":"id","at":"projects"}},
                 "projects.get": {"kind": "query", "description": "One project", "resource": {"type":"projects.project","id":"project"}, "permission": "projects.read",
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"}},"additionalProperties":false},
                     "output": project_out, "affordances": {"type":"projects.project","id":"id"}},
@@ -148,7 +148,7 @@ impl Plugin for Projects {
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"}},"additionalProperties":false}},
                 "projects.members": {"kind": "query", "description": "Who is in a project, and their access", "resource": {"type":"projects.project","id":"project"}, "permission": "projects.read",
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"}},"additionalProperties":false},
-                    "output": {"type":"object","required":["members"]}}
+                    "output": crate::schemas::members()}
             },
             "listeners": [{"id": "projects.cleanup", "on": ["projects.deleted"], "handler": "projects.cleanup"}]
         }))

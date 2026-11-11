@@ -23,7 +23,7 @@ impl Plugin for Audit {
             "operations": {
                 "audit.list": {"kind": "query", "description": "The history of a project (owners only)", "permission": "projects.manage", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":500},"after":{"type":"integer","minimum":0}},"additionalProperties":false},
-                    "output": {"type":"object","required":["entries"]}}
+                    "output": crate::schemas::audit()}
             },
             "listeners": [{"id": "audit.record", "on": ["projects.*", "tasks.*", "discussion.*", "pages.*"], "handler": "audit.record"}]
         }))
@@ -205,7 +205,7 @@ impl Plugin for NotifyInbox {
             "events": {"inbox.received": {}},
             "operations": {
                 "inbox.list": {"kind": "query", "description": "Your notifications", "input": {"type":"object","properties":{"unread":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200}},"additionalProperties":false},
-                    "output": {"type":"object","required":["messages","unread"]}},
+                    "output": crate::schemas::inbox()},
                 "inbox.read": {"kind": "command", "description": "Mark notifications as read", "input": {"type":"object","properties":{"id":{"type":"string"}},"additionalProperties":false}}
             }
         }))

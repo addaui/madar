@@ -1,0 +1,179 @@
+// SPDX-License-Identifier: Apache-2.0
+//! The shapes of what Madar's operations return, as JSON Schema. The Core checks every output against its schema,
+//! and the typed client the Face uses is generated from them (ADR 0059), so a result is described once, here.
+//! Fields a result always has are `required`; a field that may be absent is not; extra fields are allowed so a plugin
+//! can add one without breaking a Face.
+
+use serde_json::{json, Value};
+
+fn nullable(t: &str) -> Value {
+    json!({"type": [t, "null"]})
+}
+fn list(of: Value) -> Value {
+    json!({"type": "array", "items": of})
+}
+fn obj(required: &[&str], props: Value) -> Value {
+    json!({"type": "object", "required": required, "properties": props})
+}
+
+const STR: &str = "string";
+fn s() -> Value {
+    json!({"type": "string"})
+}
+fn int() -> Value {
+    json!({"type": "integer"})
+}
+fn num() -> Value {
+    json!({"type": "number"})
+}
+fn boolean() -> Value {
+    json!({"type": "boolean"})
+}
+fn strings() -> Value {
+    list(s())
+}
+
+/// A custom field a project defines for its tasks.
+pub fn attribute() -> Value {
+    obj(&["key", "label", "type"], json!({"key": s(), "label": s(), "type": s(), "choices": strings()}))
+}
+
+pub fn project() -> Value {
+    obj(
+        &["id", "rev", "name", "statuses", "level"],
+        json!({
+            "id": s(), "rev": int(), "name": s(), "key": nullable(STR), "level": s(), "created_by": s(), "can": strings(),
+            "statuses": list(obj(&["id", "name"], json!({"id": s(), "name": s()}))),
+            "attributes": list(attribute()),
+        }),
+    )
+}
+
+pub fn projects() -> Value {
+    obj(&["projects"], json!({"projects": list(project())}))
+}
+
+pub fn members() -> Value {
+    obj(&["members"], json!({"members": list(obj(&["subject", "level"], json!({"subject": s(), "display": nullable(STR), "level": s()})))}))
+}
+
+pub fn task() -> Value {
+    obj(
+        &["id", "rev", "project", "title", "status", "priority", "labels", "archived"],
+        json!({
+            "id": s(), "rev": int(), "project": s(), "number": nullable("integer"), "title": s(), "status": s(), "priority": int(), "band": s(),
+            "due": nullable(STR), "assignee": nullable(STR), "labels": strings(), "parent": nullable(STR), "position": num(), "archived": boolean(),
+            "created_by": s(), "created_at": int(), "completed_at": nullable("integer"), "can": strings(),
+            "repeat": {"type": ["object", "null"], "properties": {"every": int(), "unit": s()}},
+            "description": {"type": ["object", "null"]}, "custom": {"type": "object"},
+        }),
+    )
+}
+
+pub fn tasks() -> Value {
+    obj(&["tasks"], json!({"tasks": list(task()), "next": nullable("integer")}))
+}
+
+/// A task as `tasks.my` shows it: with the project it belongs to and the bucket it falls in.
+pub fn my_task() -> Value {
+    let mut t = task();
+    t["properties"]["project_name"] = s();
+    t["properties"]["bucket"] = s();
+    t
+}
+
+pub fn my_tasks() -> Value {
+    obj(&["tasks", "today"], json!({"tasks": list(my_task()), "today": s()}))
+}
+
+pub fn focus() -> Value {
+    obj(&["start", "also", "today"], json!({"start": list(my_task()), "also": list(my_task()), "open": int(), "today": s()}))
+}
+
+pub fn stats() -> Value {
+    let counts = json!({"type": "object", "additionalProperties": int()});
+    obj(
+        &["total", "open", "done", "overdue", "by_status", "by_band", "completed_per_day"],
+        json!({
+            "total": int(), "open": int(), "done": int(), "overdue": int(), "today": s(), "by_status": counts, "by_band": counts,
+            "completed_per_day": list(obj(&["date", "n"], json!({"date": s(), "n": int()}))),
+        }),
+    )
+}
+
+pub fn label() -> Value {
+    obj(&["id", "name"], json!({"id": s(), "name": s(), "color": s()}))
+}
+
+pub fn labels() -> Value {
+    obj(&["labels"], json!({"labels": list(label())}))
+}
+
+pub fn workspaces() -> Value {
+    obj(
+        &["workspaces", "placements"],
+        json!({
+            "workspaces": list(obj(&["id", "name"], json!({"id": s(), "name": s(), "builtin": boolean()}))),
+            "placements": list(obj(&["project", "workspace"], json!({"project": s(), "workspace": s()}))),
+        }),
+    )
+}
+
+pub fn inbox() -> Value {
+    obj(
+        &["messages", "unread"],
+        json!({"unread": int(), "messages": list(obj(&["id", "text", "read", "at"], json!({"id": s(), "text": s(), "link": {}, "read": boolean(), "at": int()})))}),
+    )
+}
+
+/// A page as the tree lists it (no body).
+pub fn page_item() -> Value {
+    obj(
+        &["id", "rev", "title", "folder"],
+        json!({
+            "id": s(), "rev": int(), "title": s(), "folder": boolean(), "icon": nullable(STR), "parent": nullable(STR), "position": num(),
+            "project": nullable(STR), "space": nullable(STR), "number": nullable("integer"), "settings": {"type": "object"},
+            "created_at": int(), "updated_at": int(), "created_by": s(),
+        }),
+    )
+}
+
+pub fn page() -> Value {
+    let mut p = page_item();
+    p["required"] = json!(["id", "rev", "title", "folder", "body"]);
+    p["properties"]["body"] = json!({"type": "object"});
+    p
+}
+
+pub fn pages() -> Value {
+    obj(&["pages"], json!({"pages": list(page_item())}))
+}
+
+pub fn page_tasks() -> Value {
+    obj(
+        &["items"],
+        json!({"items": list(obj(&["page", "block", "text"], json!({"page": s(), "title": s(), "icon": nullable(STR), "block": s(), "text": s(), "project": nullable(STR), "project_name": nullable(STR), "checked": boolean()})))}),
+    )
+}
+
+pub fn page_styles() -> Value {
+    obj(&["styles"], json!({"styles": list(obj(&["id", "name", "settings"], json!({"id": s(), "name": s(), "settings": {"type": "object"}})))}))
+}
+
+pub fn removed() -> Value {
+    obj(&["removed"], json!({"removed": int()}))
+}
+
+pub fn audit() -> Value {
+    obj(
+        &["entries"],
+        json!({"next": {}, "entries": list(obj(&["id", "kind", "actor", "at"], json!({"id": s(), "kind": s(), "actor": s(), "at": int(), "data": {"type": "object"}})))}),
+    )
+}
+
+pub fn search_items() -> Value {
+    obj(
+        &["items"],
+        json!({"items": list(obj(&["kind", "id", "title"], json!({"kind": s(), "id": s(), "title": s(), "snippet": s(), "score": num(), "project": nullable(STR), "project_name": nullable(STR), "space": nullable(STR)})))}),
+    )
+}

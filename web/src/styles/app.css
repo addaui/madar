@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+/*
+ * Tokens (ADR 0060). The appearance plugin's token set is turned into the CSS variables below at run time (the theme
+ * engine writes them on <html> through the CSSOM). Tailwind's theme reads them with plain `@theme` (not `inline`), so a
+ * change at run time reaches every utility. Logical properties only (ps-, me-, start-, size-): the same rules serve
+ * right-to-left.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+  --color-soft: var(--soft);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --radius-lg: var(--r-lg);
+  --radius-md: var(--r-md);
+  --radius-sm: var(--r-sm);
+  --radius-btn: var(--r-btn);
+  --radius-chip: var(--r-chip);
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+  --font-sans: var(--font);
+  --font-head: var(--head);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@custom-variant dark (&:where([data-scheme="dark"], [data-scheme="dark"] *));
+@custom-variant workspace (&:where([data-layout="workspace"] *));
+@custom-variant panels (&:where([data-layout="panels"] *, :root:not([data-layout]) *));
+
+/* what a theme does not set is derived here */
+:root {
+  --bg: #e4eae8; --surface: #fff; --text: #12201d; --muted: #566763; --accent: #0b7a70; --danger: #c23b28; --on-accent: #fff;
+  --primary: var(--accent); --on-primary: var(--on-accent);
+  --line: color-mix(in srgb, var(--text) 9%, transparent);
+  --line-strong: color-mix(in srgb, var(--text) 18%, transparent);
+  --hover: color-mix(in srgb, var(--text) 6%, transparent);
+  --sunken: color-mix(in srgb, var(--text) 4.5%, var(--surface));
+  --soft: color-mix(in srgb, var(--accent) 11%, var(--surface));
+  --raised: var(--surface);
+  --r-lg: 22px; --r-md: 14px; --r-sm: 10px; --r-btn: 999px; --r-chip: 999px;
+  --shadow-1: 0 1px 2px rgb(18 40 36 / 0.05), 0 6px 18px -8px rgb(18 40 36 / 0.16);
+  --shadow-2: 0 2px 6px rgb(18 40 36 / 0.08), 0 24px 56px -16px rgb(18 40 36 / 0.28);
+  --side: 268px; --rail: 64px; --pane: 0px; --gap: 12px; --frame: 12px;
+}
+:root[data-scheme="dark"] {
+  --raised: color-mix(in srgb, var(--text) 6%, var(--surface));
+  --soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+@layer base {
+  html { background: var(--bg); color-scheme: light dark; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--emoji-first, "MadarEmojiOff"), var(--font, ui-sans-serif, system-ui, sans-serif); font-size: var(--fs, 14.5px); line-height: 1.5; font-variant-numeric: tabular-nums; }
+  #root { min-block-size: 100dvh; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  ::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+  :focus { outline: none; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+  [hidden] { display: none !important; }
+}
+
+/* the raised surface of the page, board and Today (the Elevated look's one raised object) */
+@utility elevated {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent), 0 2px 5px rgb(0 0 0 / 0.07), 0 18px 40px -12px rgb(0 0 0 / 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* form controls */
+@utility field {
+  min-block-size: 34px; max-inline-size: 100%; padding: 7px 10px; background: var(--surface); border: var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius: var(--r-sm);
+  transition: border-color 0.16s;
+  &:hover { border-color: color-mix(in srgb, var(--text) 30%, transparent); }
+  &:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent); }
+  &::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent); }
+  &:disabled { opacity: 0.6; }
+}
+
+@keyframes progress-slide { 0% { margin-inline-start: -33%; } 100% { margin-inline-start: 100%; } }
