@@ -179,8 +179,19 @@ impl Plugin for Editor {
     }
 }
 
-fn block(id: &str, node: &str, attrs: Value, en: &str, ar: &str, group: &str, keywords: &str) -> Value {
-    json!({"id": id, "node": node, "attrs": attrs, "label": {"en": en, "ar": ar}, "group": group, "keywords": keywords})
+/// A block the slash menu offers. `icon` is a name a Face draws in its own way (the menu shows it before the label).
+fn block(id: &str, node: &str, attrs: Value, en: &str, ar: &str, group: &str, keywords: &str, icon: &str) -> Value {
+    json!({"id": id, "node": node, "attrs": attrs, "label": {"en": en, "ar": ar}, "group": group, "keywords": keywords, "icon": icon})
+}
+
+/// A block with a submenu: choosing it lists `variants` (each has its own id, label and icon, and is inserted like a block of its own).
+fn with_variants(mut parent: Value, variants: Vec<Value>) -> Value {
+    parent["variants"] = Value::Array(variants);
+    parent
+}
+
+fn variant(id: &str, en: &str, ar: &str, keywords: &str, icon: &str) -> Value {
+    json!({"id": id, "label": {"en": en, "ar": ar}, "keywords": keywords, "icon": icon})
 }
 
 pub struct EditorBasic;
@@ -196,25 +207,26 @@ impl Plugin for EditorBasic {
     fn bind(&self, b: &mut Bindings) {
         b.provide("editor.block", |_tx, _i| {
             Ok(json!({"blocks": [
-                block("heading1", "heading", json!({"level": 1}), "Heading 1", "عنوان ١", "text", "title h1"),
-                block("heading2", "heading", json!({"level": 2}), "Heading 2", "عنوان ٢", "text", "subtitle h2"),
-                block("heading3", "heading", json!({"level": 3}), "Heading 3", "عنوان ٣", "text", "h3"),
-                block("blockquote", "blockquote", json!({}), "Quote", "اقتباس", "text", "blockquote cite"),
-                block("divider", "horizontalRule", json!({}), "Divider", "فاصل", "text", "line hr separator"),
-                block("codeBlock", "codeBlock", json!({}), "Code block", "كتلة شيفرة", "text", "code snippet"),
-                block("bulletList", "bulletList", json!({}), "Bullet list", "قائمة نقطية", "list", "ul unordered"),
-                block("orderedList", "orderedList", json!({}), "Numbered list", "قائمة مرقمة", "list", "ol ordered"),
-                block("taskList", "taskList", json!({}), "Checklist", "قائمة مهام", "list", "todo check task"),
-                block("toggle", "toggle", json!({}), "Toggle", "قسم قابل للطي", "layout", "collapse fold details"),
-                block("calloutInfo", "callout", json!({"tone": "info"}), "Callout: info", "تنبيه: معلومة", "layout", "note"),
-                block("calloutTip", "callout", json!({"tone": "tip"}), "Callout: tip", "تنبيه: نصيحة", "layout", "hint"),
-                block("calloutWarning", "callout", json!({"tone": "warning"}), "Callout: warning", "تنبيه: تحذير", "layout", "caution"),
-                block("calloutDanger", "callout", json!({"tone": "danger"}), "Callout: danger", "تنبيه: خطر", "layout", "error"),
-                block("image", "image", json!({}), "Image", "صورة", "media", "picture photo"),
-                block("file", "fileAttachment", json!({}), "File", "ملف", "media", "attachment upload"),
-                block("youtube", "youtube", json!({}), "YouTube", "يوتيوب", "embed", "video"),
-                block("linkPreview", "linkPreview", json!({}), "Link preview", "معاينة رابط", "embed", "url bookmark"),
-                block("entityRef", "entityRef", json!({}), "Link to a page or task", "رابط إلى صفحة أو مهمة", "reference", "mention reference link")
+                block("heading1", "heading", json!({"level": 1}), "Heading 1", "عنوان ١", "text", "title h1", "heading-1"),
+                block("heading2", "heading", json!({"level": 2}), "Heading 2", "عنوان ٢", "text", "subtitle h2", "heading-2"),
+                block("heading3", "heading", json!({"level": 3}), "Heading 3", "عنوان ٣", "text", "h3", "heading-3"),
+                block("blockquote", "blockquote", json!({}), "Quote", "اقتباس", "text", "blockquote cite", "quote"),
+                block("divider", "horizontalRule", json!({}), "Divider", "فاصل", "text", "line hr separator", "divider"),
+                block("codeBlock", "codeBlock", json!({}), "Code block", "كتلة شيفرة", "text", "code snippet", "code"),
+                block("bulletList", "bulletList", json!({}), "Bullet list", "قائمة نقطية", "list", "ul unordered", "list-bullet"),
+                block("orderedList", "orderedList", json!({}), "Numbered list", "قائمة مرقمة", "list", "ol ordered", "list-ordered"),
+                block("taskList", "taskList", json!({}), "Checklist", "قائمة مهام", "list", "todo check task", "list-check"),
+                block("toggle", "toggle", json!({}), "Toggle", "قسم قابل للطي", "layout", "collapse fold details", "toggle"),
+                with_variants(block("callout", "callout", json!({"tone": "info"}), "Callout", "تنبيه", "layout", "note highlight box", "callout"), vec![
+                    variant("calloutInfo", "Info", "معلومة", "note", "info"),
+                    variant("calloutTip", "Tip", "نصيحة", "hint idea", "tip"),
+                    variant("calloutWarning", "Warning", "تحذير", "caution", "warning"),
+                    variant("calloutDanger", "Danger", "خطر", "error alert", "danger")]),
+                block("image", "image", json!({}), "Image", "صورة", "media", "picture photo", "image"),
+                block("file", "fileAttachment", json!({}), "File", "ملف", "media", "attachment upload", "attachment"),
+                block("youtube", "youtube", json!({}), "YouTube", "يوتيوب", "embed", "video", "video"),
+                block("linkPreview", "linkPreview", json!({}), "Link preview", "معاينة رابط", "embed", "url bookmark", "bookmark"),
+                block("entityRef", "entityRef", json!({}), "Link to a page or task", "رابط إلى صفحة أو مهمة", "reference", "mention reference link", "mention")
             ]}))
         });
     }
@@ -310,6 +322,13 @@ mod tests {
         assert!(check("body", &json!({"type": "doc", "content": [deep]})).is_err());
         // a block this server has never heard of is fine
         assert!(check("body", &json!({"type": "doc", "content": [{"type": "plugin.chart", "attrs": {"a": 1}}]})).is_ok());
+    }
+
+    #[test]
+    fn a_block_may_carry_a_stable_id_and_the_document_keeps_it() {
+        // ADR 0043: the editor gives every block an id; the server stores the document as it is
+        let doc = json!({"type": "doc", "content": [{"type": "paragraph", "attrs": {"blockId": "b1x"}, "content": [{"type": "text", "text": "a"}]}]});
+        assert!(check("body", &doc).is_ok());
     }
 
     #[test]

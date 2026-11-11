@@ -16,6 +16,7 @@ tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "s
 nuah-adapters = { workspace = true }
 nuah-prefs = { workspace = true }
 nuah-appearance = { workspace = true }
+nuah-emoji = { workspace = true }
 nuah-metric-prometheus = { workspace = true }
 serde_json = "1.0.154"
 sha2 = "0.10"

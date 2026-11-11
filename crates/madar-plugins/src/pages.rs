@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 pub const PAGES: &str = "pages.pages";
 pub const VERSIONS: &str = "pages.versions";
 pub const COUNTERS: &str = "pages.counters";
+pub const STYLES: &str = "pages.styles";
 /// A page keeps a picture of itself from before an editing spell, at most one per ten minutes, the last forty (ADR 0025).
 const SPELL_MS: i64 = 600_000;
 const KEEP: usize = 40;
@@ -21,7 +22,7 @@ const KIND: &str = "pages.page";
 fn view(d: &Doc, with_body: bool) -> Value {
     let b = &d.body;
     let mut v = json!({
-        "id": d.id, "rev": d.rev, "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"], "icon": b["icon"], "parent": b["parent"], "position": b["position"],
+        "id": d.id, "rev": d.rev, "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"], "icon": b["icon"], "space": if b["project"].is_null() { b.get("space").cloned().unwrap_or_else(|| json!("default")) } else { Value::Null }, "folder": b.get("folder").cloned().unwrap_or(json!(false)), "parent": b["parent"], "position": b["position"],
         "project": b["project"], "created_by": b["created_by"], "created_at": b["created_at"], "updated_at": b["updated_at"], "settings": b.get("settings").cloned().unwrap_or_else(|| json!({})),
     });
     if with_body {
@@ -121,14 +122,31 @@ fn title_ok(v: &Value) -> Result<()> {
     if v.as_str().is_some_and(|s| !s.trim().is_empty() && s.len() <= 200) { Ok(()) } else { Err(Error::invalid("title", "must be 1 to 200 characters")) }
 }
 
+/// A page's icon is one emoji, never a sentence: at most 14 code points (a family or a flag with its joiners fits) and no spaces.
+fn icon_ok(v: Option<&Value>) -> Result<()> {
+    match v {
+        None | Some(Value::Null) => Ok(()),
+        Some(Value::String(s)) if !s.is_empty() && s.chars().count() <= 14 && !s.chars().any(|c| c.is_whitespace() || c.is_control()) => Ok(()),
+        _ => Err(Error::invalid("icon", "must be a single emoji")),
+    }
+}
+
 fn create(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     title_ok(&i["title"])?;
+    icon_ok(i.get("icon"))?;
     let body = i.get("body").cloned().unwrap_or_else(richtext::empty);
     richtext::check("body", &body)?;
+    let folder = i.get("folder").and_then(|f| f.as_bool()).unwrap_or(false);
     let parent = i.get("parent").and_then(|p| p.as_str()).map(String::from);
+    // your own pages live in a Space: the parent's, or the one asked for, or the default
+    let mut space = i.get("space").and_then(|x| x.as_str()).unwrap_or("default").to_string();
     if let Some(p) = &parent {
-        get(tx, &s, p).map_err(|_| Error::reason(Category::Invalid, "pages.bad_parent", "The parent page is not here"))?;
+        let up = get(tx, &s, p).map_err(|_| Error::reason(Category::Invalid, "pages.bad_parent", "The parent page is not here"))?;
+        if folder && up.body.get("folder") != Some(&json!(true)) {
+            return Err(Error::reason(Category::Invalid, "pages.bad_parent", "A folder goes inside a folder"));
+        }
+        space = up.body.get("space").and_then(|x| x.as_str()).unwrap_or("default").to_string();
         if depth_of(tx, &s, Some(p.clone()))? + 1 > MAX_DEPTH {
             return Err(Error::reason(Category::Invalid, "pages.too_deep", "Pages can be nested 12 levels deep"));
         }
@@ -141,12 +159,12 @@ fn create(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
         None => Value::Null,
     };
     let d = tx.create(PAGES, json!({
-        "number": number, "title": i["title"].as_str().unwrap_or("").trim(), "body": body, "icon": i.get("icon").cloned().unwrap_or(Value::Null),
-        "parent": parent, "position": last + GAP, "project": s.project, "owner": me, "created_by": me, "created_at": now, "updated_at": now
+        "number": number, "title": i["title"].as_str().unwrap_or("").trim(), "body": body, "icon": i.get("icon").cloned().unwrap_or(Value::Null), "folder": folder,
+        "parent": parent, "position": last + GAP, "project": s.project, "space": if s.project.is_none() { json!(space) } else { Value::Null }, "owner": me, "created_by": me, "created_at": now, "updated_at": now
     }))?;
     let aud = s.audience();
     tx.emit("pages.created", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "parent": d.body["parent"],
-        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &d.body["body"])})))?;
+        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
     Ok(view(&d, true))
 }
 
@@ -158,7 +176,9 @@ fn read(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
 fn list(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let page = tx.query(PAGES, &s.query().asc("position").limit(2000))?;
-    Ok(json!({"pages": page.items.iter().map(|d| view(d, false)).collect::<Vec<_>>()}))
+    // your own pages of one Space (a page from before Spaces belongs to the default one)
+    let want = i.get("space").and_then(|x| x.as_str());
+    Ok(json!({"pages": page.items.iter().filter(|d| want.is_none_or(|w| d.body.get("space").and_then(|x| x.as_str()).unwrap_or("default") == w)).map(|d| view(d, false)).collect::<Vec<_>>()}))
 }
 
 fn snapshot(tx: &mut Tx, old: &Doc, force: bool) -> Result<()> {
@@ -205,23 +225,60 @@ fn restore(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     b["updated_at"] = json!(tx.now());
     let d = tx.put(PAGES, &page.id, b, Expect::Rev(page.rev))?;
     tx.emit("pages.updated", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": {"body": true, "restored": v.body["at"]},
-        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &d.body["body"])})))?;
+        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
     Ok(view(&d, true))
 }
 
-/// How this page is shown (old Madar had these as "document settings"): font, text size, line width.
+/// How this page is shown: text (font, size, line height, colour), layout (width, spacing between blocks), colours (the page and its backdrop), a background image,
+/// notebook paper (ruled, grid or dotted, a margin line, a rule under each block) and a flavour (the terminal).
+/// The page is one endless sheet: the backdrop fills the pane, the page colour is a band behind the text that never ends.
 fn check_settings(v: &Value) -> Result<()> {
     let o = v.as_object().ok_or_else(|| Error::invalid("settings", "must be an object"))?;
+    let hex = |x: &Value| x.as_str().is_some_and(|c| c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|h| h.is_ascii_hexdigit()));
+    let int = |x: &Value, lo: i64, hi: i64| x.as_i64().is_some_and(|n| (lo..=hi).contains(&n));
+    // an uploaded file, or an https address; nothing else can be a picture here
+    let image = |x: &Value| x.as_str().is_some_and(|u| u.len() <= 500 && !u.chars().any(|c| c.is_whitespace() || c == '"' || c == '\'' || c == '(' || c == ')' || c == '\\')
+        && (richtext::file_id(u).is_some() || (u.starts_with("https://") && u.len() > 8)));
     for (k, x) in o {
-        match k.as_str() {
-            "font" if matches!(x.as_str(), Some("default" | "serif" | "mono")) => {}
-            "width" if matches!(x.as_str(), Some("narrow" | "normal" | "wide")) => {}
-            "size" if x.as_f64().is_some_and(|n| (12.0..=24.0).contains(&n)) => {}
-            "font" | "width" | "size" => return Err(Error::invalid(&format!("settings.{k}"), "is not an allowed value")),
+        let ok = match k.as_str() {
+            "font" => matches!(x.as_str(), Some("default" | "serif" | "mono")),
+            "width" => matches!(x.as_str(), Some("narrow" | "normal" | "wide")),
+            "size" => x.as_f64().is_some_and(|n| (12.0..=24.0).contains(&n)),
+            "page_color" | "bg_color" | "text_color" | "pattern_color" | "margin_line" | "bg_art_color" => hex(x),
+            "line_height" => int(x, 100, 260),
+            "block_gap" => int(x, 0, 250),
+            "pattern" => matches!(x.as_str(), Some("none" | "ruled" | "grid" | "dots")),
+            "block_rule" => matches!(x.as_str(), Some("none" | "line" | "dashed" | "dotted")),
+            "band_shadow" => x.is_boolean(),
+            "flavor" => matches!(x.as_str(), Some("terminal")),
+            "bg_art" => matches!(x.as_str(), Some("leaves")),
+            "sheet_art" => matches!(x.as_str(), Some("autumn")),
+            "sheet_image" => image(x),
+            "sheet_corner" => matches!(x.as_str(), Some("top-right" | "top-left" | "bottom-right" | "bottom-left")),
+            "sheet_size" => int(x, 40, 600),
+            "sheet_mirror" => x.is_boolean(),
+            "preset" => x.as_str().is_some_and(|v| !v.is_empty() && v.len() <= 24 && v.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')),
+            "preset_mode" => matches!(x.as_str(), Some("light" | "dark")),
+            "page_opacity" => int(x, 0, 100),
+            "bg_image" => image(x),
+            "bg_fit" => matches!(x.as_str(), Some("cover" | "contain" | "scale" | "tile")),
+            "bg_scale" => int(x, 10, 300),
+            "bg_tile" => int(x, 40, 800),
+            "bg_attach" => matches!(x.as_str(), Some("fixed" | "scroll")),
+            "bg_dim" => int(x, 0, 80),
             _ => return Err(Error::invalid(&format!("settings.{k}"), "is not a page setting")),
+        };
+        if !ok {
+            return Err(Error::invalid(&format!("settings.{k}"), "is not an allowed value"));
         }
     }
     Ok(())
+}
+
+/// What a page shows, for the references that keep uploaded files alive: its text and its background image.
+fn shown(b: &Value) -> Value {
+    let pic = |k: &str| b.get("settings").and_then(|s| s.get(k)).cloned().unwrap_or(Value::Null);
+    json!({"type": "doc", "content": [b["body"].clone(), {"type": "background", "attrs": {"src": pic("bg_image")}}, {"type": "background", "attrs": {"src": pic("sheet_image")}}]})
 }
 
 fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
@@ -242,6 +299,7 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
         b["body"] = body.clone();
     }
     if let Some(icon) = i.get("icon") {
+        icon_ok(Some(icon))?;
         b["icon"] = icon.clone();
         changes.insert("icon".into(), json!([old.body["icon"], icon]));
     }
@@ -263,7 +321,7 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let d = tx.put(PAGES, &old.id, b, expect).map_err(|e| stale(e, "pages.stale_revision", "The page"))?;
     let aud = s.audience();
     tx.emit("pages.updated", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": changes,
-        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &d.body["body"])})))?;
+        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
     Ok(view(&d, true))
 }
 
@@ -272,7 +330,10 @@ fn move_page(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let page = get(tx, &s, text(i, "id"))?;
     let parent = i.get("parent").and_then(|p| p.as_str()).map(String::from);
     if let Some(p) = &parent {
-        get(tx, &s, p).map_err(|_| Error::reason(Category::Invalid, "pages.bad_parent", "The parent page is not here"))?;
+        let up = get(tx, &s, p).map_err(|_| Error::reason(Category::Invalid, "pages.bad_parent", "The parent page is not here"))?;
+        if page.body.get("folder") == Some(&json!(true)) && up.body.get("folder") != Some(&json!(true)) {
+            return Err(Error::reason(Category::Invalid, "pages.bad_parent", "A folder goes inside a folder"));
+        }
         // not into itself or anything under itself
         let mut up = Some(p.clone());
         while let Some(u) = up {
@@ -323,6 +384,111 @@ fn move_page(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     Ok(view(&d, false))
 }
 
+/// Every checklist item of a document, in order, as `(block id, checked, text)`. The text is the item's first line.
+fn checklist_items(doc: &Value) -> Vec<(Option<String>, bool, String)> {
+    fn go(n: &Value, out: &mut Vec<(Option<String>, bool, String)>) {
+        if n["type"] == "taskItem" {
+            let line = richtext::text_of(n).lines().next().unwrap_or("").trim().chars().take(200).collect::<String>();
+            out.push((n["attrs"]["blockId"].as_str().map(String::from), n["attrs"]["checked"] == true, line));
+        }
+        for k in n["content"].as_array().into_iter().flatten() {
+            go(k, out);
+        }
+    }
+    let mut out = vec![];
+    go(doc, &mut out);
+    out
+}
+
+/// The open checklist items on the pages you can see: your own pages (of one Space, when asked) and the pages of your projects, newest page first.
+fn page_tasks(tx: &mut Tx, i: &Value) -> Result<Value> {
+    let me = tx.who().subject.clone();
+    let want = i.get("space").and_then(|x| x.as_str());
+    let limit = i.get("limit").and_then(|l| l.as_u64()).unwrap_or(100) as usize;
+    let mut rows: Vec<(i64, Value)> = vec![];
+    let take = |d: &Doc, project: Option<&Value>, rows: &mut Vec<(i64, Value)>| {
+        if d.body.get("folder") == Some(&json!(true)) {
+            return;
+        }
+        for (block, checked, text) in checklist_items(&d.body["body"]) {
+            if !checked && !text.is_empty() {
+                rows.push((d.body["updated_at"].as_i64().unwrap_or(0), json!({"page": d.id, "title": d.body["title"], "icon": d.body["icon"], "block": block, "text": text,
+                    "project": project.map(|p| p["id"].clone()).unwrap_or(Value::Null), "project_name": project.map(|p| p["name"].clone()).unwrap_or(Value::Null)})));
+            }
+        }
+    };
+    for d in tx.query(PAGES, &Query::new().eq("owner", me.as_str()).eq("project", Value::Null).limit(2000))?.items {
+        if want.is_none_or(|w| d.body.get("space").and_then(|x| x.as_str()).unwrap_or("default") == w) {
+            take(&d, None, &mut rows);
+        }
+    }
+    // a project's pages belong to the Space the project is placed in (the default one when it was never placed)
+    let places: std::collections::BTreeMap<String, String> = tx.call("workspaces.list", json!({})).ok().and_then(|w| w["placements"].as_array().cloned()).unwrap_or_default()
+        .iter().map(|p| (text(p, "project").to_string(), text(p, "workspace").to_string())).collect();
+    let projects = tx.call("projects.list", json!({}))?;
+    for p in projects["projects"].as_array().cloned().unwrap_or_default() {
+        if want.is_some_and(|w| places.get(text(&p, "id")).map(|x| x.as_str()).unwrap_or("default") != w) {
+            continue;
+        }
+        for d in tx.query(PAGES, &Query::new().eq("project", text(&p, "id")).limit(2000))?.items {
+            take(&d, Some(&p), &mut rows);
+        }
+    }
+    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.truncate(limit);
+    Ok(json!({"items": rows.into_iter().map(|(_, r)| r).collect::<Vec<_>>()}))
+}
+
+/// Tick or untick one checklist item of a page, found by its block id.
+fn set_task(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let (block, checked) = (text(i, "block").to_string(), i["checked"] == true);
+    fn go(n: &mut Value, block: &str, checked: bool) -> bool {
+        if n["type"] == "taskItem" && n["attrs"]["blockId"] == block {
+            n["attrs"]["checked"] = json!(checked);
+            return true;
+        }
+        n["content"].as_array_mut().is_some_and(|k| k.iter_mut().any(|c| go(c, block, checked)))
+    }
+    let mut body = page.body["body"].clone();
+    if !go(&mut body, &block, checked) {
+        return Err(Error::not_found("task"));
+    }
+    let mut input = json!({"id": page.id, "body": body});
+    if let Some(p) = i.get("project") {
+        input["project"] = p.clone();
+    }
+    update(tx, &input, personal)
+}
+
+/// Move one of your own pages, with everything under it, into another Space. A page that was under a page of the old Space becomes a top page.
+fn set_space(tx: &mut Tx, i: &Value) -> Result<Value> {
+    let s = Scope::of(tx, i, true);
+    let page = get(tx, &s, text(i, "id"))?;
+    let space = text(i, "space").to_string();
+    if page.body.get("space").and_then(|x| x.as_str()).unwrap_or("default") == space {
+        return Ok(view(&page, false));
+    }
+    let all = subtree(tx, &s, &page)?;
+    let mut root = None;
+    for d in all {
+        let mut b = d.body.clone();
+        b["space"] = json!(space);
+        if d.id == page.id {
+            b["parent"] = Value::Null;
+            b["position"] = json!(children(tx, &s, &Value::Null)?.last().and_then(|x| x.body["position"].as_f64()).unwrap_or(0.0) + GAP);
+        }
+        let nd = tx.put(PAGES, &d.id, b, Expect::Rev(d.rev))?;
+        if nd.id == page.id {
+            root = Some(nd);
+        }
+    }
+    let d = root.expect("the page itself");
+    tx.emit("pages.moved", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "parent": Value::Null, "space": space})))?;
+    Ok(view(&d, false))
+}
+
 fn remove(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let page = get(tx, &s, text(i, "id"))?;
@@ -333,7 +499,7 @@ fn remove(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
             tx.delete(VERSIONS, &v.id)?;
         }
         let aud = s.audience();
-        tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "files": richtext::files_of(&d.body["body"]), "refs": richtext::refs_for(KIND, &d.id, "", &Value::Null)})))?;
+        tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "files": richtext::files_of(&shown(&d.body)), "refs": richtext::refs_for(KIND, &d.id, "", &Value::Null)})))?;
     }
     Ok(json!({"removed": all.len()}))
 }
@@ -342,8 +508,66 @@ fn search(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let q = text(i, "q").to_lowercase();
     let page = tx.query(PAGES, &s.query().limit(2000))?;
-    let hits: Vec<Value> = page.items.iter().filter(|d| text(&d.body, "title").to_lowercase().contains(&q)).take(30).map(|d| view(d, false)).collect();
+    let hits: Vec<Value> = page.items.iter().filter(|d| d.body.get("folder") != Some(&json!(true)) && text(&d.body, "title").to_lowercase().contains(&q)).take(30).map(|d| view(d, false)).collect();
     Ok(json!({"pages": hits}))
+}
+
+// ---- your own page styles: a look you saved, with its background image, kept with your data ----
+
+const MAX_STYLES: usize = 60;
+
+fn style_view(d: &Doc) -> Value {
+    json!({"id": d.id, "name": d.body["name"], "settings": d.body["settings"]})
+}
+
+/// What a saved style shows, for the references that keep its background image alive.
+fn style_shown(settings: &Value) -> Value {
+    let pic = |k: &str| settings.get(k).cloned().unwrap_or(Value::Null);
+    json!({"type": "doc", "content": [{"type": "background", "attrs": {"src": pic("bg_image")}}, {"type": "background", "attrs": {"src": pic("sheet_image")}}]})
+}
+
+fn styles(tx: &mut Tx, _i: &Value) -> Result<Value> {
+    let me = tx.who().subject.clone();
+    let all = tx.query(STYLES, &Query::new().eq("owner", me.as_str()).asc("created_at").limit(200))?.items;
+    Ok(json!({"styles": all.iter().map(style_view).collect::<Vec<_>>()}))
+}
+
+fn style_save(tx: &mut Tx, i: &Value) -> Result<Value> {
+    let s = Scope::of(tx, i, true);
+    let name = text(i, "name").trim().to_string();
+    if name.is_empty() || name.chars().count() > 40 {
+        return Err(Error::reason(Category::Invalid, "pages.bad_style_name", "A style needs a name of up to 40 characters"));
+    }
+    let settings = i.get("settings").cloned().unwrap_or_else(|| json!({}));
+    check_settings(&settings)?;
+    let now = tx.now();
+    let d = match i.get("id").and_then(|x| x.as_str()) {
+        Some(id) => {
+            let old = tx.get(STYLES, id)?.filter(|d| !d.deleted && text(&d.body, "owner") == s.me).ok_or_else(|| Error::not_found("style"))?;
+            let mut b = old.body.clone();
+            b["name"] = json!(name);
+            b["settings"] = settings.clone();
+            b["updated_at"] = json!(now);
+            tx.put(STYLES, id, b, Expect::Rev(old.rev))?
+        }
+        None => {
+            let n = tx.query(STYLES, &Query::new().eq("owner", s.me.as_str()).limit(MAX_STYLES + 1))?.items.len();
+            if n >= MAX_STYLES {
+                return Err(Error::reason(Category::Invalid, "pages.too_many_styles", "You can keep up to 60 styles"));
+            }
+            tx.create(STYLES, json!({"name": name, "settings": settings, "owner": s.me, "created_at": now, "updated_at": now}))?
+        }
+    };
+    tx.emit("pages.style.saved", s.audience(), s.event_data(json!({"style": d.id, "name": d.body["name"], "refs": richtext::refs_for("pages.style", &d.id, text(&d.body, "name"), &style_shown(&d.body["settings"]))})))?;
+    Ok(style_view(&d))
+}
+
+fn style_delete(tx: &mut Tx, i: &Value) -> Result<Value> {
+    let s = Scope::of(tx, i, true);
+    let d = tx.get(STYLES, text(i, "id"))?.filter(|d| !d.deleted && text(&d.body, "owner") == s.me).ok_or_else(|| Error::not_found("style"))?;
+    tx.delete(STYLES, &d.id)?;
+    tx.emit("pages.style.removed", s.audience(), s.event_data(json!({"style": d.id, "files": richtext::files_of(&style_shown(&d.body["settings"])), "refs": richtext::refs_for("pages.style", &d.id, "", &Value::Null)})))?;
+    Ok(json!({"removed": 1}))
 }
 
 fn ops_for(prefix: &str, personal: bool) -> Value {
@@ -367,9 +591,17 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
     let id = json!({"type":"string"});
     let nullable = json!({"type":["string","null"]});
     let scope = if personal { "your own pages" } else { "this project's knowledge" };
-    add("create", "command", true, &format!("Add a page to {scope}"), json!({"title": title, "body": doc, "parent": nullable, "icon": nullable}), vec!["title"]);
+    add("create", "command", true, &format!("Add a page to {scope}"), json!({"title": title, "body": doc, "parent": nullable, "icon": nullable, "folder": {"type":"boolean"}, "space": {"type":"string","maxLength":60}}), vec!["title"]);
     add("get", "query", false, "One page with its body", json!({"id": id}), vec!["id"]);
-    add("list", "query", false, &format!("The tree of {scope}, without bodies"), json!({}), vec![]);
+    add("list", "query", false, &format!("The tree of {scope}, without bodies; your own pages can be limited to one Space"), if personal { json!({"space": {"type":"string","maxLength":60}}) } else { json!({}) }, vec![]);
+    add("set_task", "command", true, "Tick or untick a checklist item of a page, found by its block id", json!({"id": id, "block": {"type":"string","minLength":1,"maxLength":40}, "checked": {"type":"boolean"}}), vec!["id", "block", "checked"]);
+    if personal {
+        add("tasks", "query", false, "The open checklist items on your pages (of one Space) and on the pages of your projects", json!({"space": {"type":"string","maxLength":60}, "limit": {"type":"integer","minimum":1,"maximum":300}}), vec![]);
+        add("styles", "query", false, "The page styles you saved", json!({}), vec![]);
+        add("style_save", "command", true, "Save a page style under a name (a new one, or replace one of yours)", json!({"id": id, "name": {"type":"string","minLength":1,"maxLength":40}, "settings": {"type":"object"}}), vec!["name", "settings"]);
+        add("style_delete", "command", true, "Delete one of your saved page styles", json!({"id": id}), vec!["id"]);
+        add("set_space", "command", true, "Move one of your pages, with the pages under it, into another Space", json!({"id": id, "space": {"type":"string","minLength":1,"maxLength":60}}), vec!["id", "space"]);
+    }
     add("update", "command", true, "Change a page's title, body or icon", json!({"id": id, "title": title, "body": doc, "icon": nullable, "settings": {"type":"object"}, "expected_rev": {"type":"integer","minimum":1}}), vec!["id"]);
     add("move", "command", true, "Move a page under another (or to the top), before a sibling", json!({"id": id, "parent": nullable, "before": nullable}), vec!["id"]);
     add("delete", "command", true, "Delete a page and everything under it", json!({"id": id}), vec!["id"]);
@@ -390,9 +622,9 @@ impl Plugin for Pages {
             "description": "A tree of rich-text pages: a project's Knowledge (knowledge.*) and your own Pages (pages.*)",
             "requires": {"plugins": ["@madar/projects"], "capabilities": ["emit", "call"]},
             "provides": [{"extension_point": "search.source", "optional": true}],
-            "data": {"collections": [PAGES, VERSIONS, COUNTERS], "version": 2,
+            "data": {"collections": [PAGES, VERSIONS, COUNTERS, STYLES], "version": 2,
                      "indexes": [{"collection": PAGES, "field": "project"}, {"collection": PAGES, "field": "owner"}, {"collection": PAGES, "field": "parent"}, {"collection": VERSIONS, "field": "page"}]},
-            "events": {"pages.created": {}, "pages.updated": {}, "pages.moved": {}, "pages.removed": {}},
+            "events": {"pages.created": {}, "pages.updated": {}, "pages.moved": {}, "pages.removed": {}, "pages.style.saved": {}, "pages.style.removed": {}},
             "operations": ops
         }))
     }
@@ -428,10 +660,14 @@ impl Plugin for Pages {
             let me = tx.who().subject.clone();
             let mut items = vec![];
             let mut hit = |d: &Doc, kind: &str, project: Option<&Value>| {
+                if d.body.get("folder") == Some(&json!(true)) {
+                    return;
+                }
                 let body = richtext::text_of(&d.body["body"]);
                 if let Some((score, snippet)) = crate::search::score(&q, text(&d.body, "title"), &body) {
                     items.push(json!({"kind": kind, "id": d.id, "title": d.body["title"], "snippet": snippet, "score": score,
-                        "project": project.map(|p| p["id"].clone()).unwrap_or(Value::Null), "project_name": project.map(|p| p["name"].clone()).unwrap_or(Value::Null)}));
+                        "project": project.map(|p| p["id"].clone()).unwrap_or(Value::Null), "project_name": project.map(|p| p["name"].clone()).unwrap_or(Value::Null),
+                        "space": if project.is_none() { d.body.get("space").cloned().unwrap_or_else(|| json!("default")) } else { Value::Null }}));
                 }
             };
             for p in projects["projects"].as_array().cloned().unwrap_or_default() {
@@ -446,6 +682,13 @@ impl Plugin for Pages {
             items.truncate(50);
             Ok(json!({"items": items}))
         });
+        b.op("pages.set_space", |tx, i| set_space(tx, &i));
+        b.op("pages.styles", |tx, i| styles(tx, &i));
+        b.op("pages.style_save", |tx, i| style_save(tx, &i));
+        b.op("pages.style_delete", |tx, i| style_delete(tx, &i));
+        b.op("pages.tasks", |tx, i| page_tasks(tx, &i));
+        b.op("pages.set_task", |tx, i| set_task(tx, &i, true));
+        b.op("knowledge.set_task", |tx, i| set_task(tx, &i, false));
         type H = fn(&mut Tx, &Value, bool) -> Result<Value>;
         let all: [(&str, H); 10] = [("versions", versions), ("version", version), ("restore", restore), ("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search)];
         for (prefix, personal) in [("knowledge", false), ("pages", true)] {

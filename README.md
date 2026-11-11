@@ -27,7 +27,7 @@ docker compose logs -f
 
 The first start has no `data/nuah.json`, so it runs a setup page on port 3000 and prints a setup code in the log. Open the page, type the code and answer the questions (name, storage, sign-in, features); the first administrator is created there. When you save, Madar starts on its own. Point the proxy at `127.0.0.1:3000`.
 
-Everything it runs is in `data/nuah.json`: the plugins that are on, their settings and what they are allowed to do. Sign in, open `/faces/nuah/console/` and use "Plugins and settings" to change it; the change takes effect after a restart (a button there). A setting can read an environment variable instead of holding a value: `{"$env": "NAME"}`.
+Everything it runs is in `data/nuah.json`: the plugins that are on, their settings and what they are allowed to do. Sign in, open `/faces/console/` and use "Plugins and settings" to change it; the change takes effect after a restart (a button there). A setting can read an environment variable instead of holding a value: `{"$env": "NAME"}`.
 
 Locked out: stop the container, then `docker compose run --rm madar reset-password NAME` (reads the new password on stdin).
 

@@ -16,6 +16,14 @@ Bundled in `faces/madar/web/fonts/`, each under the SIL Open Font License 1.1. T
 | Nunito | 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito) |
 | Space Grotesk | 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk) |
 
+## Emoji font and data (from `@nuah/emoji`)
+
+Madar uses the `@nuah/emoji` plugin from the nuah-plugins repository, which ships the Twemoji font (artwork by Twitter, Inc. and other contributors, CC-BY 4.0; the COLR font build by Tilman Vatteroth with Mozilla's `twemoji-colr` tooling, SIL OFL 1.1) and emoji names and search words from Emojibase (Miles Johnson, MIT) and the Unicode CLDR (Unicode License v3). The full list with links and license texts is in nuah-plugins' `THIRD_PARTY_NOTICES.md`.
+
+## Icons
+
+The bell, heading, list, code, callout, attachment, video, bookmark and mention icons in `faces/madar/web/ui.js` follow the shapes of the Lucide icons of the same names (https://lucide.dev, ISC License, Copyright Lucide Contributors; parts by Cole Bemis 2013-2022 under the MIT License).
+
 ## Editor bundle
 
 `faces/madar/web/vendor/editor.js` is built from `faces/editor-src` and contains the following open-source packages. Package names are from the package manager's metadata; the file is minified, so the exact set follows from the dependencies listed in `faces/editor-src/package.json`.

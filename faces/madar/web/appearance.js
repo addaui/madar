@@ -6,12 +6,12 @@
 Object.assign(STR.en, {
   customize: "Customize the look", customizeBtn: "Customize…", preset: "Preset", mode: "Mode", modeAuto: "Follow the device", modeLight: "Light", modeDark: "Dark",
   saveLook: "Save", resetLook: "Reset to preset", exportLook: "Copy as JSON", importLook: "Import…", applyImport: "Apply", importPh: "Paste a look exported from here…", lookCopied: "Copied to the clipboard.",
-  lookBad: "That is not a look file.", contrast: "Contrast (APCA Lc, higher is better)", cBody: "Body text", cMuted: "Muted text", cButton: "Primary button", cAccent: "Accent", target: "target", pill: "pill", auto: "auto", changed: "changed", tok_none: "As written", tok_uppercase: "UPPERCASE",
+  lookBad: "That is not a look file.", contrast: "Contrast (APCA Lc, higher is better)", cBody: "Body text", cMuted: "Muted text", cButton: "Primary button", cAccent: "Accent", target: "target", pill: "pill", auto: "auto", changed: "changed", tok_none: "As written", tok_uppercase: "UPPERCASE", tok_panels: "Separate panels", tok_workspace: "One raised workspace",
 });
 Object.assign(STR.ar, {
   customize: "تخصيص المظهر", customizeBtn: "تخصيص…", preset: "القالب", mode: "الوضع", modeAuto: "حسب الجهاز", modeLight: "فاتح", modeDark: "داكن",
   saveLook: "حفظ", resetLook: "العودة إلى القالب", exportLook: "نسخ كـ JSON", importLook: "استيراد…", applyImport: "تطبيق", importPh: "الصق مظهرًا مُصدَّرًا من هنا…", lookCopied: "تم النسخ.",
-  lookBad: "هذا ليس ملف مظهر.", contrast: "التباين (APCA، الأعلى أفضل)", cBody: "النص", cMuted: "النص الخافت", cButton: "الزر الأساسي", cAccent: "التمييز", target: "الهدف", pill: "حبة", auto: "تلقائي", changed: "تم التغيير", tok_none: "كما كُتب", tok_uppercase: "أحرف كبيرة",
+  lookBad: "هذا ليس ملف مظهر.", contrast: "التباين (APCA، الأعلى أفضل)", cBody: "النص", cMuted: "النص الخافت", cButton: "الزر الأساسي", cAccent: "التمييز", target: "الهدف", pill: "حبة", auto: "تلقائي", changed: "تم التغيير", tok_none: "كما كُتب", tok_uppercase: "أحرف كبيرة", tok_panels: "لوحات منفصلة", tok_workspace: "مساحة عمل مرتفعة واحدة",
 });
 
 /** The presets `describe` lists, default first. */

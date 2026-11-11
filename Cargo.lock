@@ -1003,6 +1003,7 @@ dependencies = [
  "nuah-adapters",
  "nuah-appearance",
  "nuah-console",
+ "nuah-emoji",
  "nuah-http",
  "nuah-kernel",
  "nuah-metric-prometheus",
@@ -1100,7 +1101,6 @@ dependencies = [
 [[package]]
 name = "nuah-appearance"
 version = "0.2.0"
-source = "git+https://github.com/addaui/nuah-plugins?tag=v0.2.0#a31b17df87dff725624dc45b1b324bc8ee5e456f"
 dependencies = [
  "nuah-kernel",
  "serde_json",
@@ -1110,6 +1110,14 @@ dependencies = [
 name = "nuah-console"
 version = "0.10.0"
 source = "git+https://github.com/addaui/nuah?tag=v0.10.0#34ddaa42a340cef1ea58d96b731a42520799ec62"
+dependencies = [
+ "nuah-kernel",
+ "serde_json",
+]
+
+[[package]]
+name = "nuah-emoji"
+version = "0.2.0"
 dependencies = [
  "nuah-kernel",
  "serde_json",

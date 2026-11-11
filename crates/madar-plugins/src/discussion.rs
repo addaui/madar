@@ -10,7 +10,7 @@ pub const COMMENTS: &str = "discussion.comments";
 
 fn view(d: &Doc) -> Value {
     let b = &d.body;
-    json!({"id": d.id, "rev": d.rev, "project": b["project"], "task": b["task"], "page": b["page"], "kind": b["kind"], "parent": b["parent"], "body": b["body"],
+    json!({"id": d.id, "rev": d.rev, "project": b["project"], "task": b["task"], "page": b["page"], "block": b.get("block").cloned().unwrap_or(Value::Null), "kind": b["kind"], "parent": b["parent"], "body": b["body"],
            "author": b["author"], "author_display": b["author_display"], "at": b["at"],
            "reply_count": b.get("reply_count").cloned().unwrap_or(json!(0)), "last_reply_at": b.get("last_reply_at").cloned().unwrap_or(Value::Null),
            "participants": b.get("participants").cloned().unwrap_or_else(|| json!([]))})
@@ -57,11 +57,14 @@ impl Plugin for Discussion {
             "operations": {
                 "discussion.add": {"kind": "command", "description": "Write a comment or an update on a task", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
                     "reasons": {"discussion.bad_parent": "Replies go to a top-level comment of the same task"},
-                    "input": {"type":"object","required":["project","body"],"properties":{"project":pr,"task":pr,"page":pr,"body":{"type":["string","object"]},"kind":{"enum":["comment","update"]},"parent":{"type":["string","null"]}},"additionalProperties":false},
+                    "input": {"type":"object","required":["project","body"],"properties":{"project":pr,"task":pr,"page":pr,"block":{"type":"string","minLength":1,"maxLength":40},"body":{"type":["string","object"]},"kind":{"enum":["comment","update"]},"parent":{"type":["string","null"]}},"additionalProperties":false},
                     "output": {"type":"object","required":["id","body"]}},
                 "discussion.list": {"kind": "query", "description": "The comments on a task or page; roots only with roots=true, or the replies of one thread with parent", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
-                    "input": {"type":"object","required":["project"],"properties":{"project":pr,"task":pr,"page":pr,"roots":{"type":"boolean"},"parent":pr,"before":{"type":"integer"},"limit":{"type":"integer","minimum":1,"maximum":500}},"additionalProperties":false},
+                    "input": {"type":"object","required":["project"],"properties":{"project":pr,"task":pr,"page":pr,"block":{"type":"string","minLength":1,"maxLength":40},"roots":{"type":"boolean"},"parent":pr,"before":{"type":"integer"},"limit":{"type":"integer","minimum":1,"maximum":500}},"additionalProperties":false},
                     "output": {"type":"object","required":["comments"]}},
+                "discussion.block_counts": {"kind": "query", "description": "How many threads each block of a page has", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
+                    "input": {"type":"object","required":["project","page"],"properties":{"project":pr,"page":pr},"additionalProperties":false},
+                    "output": {"type":"object","required":["counts"]}},
                 "discussion.remove": {"kind": "command", "description": "Remove a comment (its author or the project's owner)", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
                     "reasons": {"discussion.not_yours": "Only the author or the project owner can remove a comment"},
                     "input": {"type":"object","required":["project","id"],"properties":{"project":pr,"id":pr},"additionalProperties":false}}
@@ -76,17 +79,21 @@ impl Plugin for Discussion {
             let (kind, tid) = target(&i)?;
             check_target(tx, &project, kind, &tid)?; // the task or page must be in this project
             check_body(&i["body"])?;
+            let block = i.get("block").cloned().unwrap_or(Value::Null);
+            if !block.is_null() && kind != "page" {
+                return Err(Error::invalid("block", "a block belongs to a page"));
+            }
             let parent = i.get("parent").cloned().unwrap_or(Value::Null);
             let mut root: Option<Doc> = None;
             if let Some(pid) = parent.as_str() {
-                root = tx.get(COMMENTS, pid)?.filter(|c| text(&c.body, kind) == tid && c.body["parent"].is_null());
+                root = tx.get(COMMENTS, pid)?.filter(|c| text(&c.body, kind) == tid && c.body["parent"].is_null() && c.body.get("block").cloned().unwrap_or(Value::Null) == block);
                 if root.is_none() {
                     return Err(Error::reason(Category::Invalid, "discussion.bad_parent", "Replies go to a top-level comment of the same task or page"));
                 }
             }
             let me = tx.who().clone();
             let now = tx.now();
-            let d = tx.create(COMMENTS, json!({"project": project, kind: tid, "kind": i.get("kind").cloned().unwrap_or(json!("comment")), "parent": parent, "body": i["body"],
+            let d = tx.create(COMMENTS, json!({"project": project, kind: tid, "block": block, "kind": i.get("kind").cloned().unwrap_or(json!("comment")), "parent": parent, "body": i["body"],
                 "author": me.subject, "author_display": me.display, "at": now, "reply_count": 0, "participants": []}))?;
             if let Some(r) = root {
                 let mut rb = r.body.clone();
@@ -117,6 +124,9 @@ impl Plugin for Discussion {
             if let Some(p) = i.get("parent").and_then(|p| p.as_str()) {
                 q = q.eq("parent", p);
             }
+            if let Some(b) = i.get("block").and_then(|b| b.as_str()) {
+                q = q.eq("block", b);
+            }
             if let Some(b) = i.get("before").and_then(|b| b.as_i64()) {
                 q = q.lt("at", b);
             }
@@ -130,13 +140,26 @@ impl Plugin for Discussion {
             }).collect();
             Ok(json!({"comments": rows}))
         });
+        b.op("discussion.block_counts", |tx, i| {
+            let (project, page) = (text(&i, "project").to_string(), text(&i, "page").to_string());
+            check_target(tx, &project, "page", &page)?;
+            let rows = tx.query(COMMENTS, &Query::new().eq("page", page.as_str()).eq("parent", Value::Null).limit(500))?;
+            let mut counts = serde_json::Map::new();
+            for d in rows.items {
+                if let Some(b) = d.body.get("block").and_then(|b| b.as_str()) {
+                    let n = counts.get(b).and_then(|n| n.as_u64()).unwrap_or(0) + 1;
+                    counts.insert(b.to_string(), json!(n));
+                }
+            }
+            Ok(json!({"counts": counts}))
+        });
         // The timeline asks every source for its newest items before a moment (ADR 0024).
         b.provide("timeline.source", |tx, i| {
             let (project, tt, id) = (text(&i, "project"), text(&i["target"], "type"), text(&i["target"], "id"));
             let field = match tt { "tasks.task" => "task", "pages.page" => "page", _ => return Ok(json!({"items": []})) };
             let before = i["before"].as_i64().unwrap_or(i64::MAX);
             let page = tx.query(COMMENTS, &Query::new().eq(field, id).eq("project", project).eq("parent", Value::Null).lt("at", before).desc("at").limit(i["limit"].as_u64().unwrap_or(30) as usize))?;
-            Ok(json!({"items": page.items.iter().map(|d| json!({"at": d.body["at"], "source": "discussion", "kind": d.body["kind"], "id": d.id, "actor": d.body["author"],
+            Ok(json!({"items": page.items.iter().map(|d| json!({"at": d.body["at"], "source": "discussion", "kind": d.body["kind"], "block": d.body.get("block").cloned().unwrap_or(Value::Null), "id": d.id, "actor": d.body["author"],
                 "actor_display": d.body["author_display"], "body": d.body["body"], "reply_count": d.body.get("reply_count").cloned().unwrap_or(json!(0)),
                 "participants": d.body.get("participants").cloned().unwrap_or_else(|| json!([]))})).collect::<Vec<_>>()}))
         });

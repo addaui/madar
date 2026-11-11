@@ -271,6 +271,25 @@ fn the_quota_is_a_hook_the_task_plugin_knows_nothing_about() {
 }
 
 #[test]
+fn a_comment_can_belong_to_one_block_of_a_page() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let pg = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Guide"}))["id"].as_str().unwrap().to_string();
+    let t = a.task(&al, &p, "x");
+    let c = a.ok(&al, "discussion.add", json!({"project": p, "page": pg, "block": "b1", "body": "why?"}));
+    a.ok(&al, "discussion.add", json!({"project": p, "page": pg, "block": "b1", "body": "because", "parent": c["id"]}));
+    a.ok(&al, "discussion.add", json!({"project": p, "page": pg, "block": "b2", "body": "and here"}));
+    a.ok(&al, "discussion.add", json!({"project": p, "page": pg, "body": "whole page"}));
+    let counts = a.ok(&al, "discussion.block_counts", json!({"project": p, "page": pg}));
+    assert_eq!(counts["counts"], json!({"b1": 1, "b2": 1}), "replies and page-level comments do not count");
+    let one = a.ok(&al, "discussion.list", json!({"project": p, "page": pg, "block": "b1", "roots": true}));
+    assert_eq!(one["comments"].as_array().unwrap().len(), 1);
+    assert_eq!(a.err(&al, "discussion.add", json!({"project": p, "task": t["id"], "block": "b1", "body": "no"})).category, Category::Invalid, "a task has no blocks");
+    assert_eq!(a.err(&al, "discussion.add", json!({"project": p, "page": pg, "block": "b9", "body": "x", "parent": c["id"]})).reason.as_deref(), Some("discussion.bad_parent"), "a reply stays in its block");
+}
+
+#[test]
 fn comments_replies_and_who_may_remove_them() {
     let a = app();
     let (al, bo) = (who("alice"), who("bob"));
@@ -481,7 +500,7 @@ fn a_viewer_role_sees_what_they_may_do_in_describe() {
     assert_eq!(kinds["@nuah/theme-phantom-onyx"], "theme");
     assert_eq!(kinds["@nuah/db-memory"], "adapter");
     assert_eq!(kinds["@madar/tasks"], "feature");
-    assert_eq!(d["themes"].as_array().unwrap().len(), 9);
+    assert_eq!(d["themes"].as_array().unwrap().len(), 10);
     let onyx = d["themes"].as_array().unwrap().iter().find(|t| t["id"] == "@nuah/theme-phantom-onyx").expect("the default preset is there");
     assert_eq!(onyx["tokens"]["schema"], "theme/1");
     assert_eq!(d["extension_points"]["notify.channel"]["providers"], json!(["@madar/notify-inbox"]));
@@ -804,6 +823,111 @@ fn pages_nest_to_a_limit_and_an_edit_of_a_stale_copy_is_a_conflict() {
 }
 
 #[test]
+fn emoji_sets_come_from_plugins_and_the_choice_is_a_preference() {
+    let a = app();
+    let al = who("alice");
+    let sets = a.ok(&al, "emoji.sets", json!({}));
+    let ids: Vec<&str> = sets["sets"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
+    assert!(ids.contains(&"system") && ids.contains(&"twemoji"), "the plugin's own sets are offered: {ids:?}");
+    let schema = a.ok(&al, "prefs.schema", json!({}));
+    let item = schema["items"].as_array().unwrap().iter().find(|i| i["key"] == "emoji.set").expect("the choice is in the settings");
+    assert_eq!(item["group"], "appearance");
+    assert_eq!(item["choices"].as_array().unwrap().len(), ids.len());
+    a.ok(&al, "prefs.set", json!({"emoji.set": "microsoft"}));
+    assert_eq!(a.ok(&al, "prefs.get", json!({}))["emoji.set"], "microsoft");
+    assert_eq!(a.err(&al, "prefs.set", json!({"emoji.set": "nonsense"})).category, Category::Invalid, "only a set a plugin offers");
+}
+
+#[test]
+fn your_own_pages_live_in_a_space_and_search_can_stay_in_one() {
+    let a = app();
+    let al = who("alice");
+    let w = a.ok(&al, "workspaces.create", json!({"name": "Studio"}))["id"].as_str().unwrap().to_string();
+    let home = a.ok(&al, "pages.create", json!({"title": "Zebra plan"}));
+    let studio = a.ok(&al, "pages.create", json!({"title": "Zebra mural", "space": w}));
+    let under = a.ok(&al, "pages.create", json!({"title": "Zebra sketch", "parent": studio["id"], "space": "default"}));
+    assert_eq!(home["space"], "default");
+    assert_eq!(under["space"], json!(w), "a page goes in its parent's Space");
+    let titles = |v: &Value| -> Vec<String> { let mut t: Vec<String> = v["pages"].as_array().unwrap().iter().map(|p| p["title"].as_str().unwrap().to_string()).collect(); t.sort(); t };
+    assert_eq!(titles(&a.ok(&al, "pages.list", json!({"space": "default"}))), ["Zebra plan"]);
+    assert_eq!(titles(&a.ok(&al, "pages.list", json!({"space": w}))), ["Zebra mural", "Zebra sketch"]);
+    assert_eq!(titles(&a.ok(&al, "pages.list", json!({}))).len(), 3, "no Space asked for: all of them");
+    a.settle();
+    let all = a.ok(&al, "search.query", json!({"q": "zebra"}));
+    assert_eq!(all["items"].as_array().unwrap().len(), 3);
+    let one = a.ok(&al, "search.query", json!({"q": "zebra", "space": w}));
+    assert_eq!(one["items"].as_array().unwrap().len(), 2);
+    // move a page with what is under it into the default Space: it becomes a top page there
+    a.ok(&al, "pages.set_space", json!({"id": studio["id"], "space": "default"}));
+    assert_eq!(titles(&a.ok(&al, "pages.list", json!({"space": "default"}))).len(), 3);
+    assert!(titles(&a.ok(&al, "pages.list", json!({"space": w}))).is_empty());
+    assert_eq!(a.err(&al, "knowledge.set_space", json!({"project": "x", "id": "y", "space": "z"})).category, Category::NotFound, "only your own pages have Spaces");
+}
+
+#[test]
+fn open_checklist_items_on_pages_can_be_listed_and_ticked() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Home");
+    let item = |id: &str, text: &str, checked: bool| json!({"type": "taskItem", "attrs": {"checked": checked, "blockId": id}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]});
+    let body = |items: Vec<Value>| json!({"type": "doc", "content": [{"type": "taskList", "content": items}]});
+    let mine = a.ok(&al, "pages.create", json!({"title": "Errands", "body": body(vec![item("b1", "buy milk", false), item("b2", "call mum", true), item("b3", "book flights", false)])}));
+    let shared = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Launch", "body": body(vec![item("c1", "write notes", false)])}));
+    a.settle();
+    let items = |v: &Value| -> Vec<String> { let mut t: Vec<String> = v["items"].as_array().unwrap().iter().map(|x| x["text"].as_str().unwrap().to_string()).collect(); t.sort(); t };
+    let all = a.ok(&al, "pages.tasks", json!({}));
+    assert_eq!(items(&all), ["book flights", "buy milk", "write notes"], "ticked ones are not open");
+    let hit = all["items"].as_array().unwrap().iter().find(|x| x["text"] == "write notes").unwrap();
+    assert_eq!(hit["project_name"], "Home");
+    assert_eq!(items(&a.ok(&al, "pages.tasks", json!({"space": "other"}))), Vec::<String>::new(), "a Space with none of them");
+    assert_eq!(items(&a.ok(&al, "pages.tasks", json!({"space": "default"}))), ["book flights", "buy milk", "write notes"], "an unplaced project is in the default Space");
+    let w = a.ok(&al, "workspaces.create", json!({"name": "Studio"}))["id"].as_str().unwrap().to_string();
+    a.ok(&al, "workspaces.place", json!({"project": p, "workspace": w}));
+    assert_eq!(items(&a.ok(&al, "pages.tasks", json!({"space": w}))), ["write notes"], "the project's pages follow the project");
+    assert_eq!(items(&a.ok(&al, "pages.tasks", json!({"space": "default"}))), ["book flights", "buy milk"]);
+    a.ok(&al, "workspaces.place", json!({"project": p, "workspace": "default"}));
+    a.ok(&al, "pages.set_task", json!({"id": mine["id"], "block": "b1", "checked": true}));
+    a.ok(&al, "knowledge.set_task", json!({"project": p, "id": shared["id"], "block": "c1", "checked": true}));
+    assert_eq!(items(&a.ok(&al, "pages.tasks", json!({}))), ["book flights"]);
+    a.ok(&al, "pages.set_task", json!({"id": mine["id"], "block": "b1", "checked": false}));
+    assert_eq!(items(&a.ok(&al, "pages.tasks", json!({}))), ["book flights", "buy milk"]);
+    assert_eq!(a.err(&al, "pages.set_task", json!({"id": mine["id"], "block": "nope", "checked": true})).category, Category::NotFound);
+    let ve = viewer("vic");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "vic", "level": "viewer"}));
+    assert_eq!(a.err(&ve, "knowledge.set_task", json!({"project": p, "id": shared["id"], "block": "c1", "checked": false})).category, Category::Denied, "a viewer cannot tick");
+}
+
+#[test]
+fn a_page_icon_is_one_emoji_not_a_paragraph() {
+    let a = app();
+    let al = who("alice");
+    let p = a.ok(&al, "pages.create", json!({"title": "Icons", "icon": "👨‍👩‍👧‍👦"}));
+    assert_eq!(p["icon"], "👨‍👩‍👧‍👦", "a joined family is one emoji");
+    a.ok(&al, "pages.update", json!({"id": p["id"], "icon": "🚀"}));
+    a.ok(&al, "pages.update", json!({"id": p["id"], "icon": null}));
+    for bad in ["this is a whole sentence of text", "two words", "", "a\nb"] {
+        assert_eq!(a.err(&al, "pages.update", json!({"id": p["id"], "icon": bad})).category, Category::Invalid, "{bad:?}");
+    }
+    assert_eq!(a.err(&al, "pages.create", json!({"title": "Nope", "icon": "a very long paragraph pretending to be an icon"})).category, Category::Invalid);
+}
+
+#[test]
+fn a_folder_only_organises_and_lives_in_folders() {
+    let a = app();
+    let al = who("alice");
+    let f = a.ok(&al, "pages.create", json!({"title": "Work", "folder": true}));
+    assert_eq!(f["folder"], true);
+    let sub = a.ok(&al, "pages.create", json!({"title": "2026", "folder": true, "parent": f["id"]}));
+    let pg = a.ok(&al, "pages.create", json!({"title": "Notes", "parent": sub["id"]}));
+    assert_eq!(pg["folder"], false);
+    assert_eq!(a.err(&al, "pages.create", json!({"title": "Nope", "folder": true, "parent": pg["id"]})).reason.as_deref(), Some("pages.bad_parent"), "a folder does not go inside a page");
+    assert_eq!(a.err(&al, "pages.move", json!({"id": sub["id"], "parent": pg["id"]})).reason.as_deref(), Some("pages.bad_parent"));
+    a.ok(&al, "pages.move", json!({"id": pg["id"], "parent": f["id"]}));
+    let found = a.ok(&al, "pages.search", json!({"q": "work"}));
+    assert!(found["pages"].as_array().unwrap().is_empty(), "folders are not search results");
+}
+
+#[test]
 fn personal_pages_are_private_to_their_owner() {
     let a = app();
     let (al, bo) = (who("alice"), who("bob"));
@@ -860,10 +984,18 @@ fn the_editor_offers_the_blocks_plugins_declare() {
     let a = app();
     let blocks = a.ok(&who("alice"), "editor.blocks", json!({}));
     let ids: Vec<&str> = blocks["blocks"].as_array().unwrap().iter().map(|b| b["id"].as_str().unwrap()).collect();
-    for want in ["heading1", "codeBlock", "taskList", "toggle", "calloutWarning", "image", "youtube", "entityRef"] {
+    for want in ["heading1", "codeBlock", "taskList", "toggle", "callout", "image", "youtube", "entityRef"] {
         assert!(ids.contains(&want), "{want} in {ids:?}");
     }
     assert_eq!(blocks["blocks"][0]["plugin"], "@madar/editor-basic");
+    // every block names an icon a Face can draw; a callout is one entry with a submenu
+    for b in blocks["blocks"].as_array().unwrap() {
+        assert!(b["icon"].as_str().is_some_and(|i| !i.is_empty()), "{} has an icon", b["id"]);
+    }
+    let callout = blocks["blocks"].as_array().unwrap().iter().find(|b| b["id"] == "callout").unwrap();
+    let tones: Vec<&str> = callout["variants"].as_array().unwrap().iter().map(|v| v["id"].as_str().unwrap()).collect();
+    assert_eq!(tones, ["calloutInfo", "calloutTip", "calloutWarning", "calloutDanger"]);
+    assert!(callout["variants"].as_array().unwrap().iter().all(|v| v["icon"].is_string()));
 }
 
 #[test]
@@ -1320,6 +1452,42 @@ fn image_doc(urls: &[&str]) -> Value {
 }
 
 #[test]
+fn a_page_style_has_colours_and_a_background_image_that_stay_alive_while_the_page_lives() {
+    let a = app();
+    let al = who("alice");
+    let pg = a.ok(&al, "pages.create", json!({"title": "Styled"}))["id"].as_str().unwrap().to_string();
+    let file = a.ok(&al, "files.upload", json!({"name": "bg.png", "data": PNG}))["id"].as_str().unwrap().to_string();
+    let good = json!({"line_height": 190, "block_gap": 0, "text_color": "#243a6b", "pattern": "ruled", "pattern_color": "#9db7d6", "margin_line": "#d9534f", "block_rule": "dashed", "band_shadow": true, "flavor": "terminal", "font": "serif", "page_color": "#fdf6e3", "page_opacity": 85, "bg_color": "#1a2b3c", "bg_image": format!("/files/{file}"), "bg_fit": "tile", "bg_tile": 200, "bg_attach": "fixed", "bg_dim": 30});
+    let saved = a.ok(&al, "pages.update", json!({"id": pg, "settings": good}));
+    assert_eq!(saved["settings"]["bg_fit"], "tile");
+    a.settle();
+    for bad in [json!({"page_color": "red"}), json!({"page_color": "#12345"}), json!({"page_opacity": 101}), json!({"line_height": 50}), json!({"block_gap": 400}), json!({"pattern": "lines"}), json!({"block_rule": "double"}), json!({"flavor": "neon"}), json!({"band_shadow": "yes"}), json!({"text_color": "#12"}), json!({"bg_dim": 90}), json!({"bg_fit": "stretch"}), json!({"bg_scale": 5}),
+        json!({"bg_image": "javascript:alert(1)"}), json!({"bg_image": "http://example.com/a.png"}), json!({"bg_image": "https://x.com/a.png\") ;"}), json!({"bg_image": "/files/../etc"}), json!({"colour": "#ffffff"})] {
+        assert_eq!(a.err(&al, "pages.update", json!({"id": pg, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
+    }
+    // a look is kept by name and mode; the colours are worked out where it is shown
+    assert_eq!(a.ok(&al, "pages.update", json!({"id": pg, "settings": {"preset": "paper", "preset_mode": "dark", "line_height": 150}}))["settings"]["preset"], "paper");
+    for bad in [json!({"preset": "Paper!"}), json!({"preset": ""}), json!({"preset_mode": "auto"}), json!({"preset_mode": "blue"})] {
+        assert_eq!(a.err(&al, "pages.update", json!({"id": pg, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
+    }
+    // a picture on the sheet is kept alive like the backdrop's, and its corner, size and copy are checked
+    let sheet = a.ok(&al, "files.upload", json!({"name": "leaf.png", "data": PNG}))["id"].as_str().unwrap().to_string();
+    a.ok(&al, "pages.update", json!({"id": pg, "settings": {"sheet_image": format!("/files/{sheet}"), "sheet_corner": "bottom-left", "sheet_size": 240, "sheet_mirror": true, "sheet_art": "autumn"}}));
+    for bad in [json!({"sheet_corner": "middle"}), json!({"sheet_size": 10}), json!({"sheet_mirror": "yes"}), json!({"sheet_image": "javascript:alert(1)"}), json!({"sheet_art": "snow"})] {
+        assert_eq!(a.err(&al, "pages.update", json!({"id": pg, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
+    }
+    a.settle();
+    a.ok(&al, "files.info", json!({"id": sheet}));
+    a.ok(&al, "pages.update", json!({"id": pg, "settings": {"bg_image": "https://example.com/a.png"}}));
+    a.ok(&al, "pages.update", json!({"id": pg, "settings": {"bg_image": format!("/files/{file}")}}));
+    a.settle();
+    // the picture is the page's: the page that shows it keeps it, and deleting the page takes it along
+    a.ok(&al, "pages.delete", json!({"id": pg}));
+    a.settle();
+    assert_eq!(a.err(&al, "files.info", json!({"id": file})).category, Category::NotFound, "only that page showed it");
+}
+
+#[test]
 fn deleting_a_page_deletes_the_files_only_it_showed() {
     let a = app();
     let (al, bo) = (who("alice"), who("bob"));
@@ -1500,4 +1668,28 @@ fn a_postgres_url_selects_the_postgres_adapter_and_a_path_selects_sqlite() {
     assert!(lite.enabled.iter().any(|e| e == "@nuah/db-sqlite") && !lite.enabled.iter().any(|e| e == "@nuah/db-postgres"));
     assert_eq!(lite.settings["@nuah/db-sqlite"], json!({"path": "/data/madar.db"}));
     assert!(catalog().0.iter().any(|p| p.manifest().id == "@nuah/db-postgres"));
+}
+
+#[test]
+fn a_saved_page_style_is_yours_and_keeps_its_background_image() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let file = a.ok(&al, "files.upload", json!({"name": "bg.png", "data": PNG}))["id"].as_str().unwrap().to_string();
+    let settings = json!({"page_color": "#fbf6e6", "bg_art": "leaves", "bg_image": format!("/files/{file}"), "preset": "paper"});
+    let saved = a.ok(&al, "pages.style_save", json!({"name": "Mine", "settings": settings}));
+    let id = saved["id"].as_str().unwrap().to_string();
+    a.settle();
+    assert_eq!(a.ok(&al, "pages.styles", json!({}))["styles"].as_array().unwrap().len(), 1);
+    assert_eq!(a.ok(&bo, "pages.styles", json!({}))["styles"].as_array().unwrap().len(), 0, "a style is its owner's");
+    assert_eq!(a.err(&bo, "pages.style_delete", json!({"id": id})).category, Category::NotFound);
+    // renaming keeps the picture alive; a bad name or setting is refused
+    a.ok(&al, "pages.style_save", json!({"id": id, "name": "Mine 2", "settings": settings}));
+    assert_eq!(a.err(&al, "pages.style_save", json!({"name": "", "settings": {}})).category, Category::Invalid);
+    assert_eq!(a.err(&al, "pages.style_save", json!({"name": "x", "settings": {"bg_art": "stars"}})).category, Category::Invalid);
+    a.settle();
+    a.ok(&al, "files.info", json!({"id": file}));
+    // deleting the style takes the picture with it (nothing else shows it)
+    a.ok(&al, "pages.style_delete", json!({"id": id}));
+    a.settle();
+    assert_eq!(a.err(&al, "files.info", json!({"id": file})).category, Category::NotFound);
 }

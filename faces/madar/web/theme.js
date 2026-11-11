@@ -120,7 +120,7 @@ const TH = (() => {
   function apply(preset, ov, schemePref, rtl) {
     const T = resolve(preset, ov, schemePref, rtl), v = tokens(T, preset);
     for (const k in v) root.style.setProperty(k, v[k]);
-    root.dataset.scheme = T.dark ? "dark" : "light"; root.dataset.material = T.g("material"); root.style.colorScheme = T.dark ? "dark" : "light";
+    root.dataset.scheme = T.dark ? "dark" : "light"; root.dataset.material = T.g("material"); root.dataset.layout = T.g("layout") || "panels"; root.style.colorScheme = T.dark ? "dark" : "light";
     for (const k of applied) root.classList.remove(k);
     applied = SIG.filter((k) => T.sig[k]).map((k) => "sig-" + k); for (const k of applied) root.classList.add(k);
     let meta = document.querySelector('meta[name="theme-color"]'); if (!meta) { meta = document.createElement("meta"); meta.name = "theme-color"; document.head.append(meta); } meta.content = T.pal.bg;
@@ -141,5 +141,6 @@ function currentPreset() {
 function applyTheme() {
   const p = currentPreset(); if (!p) return;
   TH.apply(p, S.overrides || {}, S.prefs.scheme, lang === "ar");
+  if (window.repaintPage) repaintPage();   // a page whose look follows the app changes with it
 }
 if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (S.desc && (S.prefs.scheme || "auto") === "auto") applyTheme(); });

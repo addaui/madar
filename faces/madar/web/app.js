@@ -61,6 +61,23 @@ async function call(op, input = {}, extra = {}) {
     throw new Refused(body.error);
   }
 }
+/** Like `call`, for a big request: `onProgress(fraction)` while it is sent (the server then still has to keep it). One try; the same idempotency key as `call`. */
+function callProgress(op, input, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest(); x.open("POST", "/link/call/" + op); x.withCredentials = true;
+    const headers = { "Content-Type": "application/json", "X-Nuah-Face": "web", ...(S.desc ? { "X-Nuah-Contract": S.desc.contract } : {}), "Idempotency-Key": uuid() };
+    for (const [k, v] of Object.entries(headers)) x.setRequestHeader(k, v);
+    x.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    x.onerror = x.ontimeout = () => reject(new Refused({ category: "internal", message: "The server cannot be reached." }));
+    x.onload = () => {
+      let body; try { body = JSON.parse(x.responseText); } catch (e) { body = { ok: false, error: { category: "internal", message: "Unreadable answer" } }; }
+      if (body.ok) return resolve(body.output);
+      if (body.error.category === "unauthenticated" && S.who) { S.who = null; stop(); render(); }
+      reject(new Refused(body.error));
+    };
+    x.send(JSON.stringify(input));
+  });
+}
 async function attempt(fn) {
   try { attempt.last = null; return await fn(); } catch (e) { if (e instanceof Refused) { attempt.last = e; toast((e.key && STR[lang][e.key]) || e.message); return undefined; } throw e; }
 }
@@ -72,7 +89,7 @@ async function boot() {
   S.desc = await (await fetch("/link/describe", { credentials: "same-origin" })).json();
   S.who = S.desc.who || null;
   applyTheme();
-  const r = routeFromHash(); S.view = r.view; S.wantTask = r.task || null; S.tab = r.tab || null; S.wantPage = r.page || null;
+  const r = routeFromHash(); S.view = r.view; if (r.view === "pages") S.sideTab = "pages"; else if (r.view !== "today") S.sideTab = "tasks"; S.wantTask = r.task || null; S.tab = r.tab || null; S.wantPage = r.page || null;
   if (S.who) { await afterSignIn(); } else render();
 }
 window.addEventListener("hashchange", () => { const r = routeFromHash(); if (S.who && (r.view !== S.view || (r.tab || null) !== (S.tab || null) || (r.page || null) !== (S.openPage && S.openPage.id || null) || (r.task || null) !== (S.openTask && S.openTask.id))) { S.view = r.view; S.wantTask = r.task || null; S.tab = r.tab || null; S.wantPage = r.page || null; S.openTask = null; drawerCache = null; S.openPage = null; refreshAll(); } });
@@ -86,20 +103,23 @@ async function afterSignIn() {
 }
 async function refreshAll() {
   const seq = ++loadSeq;
-  const [list, inbox] = await Promise.all([attempt(() => call("projects.list")), attempt(() => call("inbox.list", { limit: 30 }))]);
+  const [list, inbox, mine] = await Promise.all([attempt(() => call("projects.list")), attempt(() => call("inbox.list", { limit: 30 })), hasOp("pages.list") && S.view !== "pages" ? attempt(() => call("pages.list", { space: curSpace() })) : null]);
   if (seq !== loadSeq) return; // a newer refresh is on its way; never let an old answer overwrite it
   if (list) S.projects = list.projects;
+  if (mine) S.myPages = mine.pages;
   if (inbox) S.inbox = inbox;
   if (hasOp("workspaces.list")) S.ws = (await attempt(() => call("workspaces.list"))) || S.ws; else S.ws = null;
   if (seq !== loadSeq) return;
-  if (S.view !== "today" && S.view !== "inbox" && S.view !== "pages" && !S.projects.some((p) => p.id === S.view)) S.view = "today";
+  if (S.view !== "today" && S.view !== "pages" && !S.projects.some((p) => p.id === S.view)) S.view = "today";
   if (S.view === "today") {
     const mine = await attempt(() => call("tasks.my"));
     if (seq !== loadSeq) return;
     if (mine) { S.mine = mine.tasks; S.today = mine.today; }
     S.focusData = hasOp("tasks.focus") ? await attempt(() => call("tasks.focus")) : null;
+    const pt = hasOp("pages.tasks") ? await attempt(() => call("pages.tasks", { space: curSpace(), limit: 40 })) : null;
+    S.pageTasks = pt ? pt.items : [];
     if (seq !== loadSeq) return;
-  } else if (S.view !== "inbox") {
+  } else if (S.view !== "pages") {
     const id = S.view;
     const [proj, tasks, labels, members] = await Promise.all([
       attempt(() => call("projects.get", { project: id })), attempt(() => call("tasks.list", { project: id, limit: 500 })),
@@ -131,10 +151,17 @@ function stop() { if (es) { es.close(); es = null; } }
 function paintLive() { const el = document.querySelector(".live"); if (el) { el.dataset.state = S.live; el.title = S.live === "live" ? t("live") : t("offline"); const l = el.parentNode.querySelector(".live-label"); if (l) l.textContent = el.title; } }
 
 // ---------- views ----------
+const SCROLLERS = [".page-scroll", ".side-scroll", ".pside-body", ".content", ".pane", ".board"];   // the scrolling parts of the frame
 function render() {
-  const keep = snapshotInputs(), tok = editorFocusToken();
+  const keep = snapshotInputs(), tok = editorFocusToken(), te = pageCache && pageCache.titleEl, tf = te && document.activeElement === te ? [te.selectionStart, te.selectionEnd] : null;
+  // the whole frame is rebuilt: what is scrolled stays where it was, and a side panel that was already open does not slide in again
+  const scrolls = SCROLLERS.map((q) => { const el = $app.querySelector(q); return el ? [q, el.scrollTop, el.scrollLeft] : null; }).filter(Boolean), hadPane = !!$app.querySelector(".pane");
   $app.replaceChildren(S.who ? shell() : signIn());
+  const samePage = render.page === (S.openPage && S.openPage.id); render.page = S.openPage && S.openPage.id;   // another page opens at its top
+  for (const [q, top, left] of scrolls) { if (q === ".page-scroll" && !samePage) continue; const el = $app.querySelector(q); if (el && (top || left)) { el.style.scrollBehavior = "auto"; el.scrollTop = top; el.scrollLeft = left; el.style.scrollBehavior = ""; } }
+  if (hadPane) { const pane = $app.querySelector(".pane"); if (pane) pane.style.animation = "none"; }
   restoreInputs(keep); paintLive(); if (tok) refocusEditor(tok);
+  if (tf && te.isConnected) { te.focus(); try { te.setSelectionRange(tf[0], tf[1]); } catch (e) { /* not a text field */ } }
 }
 function snapshotInputs() { const m = {}; for (const el of $app.querySelectorAll("[data-keep]")) m[el.dataset.keep] = { v: el.value, f: document.activeElement === el }; return m; }
 function restoreInputs(m) { for (const el of $app.querySelectorAll("[data-keep]")) { const s = m[el.dataset.keep]; if (s) { el.value = s.v; if (s.f) el.focus(); } } }
@@ -169,10 +196,14 @@ function prioChip(task, always) {
   return h("span", { class: "chip prio", "data-b": task.band }, ico("flag"), h("span", { class: "gl", "aria-hidden": "true" }, { urgent: "▲▲", high: "▲", medium: "◆", low: "▼" }[task.band] || ""), t(task.band));
 }
 
-function inboxView() {
-  return h("div", {}, h("div", { class: "head" }, h("h1", {}, t("inbox")), S.inbox.unread ? btn(t("markRead"), { icon: "check", onclick: async () => { await attempt(() => call("inbox.read", {})); refreshAll(); } }) : null),
-    S.inbox.messages.length ? h("div", { class: "panel" }, ...S.inbox.messages.map((m) => h("div", { class: "list-item" }, m.read ? ico("inbox") : h("span", { class: "dot-nav", "aria-label": t("unread") }), h("span", { class: "grow", dir: "auto", style: m.read ? "" : "font-weight:620" }, m.text), h("span", { class: "muted", style: "font-size:12.5px" }, fmtTime(m.at)))))
-      : h("div", { class: "empty" }, ico("inbox"), h("b", {}, t("nothingNew")), h("span", {}, t("nothingNewHint"))));
+// The inbox is a popover on the bell, not a page of its own.
+function openInbox(anchor) {
+  if (openPopover.cur && openPopover.cur.box.classList.contains("inbox-popover")) { closePopover(); return; }   // the bell again closes it
+  const msgs = S.inbox.messages;
+  const head = h("div", { class: "pop-head" }, h("b", {}, t("inbox")), h("span", { class: "grow" }), S.inbox.unread ? btn(t("markRead"), { icon: "check", kind: "ghost sm", onclick: async () => { await attempt(() => call("inbox.read", {})); pop.close(); refreshAll(); } }) : null);
+  const body = msgs.length ? h("div", { class: "pop-list" }, ...msgs.map((m) => h("div", { class: "pop-item" + (m.read ? "" : " unread") }, m.read ? null : h("span", { class: "dot-nav", "aria-label": t("unread") }), h("span", { class: "grow", dir: "auto" }, m.text), h("small", { class: "muted" }, fmtTime(m.at)))))
+    : h("div", { class: "empty small" }, ico("inbox"), h("b", {}, t("nothingNew")), h("span", {}, t("nothingNewHint")));
+  const pop = openPopover(anchor, h("div", { class: "inbox-pop" }, head, body), { cls: "inbox-popover" });
 }
 
 // What can be done to a card: the ⋯ button and the context menu show the same list.
@@ -260,7 +291,7 @@ function membersPanel(manager) {
 }
 async function loadAudit() { const out = await attempt(() => call("audit.list", { project: S.project.id, limit: 50 })); S.audit = out ? out.entries : []; render(); }
 // A person is shown by display name when they are a current member, otherwise by their sign-in name.
-function personName(subject) { if (/^listener:/.test(subject || "")) return t("system") + " (" + subject.split(":")[1] + ")"; const m = S.members.find((x) => x.subject === subject); return (m && m.display) || subject || "?"; }
+function personName(subject) { if (S.who && subject === S.who.subject && S.who.display) return S.who.display; if (/^listener:/.test(subject || "")) return t("system") + " (" + subject.split(":")[1] + ")"; const m = S.members.find((x) => x.subject === subject); return (m && m.display) || subject || "?"; }
 function fill(key, vals) { return t(key).replace(/\{(\w+)\}/g, (_, k) => (vals[k] === undefined ? "" : vals[k])); }
 // One sentence for a history entry, saying who did what to whom. The kernel only records the event;
 // how it reads is the Face's business.

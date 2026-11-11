@@ -7,7 +7,7 @@ const ls = {
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private window: the choice just does not stick */ } },
 };
 const narrow = () => matchMedia("(max-width:760px)").matches;
-Object.assign(S, { tab: null, side: narrow() ? "closed" : ls.get("madar.side", "open"), focus: ls.get("madar.focus", "0") === "1", prefs: {}, schema: [], blocks: [], ws: null, focusData: null, openPage: null, wantPage: null });
+Object.assign(S, { sideTab: ls.get("madar.sidetab", "tasks"), tab: null, side: narrow() ? "closed" : ls.get("madar.side", "open"), focus: ls.get("madar.focus", "0") === "1", prefs: {}, schema: [], blocks: [], ws: null, focusData: null, openPage: null, wantPage: null });
 
 // ---------- preferences ----------
 function applyPrefs(p) {
@@ -15,7 +15,7 @@ function applyPrefs(p) {
   lang = S.prefs.language === "ar" ? "ar" : "en";
   document.documentElement.lang = lang; document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
   document.documentElement.dataset.density = S.prefs.density || "comfortable";
-  applyTheme();
+  applyTheme(); applyEmojiSet();
   const c = S.prefs.avatar_color; if (c) document.documentElement.style.setProperty("--avatar", c); else document.documentElement.style.removeProperty("--avatar");
 }
 const defaultPriority = () => Number(S.prefs["tasks.default_priority"] ?? 0);
@@ -23,6 +23,8 @@ const dueSoonDays = () => Number(S.prefs["tasks.due_soon_days"] ?? 3);
 async function loadChrome() {
   if (hasOp("prefs.schema")) { const s = await attempt(() => call("prefs.schema")); S.schema = s ? s.items : []; }
   if (hasOp("editor.blocks")) { const b = await attempt(() => call("editor.blocks")); S.blocks = b ? b.blocks : []; }
+  if (hasOp("emoji.sets")) { const e = await attempt(() => call("emoji.sets")); S.emojiSets = e ? e.sets : []; }
+  applyEmojiSet();
 }
 // A date as the person wants to read it: Gregorian, Hijri or both (the calendar preference).
 function fmtDate(iso) {
@@ -40,7 +42,7 @@ const TABS = ["board", "list", "overview", "knowledge"];
 function tabsAvailable() { return TABS.filter((x) => x === "board" || (x === "list" && hasOp("tasks.query")) || (x === "overview" && hasOp("tasks.stats")) || (x === "knowledge" && hasOp("knowledge.list"))); }
 function routeFromHash() {
   const parts = location.hash.replace(/^#\//, "").split("/").filter(Boolean), a = parts[0], b = parts[1];
-  if (a === "today" || a === "inbox") return { view: a };
+  if (a === "today" || a === "inbox") return { view: "today" };
   if (a === "pages" || a === "notes") return { view: "pages", page: b || null };
   if (a === "p" && /^[0-9a-f]+$/.test(b || "")) {
     let i = 2, tab = null, page = null, task = null;
@@ -53,16 +55,20 @@ function routeFromHash() {
 }
 function setHash() {
   let h;
-  if (S.view === "today" || S.view === "inbox") h = "#/" + S.view;
-  else if (S.view === "pages") h = "#/pages" + (S.openPage ? "/" + S.openPage.id : "");
-  else h = "#/p/" + S.view + "/" + (S.tab || "board") + (S.tab === "knowledge" && S.openPage ? "/" + S.openPage.id : "") + (S.openTask ? "/t/" + S.openTask.id : "");
+  if (S.view === "today") h = "#/today";
+  else if (S.view === "pages") h = "#/pages" + (S.openPage && !S.openPage.draft ? "/" + S.openPage.id : "");
+  else h = "#/p/" + S.view + "/" + (S.tab || "board") + (S.tab === "knowledge" && S.openPage && !S.openPage.draft ? "/" + S.openPage.id : "") + (S.openTask ? "/t/" + S.openTask.id : "");
   if (location.hash !== h) history.replaceState(null, "", h);
 }
 function go(view, tab) {
+  // asking for where you already are, with nothing open on top of it, changes nothing: no fetch, no redraw
+  const wantTab = ["today", "pages"].includes(view) ? null : (tab || S.prefs["projects.default_tab"] || "board");
+  if (S.view === view && !S.openTask && !S.openPage && !S.panel && (wantTab === null || S.tab === wantTab)) { if (narrow() && S.side === "open") { S.side = "closed"; render(); } return; }
   flushPage();
   S.view = view; S.openTask = null; drawerCache = null; S.panel = null; S.openPage = null; S.wantPage = null;
   if (narrow()) S.side = "closed";
-  const isProject = !["today", "inbox", "pages"].includes(view);
+  const isProject = !["today", "pages"].includes(view);
+  S.sideTab = view === "pages" ? "pages" : isProject ? "tasks" : S.sideTab; ls.set("madar.sidetab", S.sideTab);
   const want = tab || S.prefs["projects.default_tab"] || "board";
   S.tab = isProject ? (tabsAvailable().includes(want) ? want : "board") : null;
   refreshAll();
@@ -128,36 +134,51 @@ function openSettings() {
 }
 
 // ---------- the frame ----------
+// The Space a project or page is in (the built-in one is "My Space").
+const curSpace = () => { const id = ls.get("madar.space", "default"); if (!S.ws) return id; return S.ws.workspaces.some((w) => w.id === id) ? id : "default"; };
+const spaceName = (w) => (w.builtin ? t("defaultWs") : w.name);
+const curSpaceName = () => { const w = S.ws && S.ws.workspaces.find((x) => x.id === curSpace()); return w ? spaceName(w) : t("defaultWs"); };
 function crumbs() {
-  const out = [[t("home"), () => go("today")]];
+  const out = [[curSpaceName(), () => go("today")]];
   if (S.view === "today") return [[t("today")]];
-  if (S.view === "inbox") return [[t("inbox")]];
-  if (S.view === "pages") { out.push([t("pages"), S.openPage ? () => { S.openPage = null; setHash(); render(); } : null]); if (S.openPage) out.push([S.openPage.title || t("untitled")]); return out; }
+  if (S.view === "pages") {
+    const chain = []; let p = S.openPage && S.openPage.parent ? S.myPages.find((x) => x.id === S.openPage.parent) : null;
+    while (p && chain.length < 12) { chain.unshift(p); p = p.parent ? S.myPages.find((x) => x.id === p.parent) : null; }
+    for (const a of chain) out.push([(a.icon ? a.icon + " " : "") + (a.title || t("untitled")), a.folder ? null : () => selectPage(a.id, true)]);
+    if (S.openPage) out.push([(S.openPage.icon ? S.openPage.icon + " " : "") + (S.openPage.title || t("untitled"))]); else out.push([t("pages")]);
+    return out;
+  }
   if (S.project) {
     const w = S.ws && S.ws.placements.find((p) => p.project === S.project.id), wn = w && S.ws.workspaces.find((x) => x.id === w.workspace);
-    if (S.ws && hasOp("workspaces.list")) out.push([wn ? (wn.builtin ? t("defaultWs") : wn.name) : t("defaultWs")]);
+    out.length = 0; out.push([wn ? spaceName(wn) : t("defaultWs"), () => go("today")]);
     out.push([S.project.name, S.tab && S.tab !== "board" || S.openTask ? () => { S.openTask = null; drawerCache = null; S.openPage = null; setHash(); render(); } : null]);
     if (S.tab && S.tab !== "board") out.push([t(S.tab)]);
-    if (S.tab === "knowledge" && S.openPage) out.push([S.openPage.title || t("untitled")]);
+    if (S.tab === "knowledge" && S.openPage) out.push([S.openPage.draft ? t("newPage") : S.openPage.title || t("untitled")]);
   }
   return out;
 }
-/** With the customizer's icon rail on, "closed" means icons only, not hidden. */
-const railOn = () => document.documentElement.classList.contains("sig-r_icons") && !narrow();
-const sideHidden = () => narrow() || (S.side === "closed" && !railOn());
+function crumbsNav() {
+  const cs = crumbs();
+  return h("nav", { class: "crumbs", "aria-label": "breadcrumb" }, ...cs.flatMap(([label, fn], i) => [i ? h("span", { class: "sep", "aria-hidden": "true" }, ico("chevron")) : null, fn ? h("button", { onclick: fn, dir: "auto" }, label) : h("span", { "aria-current": i === cs.length - 1 ? "page" : null, dir: "auto" }, label)]));
+}
+/** On a phone the sidebar is hidden when closed; elsewhere closed means a rail of icons that opens over the page while the pointer is on it. */
+const sideHidden = () => narrow();
+const PEEK_DELAY = 800;   // ms the pointer rests on the minimized sidebar before it opens
 function toggleSide() {
+  S.peek = false;
   S.side = S.side === "open" ? "closed" : "open";
   if (!narrow()) ls.set("madar.side", S.side);
   render();
 }
-function topbar() {
-  const cs = crumbs();
+/** The header sits above the raised surface. It holds the sidebar toggle, the breadcrumbs and, with a page open, the page's own actions. */
+function topbar(bar) {
   return h("header", { class: "topbar" },
-    sideHidden() ? iconBtn("side", t("toggleSide"), toggleSide) : null,
-    h("nav", { class: "crumbs", "aria-label": "breadcrumb" }, ...cs.flatMap(([label, fn], i) => [i ? h("span", { class: "sep", "aria-hidden": "true" }, ico("chevron")) : null, fn ? h("button", { onclick: fn, dir: "auto" }, label) : h("span", { "aria-current": i === cs.length - 1 ? "page" : null, dir: "auto" }, label)])),
+    iconBtn("side", t("toggleSide"), toggleSide, { attrs: { "aria-pressed": String(S.side === "open") } }),
+    crumbsNav(), ...(bar ? bar.lead : []),
     h("span", { class: "grow" }),
-    hasOp("search.query") && (sideHidden()) ? iconBtn("search", t("search").replace("…", "") + " (/)", openSearch) : null,
-    iconBtn("focus", t("focusMode") + " (Ctrl+\\)", toggleFocus), iconBtn("help", t("kHelp") + " (?)", openShortcuts));
+    hasOp("search.query") && sideHidden() ? iconBtn("search", t("search").replace("…", "") + " (/)", openSearch) : null,
+    ...(bar ? bar.actions : []),
+    iconBtn("focus", t("focusMode") + " (Ctrl+\\)", toggleFocus));
 }
 function toggleFocus() { S.focus = !S.focus; ls.set("madar.focus", S.focus ? "1" : "0"); render(); }
 document.addEventListener("keydown", (e) => {
@@ -167,7 +188,7 @@ document.addEventListener("keydown", (e) => {
   if (typing || e.ctrlKey || e.metaKey || e.altKey || document.querySelector(".modal-back") || openMenu.cur) return;
   if (e.key === "?") { e.preventDefault(); openShortcuts(); }
   else if (e.key === "Escape" && S.openTask) { S.openTask = null; drawerCache = null; setHash(); render(); }
-  else if ((e.key === "n" || e.key === "N") && S.project && S.view !== "today" && S.view !== "inbox" && S.view !== "pages" && can(S.project, "projects.write")) { e.preventDefault(); newTaskHere(); }
+  else if ((e.key === "n" || e.key === "N") && S.project && S.view !== "today" && S.view !== "pages" && can(S.project, "projects.write")) { e.preventDefault(); newTaskHere(); }
 });
 
 function navItem(label, view, badge, icon, tab) {
@@ -178,47 +199,64 @@ const wsItems = (w) => [{ label: t("renameWs"), icon: "edit", onclick: () => ren
 function withContext(el, items) { if (items) bindContext(el, items); return el; }
 const projectContext = (p) => () => [{ label: t("open"), icon: "board", onclick: () => go(p.id, "board") }, { label: t("knowledge"), icon: "page", onclick: () => go(p.id, "knowledge") }, { label: t("overview"), icon: "chart", onclick: () => go(p.id, "overview") }, p.key ? "-" : null, p.key ? { label: t("copyId") + " · " + p.key, icon: "link", onclick: () => copyText(p.key) } : null];
 function projectItems(list) { return list.map((p) => withContext(navItem(p.name, p.id), projectContext(p))); }
-function sidebar() {
+// The Space switcher: the Space you are in decides which projects the Tasks tab lists.
+function spaceSwitcher() {
+  if (!(S.ws && hasOp("workspaces.list"))) return null;
+  const cur = S.ws.workspaces.find((w) => w.id === curSpace()) || S.ws.workspaces[0], name = spaceName(cur);
+  const items = () => [...S.ws.workspaces.map((w) => ({ label: spaceName(w), icon: "folder", checked: w.id === cur.id, onclick: () => { ls.set("madar.space", w.id); refreshAll(); } })),
+    hasOp("workspaces.create") ? "-" : null, hasOp("workspaces.create") ? { label: t("newWorkspace"), icon: "plus", onclick: newWorkspace } : null,
+    !cur.builtin ? "-" : null, ...(!cur.builtin ? wsItems(cur) : [])];
+  return h("button", { class: "space-btn", type: "button", "aria-haspopup": "menu", title: t("spaces"), onclick: (e) => openMenu(e.currentTarget, items(), { align: "start" }) },
+    h("span", { class: "space-mark", "aria-hidden": "true" }, (Array.from(name)[0] || "S").toUpperCase()), h("span", { class: "label", dir: "auto" }, name), ico("down", "caret"));
+}
+function bellButton() {
+  const n = S.inbox.unread;
+  return h("button", { class: "icon-btn bell", type: "button", title: t("inbox"), "aria-label": t("inbox") + (n ? " (" + n + ")" : ""), "aria-haspopup": "dialog", onclick: (e) => openInbox(e.currentTarget) }, ico("bell"), n ? h("span", { class: "bell-badge" }, n > 9 ? "9+" : String(n)) : null);
+}
+function tasksPanel() {
   const canCreate = S.desc.operations["projects.create"] && S.desc.operations["projects.create"].allowed;
-  let projects;
-  if (S.ws && hasOp("workspaces.list")) {
-    const place = new Map(S.ws.placements.map((p) => [p.project, p.workspace]));
-    projects = S.ws.workspaces.flatMap((w) => {
-      const mine = S.projects.filter((p) => (place.get(p.id) || "default") === w.id);
-      const open = ls.get("madar.ws." + w.id, "1") === "1";
-      const name = w.builtin ? t("defaultWs") : w.name;
-      return [withContext(h("div", { class: "group-title" },
-        h("button", { class: "t" + (open ? "" : " closed"), "aria-expanded": String(open), onclick: () => { ls.set("madar.ws." + w.id, open ? "0" : "1"); render(); } }, ico("down", "caret"), h("span", { dir: "auto" }, name)),
-        w.builtin ? null : menuBtn(name, () => wsItems(w)),
-      ), w.builtin ? null : () => wsItems(w)), ...(open ? projectItems(mine) : [])];
-    });
-    projects.unshift(h("div", { class: "group-title" }, h("span", { class: "t" }, t("projects")),
-      canCreate ? menuBtn(t("newProject"), () => [{ label: t("newProject"), icon: "plus", onclick: newProject }, hasOp("workspaces.create") ? { label: t("newWorkspace"), icon: "folder", onclick: newWorkspace } : null], "plus") : null));
-  } else projects = [h("div", { class: "group-title" }, h("span", { class: "t" }, t("projects")), canCreate ? iconBtn("plus", t("newProject"), newProject) : null), ...projectItems(S.projects)];
-  return h("aside", { class: "side" },
-    h("div", { class: "side-top" }, h("div", { class: "brand" }, ico("logo"), h("span", { class: "brand-text" }, "Madar")), h("span", { class: "grow" }), iconBtn("side", t("toggleSide"), toggleSide)),
+  const place = S.ws && hasOp("workspaces.list") ? new Map(S.ws.placements.map((p) => [p.project, p.workspace])) : null;
+  const mine = place ? S.projects.filter((p) => (place.get(p.id) || "default") === curSpace()) : S.projects;
+  return [h("div", { class: "group-title" }, h("span", { class: "t" }, t("projects")), canCreate ? iconBtn("plus", t("newProject"), newProject) : null),
+    ...(mine.length ? projectItems(mine) : [h("div", { class: "muted side-empty" }, t("noProjectsHere"))])];
+}
+function pagesPanel() { return hasOp("pages.list") ? [explorer(true, true)] : []; }
+function sidebar() {
+  const tab = (key, label, icon) => h("button", { class: "side-tab", type: "button", role: "tab", "aria-selected": String(S.sideTab === key), onclick: () => { if (S.sideTab === key) return; S.sideTab = key; ls.set("madar.sidetab", key); render(); } }, ico(icon), h("span", {}, label));
+  // minimized, the sidebar opens over the page once the pointer has rested on it for a moment
+  let peekT = null;
+  const aside = h("aside", { class: "side" + (S.peek ? " peek" : ""), onmouseenter: () => { if (S.side === "open" || S.peek) return; clearTimeout(peekT); peekT = setTimeout(() => { S.peek = true; aside.classList.add("peek"); }, PEEK_DELAY); },
+    onmouseleave: () => { clearTimeout(peekT); S.peek = false; aside.classList.remove("peek"); } },
+    h("div", { class: "side-top" }, h("div", { class: "brand" }, ico("logo"), h("span", { class: "brand-text" }, "Madar")), h("span", { class: "grow" }), bellButton()),
+    spaceSwitcher(),
     hasOp("search.query") ? h("button", { class: "search-pill", onclick: openSearch }, ico("search"), h("span", {}, t("search").replace("…", "")), h("kbd", { dir: "ltr" }, "/")) : null,
-    h("nav", { class: "side-scroll", "aria-label": t("projects") },
-      navItem(t("today"), "today", null, "today"), navItem(t("inbox"), "inbox", S.inbox.unread, "inbox"), hasOp("pages.list") ? navItem(t("pages"), "pages", null, "pages") : null, ...projects),
+    h("nav", { class: "side-nav", "aria-label": t("today") }, navItem(t("today"), "today", null, "today")),
+    h("div", { class: "side-tabs", role: "tablist" }, tab("tasks", t("tasksTab"), "task"), hasOp("pages.list") ? tab("pages", t("pages"), "pages") : null),
+    h("div", { class: "side-scroll", role: "tabpanel" }, ...(S.sideTab === "pages" && hasOp("pages.list") ? pagesPanel() : tasksPanel())),
     h("div", { class: "side-foot" }, h("div", { class: "me" }, avatar(S.who.subject, S.who.display), h("div", { class: "who" }, h("b", { dir: "auto" }, S.who.display), h("small", {}, h("span", { class: "live", "data-state": S.live }), h("span", { class: "live-label" }, S.live === "live" ? t("live") : t("offline"))))),
-      iconBtn("gear", t("settings"), openSettings), iconBtn("logout", t("signOut"), signOut)));
+      iconBtn("help", t("kHelp") + " (?)", openShortcuts), iconBtn("gear", t("settings"), openSettings), iconBtn("logout", t("signOut"), signOut)));
+  return aside;
 }
 /** Pages and notes use the whole height: the tree, the page and its side panel each scroll on their own (ADR 0030). */
-const pagesMode = () => S.view === "pages" || (!!S.project && S.view !== "today" && S.view !== "inbox" && S.view !== "pages" && tabsAvailable().includes(S.tab) && S.tab === "knowledge");
+const pagesMode = () => S.view === "pages" || (!!S.project && S.view !== "today" && S.view !== "pages" && tabsAvailable().includes(S.tab) && S.tab === "knowledge");
 function shell() {
-  let body;
-  if (S.view === "today") body = todayView(); else if (S.view === "inbox") body = inboxView(); else if (S.view === "pages") body = myPagesView(); else body = projectView();
-  const pane = S.openTask && S.project && !["today", "inbox", "pages"].includes(S.view) ? cachedDrawer() : null;
-  return h("div", { class: "app", "data-side": S.side, "data-focus": S.focus ? "1" : "0", "data-pane": pane ? "1" : "0" }, sidebar(),
+  let body; pageView.bar = pageView.side = pageView.status = null;
+  if (S.view === "today") body = todayView(); else if (S.view === "pages") body = myPagesView(); else body = projectView();
+  const pane = pageView.side || (S.openTask && S.project && !["today", "pages"].includes(S.view) ? cachedDrawer() : null);
+  // with a page open, the header carries the page's actions (the page builds them in pageView)
+  const pageOpen = pagesMode() && !!S.openPage;
+  return h("div", { class: "app", "data-side": S.side, "data-focus": S.focus ? "1" : "0", "data-pane": pane ? (pageView.side ? "page" : "1") : "0" }, sidebar(),
     h("div", { class: "scrim", onclick: toggleSide }),
-    h("div", { class: "main-panel" }, topbar(), h("main", { class: "content" + (pagesMode() ? " pages-mode" : ""), id: "main" }, body)), S.focus ? h("button", { class: "btn focus-exit", onclick: toggleFocus }, ico("focus"), t("exitFocus")) : null, pane);
+    h("div", { class: "main-panel" }, topbar(pageOpen ? pageView.bar : null), h("main", { class: "content" + (pagesMode() ? " pages-mode" : ""), id: "main" }, body), pageOpen && pageView.status ? h("footer", { class: "statusbar" }, pageView.status) : null), S.focus ? h("button", { class: "btn focus-exit", onclick: toggleFocus }, ico("focus"), t("exitFocus")) : null, pane);
 }
 
 async function newProject() {
   const name = await askText(t("newProject")); if (!name) return;
-  const p = await attempt(() => call("projects.create", { name })); if (p) go(p.id);
+  const p = await attempt(() => call("projects.create", { name })); if (!p) return;
+  if (S.ws && curSpace() !== "default" && hasOp("workspaces.place")) await attempt(() => call("workspaces.place", { project: p.id, workspace: curSpace() }));
+  go(p.id);
 }
-async function newWorkspace() { const name = await askText(t("newWorkspace")); if (name) { await attempt(() => call("workspaces.create", { name })); refreshAll(); } }
+async function newWorkspace() { const name = await askText(t("newWorkspace")); if (!name) return; const w = await attempt(() => call("workspaces.create", { name })); if (w && w.id) ls.set("madar.space", w.id); refreshAll(); }
 async function renameWorkspace(w) { const name = await askText(t("renameWs"), w.name); if (name) { await attempt(() => call("workspaces.rename", { id: w.id, name })); refreshAll(); } }
 async function deleteWorkspace(w) { if (!(await confirmDelete())) return; await attempt(() => call("workspaces.delete", { id: w.id })); refreshAll(); }
 
@@ -228,6 +266,13 @@ function taskRow(x) {
   return h("div", { class: "list-item clickable task-row", onclick: () => openTaskFrom(x), tabindex: 0, role: "button", onkeydown: (e) => { if (e.key === "Enter") openTaskFrom(x); } },
     ico("task"), h("span", { class: "grow t", dir: "auto" }, x.title), prioChip(x, true), h("span", { class: "chip", dir: "auto" }, x.project_name), dueChip(x));
 }
+// A checklist item written on a page, shown in Today where it can be ticked; the page is one click away.
+function pageTaskRow(x) {
+  const tick = async (on) => { const input = { id: x.page, block: x.block, checked: on }; if (x.project) input.project = x.project; await attempt(() => call(x.project ? "knowledge.set_task" : "pages.set_task", input)); refreshAll(); };
+  const open = () => { if (x.project) { S.view = x.project; S.tab = "knowledge"; S.wantPage = x.page; S.openPage = null; } else { S.view = "pages"; S.tab = null; S.sideTab = "pages"; S.wantPage = x.page; } refreshAll(); };
+  return h("div", { class: "list-item task-row" }, h("input", { type: "checkbox", disabled: !x.block, title: x.block ? null : t("saveToTick"), "aria-label": x.text, onchange: (e) => tick(e.target.checked) }),
+    h("span", { class: "grow t", dir: "auto" }, x.text), h("button", { class: "chip page-chip", type: "button", title: x.title, onclick: open }, emo(x.icon || PAGE_EMOJI_DEFAULT), h("span", { dir: "auto" }, x.title || t("untitled"))), x.project_name ? h("span", { class: "chip", dir: "auto" }, x.project_name) : null);
+}
 function greeting() { const hr = new Date().getHours(); return t(hr < 12 ? "gMorning" : hr < 18 ? "gAfternoon" : "gEvening"); }
 function todayView() {
   const groups = [["overdue", t("overdue")], ["today", t("todayB")], ["upcoming", t("soon")], ["undated", t("undated")]];
@@ -236,9 +281,10 @@ function todayView() {
   return h("div", {},
     h("div", { class: "greeting" }, h("h1", { dir: "auto" }, greeting() + ", " + (S.who.display || S.who.subject)), h("p", {}, fmtDate(S.today || ""))),
     any ? h("div", { class: "stat-strip" }, h("div", {}, h("b", {}, String(S.mine.length)), h("span", {}, t("openN"))), h("div", { class: n("overdue") ? "late" : "" }, h("b", {}, String(n("overdue"))), h("span", {}, t("overdue"))), h("div", {}, h("b", {}, String(n("today"))), h("span", {}, t("todayB")))) : null,
-    !any ? h("div", { class: "empty" }, ico("sparkle"), h("b", {}, t("nothingOpen")), h("span", {}, t("nothingOpenHint"))) : null,
+    !any && !(S.pageTasks || []).length ? h("div", { class: "empty" }, ico("sparkle"), h("b", {}, t("nothingOpen")), h("span", {}, t("nothingOpenHint"))) : null,
     f && f.start.length ? h("div", { class: "panel start" }, h("h2", {}, t("startHere")), ...f.start.map(taskRow)) : null,
     f && f.also.length ? h("div", { class: "panel" }, h("h2", {}, t("alsoOpen")), ...f.also.map(taskRow)) : null,
+    (S.pageTasks || []).length ? h("div", { class: "panel" }, h("h2", {}, t("fromPages")), ...S.pageTasks.map(pageTaskRow)) : null,
     any ? h("details", { class: "panel" }, h("summary", { style: "cursor:pointer;font-weight:650" }, t("assignedAll")),
       ...groups.map(([k, label]) => { const items = S.mine.filter((x) => x.bucket === k); return items.length ? h("div", {}, h("div", { class: "section-title" }, label), ...items.map(taskRow)) : null; })) : null);
 }

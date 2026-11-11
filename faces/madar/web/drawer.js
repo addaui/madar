@@ -24,14 +24,18 @@ function drawer() {
   const task = S.openTask, p = S.project, writer = can(task, "projects.write");
   const f = {
     title: h("input", { type: "text", class: "pane-title", value: task.title, disabled: !writer, maxlength: 200, "aria-label": t("title"), dir: "auto" }),
-    priority: h("input", { type: "range", min: 0, max: 10, value: task.priority, disabled: !writer, "aria-label": t("priority") }),
+    priority: { value: task.priority },
     due: h("input", { type: "date", value: task.due || "", disabled: !writer, "aria-label": t("due") }),
     assignee: h("select", { disabled: !writer, "aria-label": t("assignee") }, h("option", { value: "" }, t("nobody")), ...S.members.map((m) => h("option", { value: m.subject, selected: m.subject === task.assignee }, m.display || m.subject))),
     status: h("select", { disabled: !writer, "aria-label": t("status") }, ...p.statuses.map((s) => h("option", { value: s.id, selected: s.id === task.status }, s.name))),
   };
   const bandOf = (n) => (n >= 9 ? "urgent" : n >= 7 ? "high" : n >= 4 ? "medium" : "low");
-  const prioShow = h("span", { class: "chip prio", "data-b": task.band }, ico("flag"), t(task.band));
-  f.priority.addEventListener("input", () => { const b = bandOf(Number(f.priority.value)); prioShow.dataset.b = b; prioShow.lastChild.textContent = t(b); });
+  // Priority is four named choices; each stands for a point of the 0 to 10 scale and keeps the stored value when its band is already chosen.
+  const BANDS = [["low", 2], ["medium", 5], ["high", 7], ["urgent", 9]];
+  const prioSeg = h("div", { class: "seg", role: "radiogroup", "aria-label": t("priority") });
+  const paintPrio = () => { const cur = bandOf(Number(f.priority.value)); for (const b of prioSeg.children) { b.setAttribute("aria-checked", String(b.dataset.b === cur)); } };
+  for (const [band, val] of BANDS) prioSeg.append(h("button", { type: "button", role: "radio", class: "seg-b", "data-b": band, disabled: !writer, onclick: () => { if (bandOf(Number(f.priority.value)) === band) return; f.priority.value = val; paintPrio(); markDirty(); } }, t(band)));
+  paintPrio();
   // the description is rich text
   let descDirty = false, foot;
   const markDirty = () => { if (foot) foot.hidden = false; };
@@ -69,7 +73,7 @@ function drawer() {
       taskCode(task) ? h("div", { class: "pane-code" }, codeChip(taskCode(task), true)) : null,
       h("div", { class: "tab-d" }, h("div", { class: "props" },
         prop("task", t("status"), f.status),
-        prop("flag", t("priority"), h("div", { class: "prio-val" }, f.priority, prioShow)),
+        prop("flag", t("priority"), prioSeg),
         prop("calendar", t("due"), f.due),
         rep ? prop("repeat", t("repeat"), rep.el) : null,
         prop("user", t("assignee"), h("span", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, task.assignee ? avatar(task.assignee, personName(task.assignee), "sm") : null, f.assignee)),

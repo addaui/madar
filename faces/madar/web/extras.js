@@ -19,7 +19,7 @@ function openSearch() {
   const run = async () => {
     const q = input.value.trim(), mine = ++seq;
     if (q.length < 2) { rows = []; out.replaceChildren(h("div", { class: "muted", style: "padding:14px 12px" }, t("searchHint"))); return; }
-    const res = await attempt(() => call("search.query", { q, limit: 20 }));
+    const res = await attempt(() => call("search.query", S.ws && !S.searchAll ? { q, limit: 20, space: curSpace() } : { q, limit: 20 }));
     if (mine !== seq || !res) return;
     rows = res.items; at = 0;
     out.replaceChildren(...(rows.length ? rows.map((x) => h("button", { class: "found", type: "button", role: "option", onclick: () => pick(x) },
@@ -35,7 +35,9 @@ function openSearch() {
     else if (e.key === "Enter" && rows[at]) { e.preventDefault(); pick(rows[at]); }
   });
   out.append(h("div", { class: "muted", style: "padding:14px 12px" }, t("searchHint")));
-  m = openModal(t("search").replace("…", ""), h("div", {}, h("div", { class: "palette-input" }, ico("search"), input), out,
+  // search belongs to the Space you are in; one switch widens it to everything you can see
+  const scope = S.ws ? h("button", { type: "button", class: "scope-chip", "aria-pressed": String(!!S.searchAll), onclick: (e) => { S.searchAll = !S.searchAll; e.currentTarget.setAttribute("aria-pressed", String(S.searchAll)); e.currentTarget.textContent = S.searchAll ? t("searchEverywhere") : curSpaceName(); run(); input.focus(); } }, S.searchAll ? t("searchEverywhere") : curSpaceName()) : null;
+  m = openModal(t("search").replace("…", ""), h("div", {}, h("div", { class: "palette-input" }, ico("search"), input, scope), out,
     h("div", { class: "palette-foot" }, h("span", {}, h("kbd", {}, "↑"), " ", h("kbd", {}, "↓"), " " + t("kMove")), h("span", {}, h("kbd", {}, "↵"), " " + t("kOpen")), h("span", {}, h("kbd", {}, "Esc"), " " + t("close")))), { palette: true });
   input.focus();
 }
@@ -86,24 +88,58 @@ function repeatControl(task, writer) {
     same: (v) => JSON.stringify(v) === JSON.stringify(task.repeat || null) };
 }
 
+// ---------- uploads: any file sent to the server shows what is happening ----------
+Object.assign(STR.en, { uploaded: "Uploaded", readingFile: "Reading the file…", sendingFile: "Sending…", savingFile: "Saving…", uploadFailed: "The upload did not finish" });
+Object.assign(STR.ar, { uploaded: "تم الرفع", readingFile: "جارٍ قراءة الملف…", sendingFile: "جارٍ الإرسال…", savingFile: "جارٍ الحفظ…", uploadFailed: "لم يكتمل الرفع" });
+/** A progress bar and a line saying which step it is on: reading the file, sending it, saving it. */
+function progressBox() {
+  const fill = h("div", { class: "progress-fill" }), bar = h("div", { class: "progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": "0" }, fill), label = h("div", { class: "muted progress-label", "aria-live": "polite" }, "");
+  const el = h("div", { class: "progress-box", hidden: true }, bar, label);
+  return {
+    el,
+    /** step: "read", "send" or "save"; fraction 0–1 within the step. Reading is the first tenth, sending the next eight, saving waits for the server. */
+    set(step, fraction = 0) {
+      el.hidden = false; bar.classList.toggle("indeterminate", step === "save"); bar.classList.remove("failed");
+      const pct = step === "read" ? fraction * 10 : step === "send" ? 10 + fraction * 80 : 95;
+      fill.style.width = pct + "%"; bar.setAttribute("aria-valuenow", String(Math.round(pct)));
+      label.textContent = t(step === "read" ? "readingFile" : step === "send" ? "sendingFile" : "savingFile") + (step === "send" ? " " + Math.round(fraction * 100) + "%" : "");
+    },
+    done() { bar.classList.remove("indeterminate"); fill.style.width = "100%"; label.textContent = t("uploaded"); },
+    fail(message) { bar.classList.remove("indeterminate"); bar.classList.add("failed"); label.textContent = message || t("uploadFailed"); el.hidden = false; },
+  };
+}
+/** Uploads a file from this computer with a progress box; resolves with the stored file ({id, url, …}) or null. */
+async function uploadFile(f, box, { maxBytes = 4 * 1024 * 1024 } = {}) {
+  if (f.size > maxBytes) { box.fail(t("fileTooBig")); return null; }
+  box.set("read", 0);
+  const data = await new Promise((ok) => { const r = new FileReader(); r.onprogress = (e) => { if (e.lengthComputable) box.set("read", e.loaded / e.total); }; r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => ok(null); r.readAsDataURL(f); });
+  if (data === null) { box.fail(); return null; }
+  const input = { name: f.name, data }; if (!personal() && S.project) input.project = S.project.id;
+  box.set("send", 0);
+  try {
+    const out = await callProgress("files.upload", input, (fr) => box.set(fr >= 1 ? "save" : "send", fr));
+    box.done(); return out;
+  } catch (e) { if (e instanceof Refused) { box.fail((e.key && STR[lang][e.key]) || e.message); return null; } throw e; }
+}
+
 // ---------- images: an address, or a file from this computer ----------
 function askImage(label) {
   return new Promise((resolve) => {
-    const url = h("input", { type: "text", "aria-label": label, placeholder: "https://…", style: "width:100%" }), note = h("div", { class: "muted", style: "margin-block-start:8px" }, "");
-    let done = false; const finish = (v) => { if (!done) { done = true; m.close(); resolve(v); } };
+    const url = h("input", { type: "text", "aria-label": label, placeholder: "https://…", style: "width:100%" }), box = progressBox();
+    let done = false, busy = false; const finish = (v) => { if (!done) { done = true; m.close(); resolve(v); } };
+    const pick = btn(t("uploadImage"), { icon: "upload", onclick: () => file.click() });
+    const ok = btn(t("ok"), { kind: "primary", type: "submit" });
     const file = h("input", { type: "file", accept: "image/png,image/jpeg,image/gif,image/webp", hidden: true, onchange: async () => {
-      const f = file.files[0]; if (!f) return;
-      if (f.size > 4 * 1024 * 1024) { note.textContent = t("fileTooBig"); return; }
-      note.textContent = t("uploading");
-      const data = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.readAsDataURL(f); });
-      const input = { name: f.name, data }; if (!personal() && S.project) input.project = S.project.id;
-      const out = await attempt(() => call("files.upload", input));
-      if (out) finish(out.url); else note.textContent = (attempt.last && attempt.last.message) || t("offline");
+      const f = file.files[0]; if (!f || busy) return;
+      busy = true; for (const b of [pick, ok, url]) b.disabled = true;
+      const out = await uploadFile(f, box);
+      if (out) { toast(t("uploaded")); finish(out.url); return; }
+      busy = false; for (const b of [pick, ok, url]) b.disabled = false; file.value = "";
     } });
-    const form = h("form", { onsubmit: (e) => { e.preventDefault(); finish(url.value.trim() || null); } }, url,
-      hasOp("files.upload") ? h("div", { class: "row", style: "margin-block-start:10px" }, btn(t("uploadImage"), { icon: "upload", onclick: () => file.click() }), file) : null, note,
-      h("div", { class: "btn-row" }, btn(t("cancel"), { onclick: () => finish(null) }), btn(t("ok"), { kind: "primary", type: "submit" })));
-    const m = openModal(label, form, { onClose: () => finish(null) });
+    const form = h("form", { onsubmit: (e) => { e.preventDefault(); if (!busy) finish(url.value.trim() || null); } }, url,
+      hasOp("files.upload") ? h("div", { class: "row", style: "margin-block-start:10px" }, pick, file) : null, box.el,
+      h("div", { class: "btn-row" }, btn(t("cancel"), { onclick: () => { if (!busy) finish(null); } }), ok));
+    const m = openModal(label, form, { onClose: () => { if (busy) return; finish(null); } });
     url.focus();
   });
 }

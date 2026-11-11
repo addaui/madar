@@ -18,5 +18,8 @@ nuah-shell = { git = "https://github.com/addaui/nuah", tag = "v0.10.0" }
 nuah-console = { git = "https://github.com/addaui/nuah", tag = "v0.10.0" }
 nuah-setup-web = { git = "https://github.com/addaui/nuah", tag = "v0.10.0" }
 nuah-prefs = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.2.0" }
-nuah-appearance = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.2.0" }
+# not released yet: the `layout` token and the Elevated theme; becomes a tag of nuah-plugins when they are released (ADR 0055)
+nuah-appearance = { path = "../nuah-plugins/crates/nuah-appearance" }
 nuah-metric-prometheus = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.2.0" }
+# not released yet: becomes a tag of nuah-plugins when `@nuah/emoji` is released (ADR 0053)
+nuah-emoji = { path = "../nuah-plugins/crates/nuah-emoji" }

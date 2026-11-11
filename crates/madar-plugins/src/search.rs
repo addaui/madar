@@ -52,7 +52,7 @@ impl Plugin for Search {
             "operations": {
                 "search.query": {"kind": "query", "description": "Find tasks, knowledge and pages by words in their title or text",
                     "input": {"type":"object","required":["q"],"properties":{"q":{"type":"string","minLength":2,"maxLength":100},
-                        "kinds":{"type":"array","items":{"enum":["task","knowledge","page"]},"maxItems":3},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false},
+                        "kinds":{"type":"array","items":{"enum":["task","knowledge","page"]},"maxItems":3},"space":{"type":"string","maxLength":60},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false},
                     "output": {"type":"object","required":["items"]}}
             }
         }))
@@ -68,6 +68,15 @@ impl Plugin for Search {
                 }
             }
             items.retain(|x| kinds.is_empty() || kinds.iter().any(|k| k == text(x, "kind")));
+            // limited to one Space: your own pages carry theirs, a project is where you placed it (the default when you did not)
+            if let Some(space) = i.get("space").and_then(|s| s.as_str()) {
+                let places: std::collections::BTreeMap<String, String> = tx.call("workspaces.list", json!({})).ok()
+                    .and_then(|w| w["placements"].as_array().cloned()).unwrap_or_default().iter().map(|p| (text(p, "project").to_string(), text(p, "workspace").to_string())).collect();
+                items.retain(|x| match x["space"].as_str() {
+                    Some(s) => s == space,
+                    None => places.get(text(x, "project")).map(|w| w.as_str()).unwrap_or("default") == space,
+                });
+            }
             items.sort_by(|a, b| b["score"].as_f64().partial_cmp(&a["score"].as_f64()).unwrap_or(std::cmp::Ordering::Equal).then_with(|| text(a, "title").cmp(text(b, "title"))));
             items.truncate(limit);
             Ok(json!({"items": items}))

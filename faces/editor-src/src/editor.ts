@@ -25,6 +25,8 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import Placeholder from '@tiptap/extension-placeholder'
 import History from '@tiptap/extension-history'
 import { common, createLowlight } from 'lowlight'
+import { Plugin, PluginKey, NodeSelection, TextSelection, Selection } from 'prosemirror-state'
+import { Decoration, DecorationSet } from 'prosemirror-view'
 
 type Json = any
 const safeUrl = (u: string) => /^(https?:\/\/|\/|#|mailto:)/i.test(u || '')
@@ -34,6 +36,34 @@ const BlockDir = Extension.create({
   name: 'blockDir',
   addGlobalAttributes() {
     return [{ types: ['paragraph', 'heading', 'blockquote', 'codeBlock'], attributes: { dirAuto: { default: 'auto', rendered: true, renderHTML: () => ({ dir: 'auto' }), parseHTML: () => 'auto' } } }]
+  },
+})
+
+// ---- every block has a stable id (ADR 0043) ----
+// A new block gets an id when the document changes; a copy that repeats an id gets a new one, the first keeps it.
+// A block saved before this existed gets its id the next time its page is edited and saved (never on opening a page).
+const BLOCK_TYPES = ['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem', 'callout', 'toggle', 'youtube', 'image', 'linkPreview', 'horizontalRule']
+const newBlockId = () => { const a = new Uint8Array(8); crypto.getRandomValues(a); return 'b' + Array.from(a, (x) => (x % 36).toString(36)).join('') }
+const BlockId = Extension.create({
+  name: 'blockId',
+  addGlobalAttributes() {
+    return [{ types: BLOCK_TYPES, attributes: { blockId: { default: null, rendered: true, parseHTML: (el: HTMLElement) => el.getAttribute('data-bid'), renderHTML: (a: any) => (a.blockId ? { 'data-bid': a.blockId } : {}) } } }]
+  },
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey('blockId'),
+      appendTransaction(trs, _old, state) {
+        if (!trs.some((t) => t.docChanged)) return null
+        const seen = new Set<string>(), tr = state.tr
+        let changed = false
+        state.doc.descendants((node, pos) => {
+          if (!BLOCK_TYPES.includes(node.type.name)) return
+          const id = node.attrs.blockId
+          if (!id || seen.has(id)) { tr.setNodeMarkup(pos, undefined, { ...node.attrs, blockId: newBlockId() }); changed = true } else seen.add(id)
+        })
+        return changed ? tr.setMeta('addToHistory', false) : null
+      },
+    })]
   },
 })
 
@@ -64,9 +94,9 @@ const Toggle = Node.create({
 
 const EntityRef = Node.create({
   name: 'entityRef', group: 'inline', inline: true, atom: true, selectable: true,
-  addAttributes() { return { kind: { default: '' }, id: { default: '' }, title: { default: '' } } },
+  addAttributes() { return { kind: { default: '' }, id: { default: '' }, title: { default: '' }, icon: { default: '' } } },
   parseHTML() { return [{ tag: 'span.entity-ref' }] },
-  renderHTML({ node }) { return ['span', { class: 'entity-ref', 'data-kind': node.attrs.kind, 'data-id': node.attrs.id }, (node.attrs.kind === 'tasks.task' ? '☑ ' : '▤ ') + (node.attrs.title || node.attrs.id)] },
+  renderHTML({ node }) { return ['span', { class: 'entity-ref', 'data-kind': node.attrs.kind, 'data-id': node.attrs.id }, ['span', { class: 'er-ico' }, node.attrs.icon || (node.attrs.kind === 'tasks.task' ? '☑' : '▤')], ['span', { class: 'er-title' }, node.attrs.title || node.attrs.id]] },
 })
 
 const embedUrl = (u: string) => {
@@ -122,13 +152,18 @@ const UnknownBlock = Node.create({
 
 const lowlight = createLowlight(common)
 
-function extensions(placeholder: string): any[] {
+function extensions(placeholder: string, calloutTitle: string): any[] {
   return [
     Document, Paragraph, Text, HardBreak, History, Bold, Italic, Underline, Strike, Code, Highlight,
     Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' }, isAllowedUri: (u: string) => safeUrl(u) }),
     Heading.configure({ levels: [1, 2, 3] }), Blockquote, BulletList, OrderedList, ListItem, TaskList, TaskItem.configure({ nested: true }),
-    HorizontalRule, CodeBlockLowlight.configure({ lowlight }), Placeholder.configure({ placeholder }),
-    Callout, Toggle, EntityRef, YouTube, ImageBlock, LinkPreview, UnknownBlock, BlockDir, Ways,
+    HorizontalRule, CodeBlockLowlight.configure({ lowlight }), Placeholder.configure({ includeChildren: true, placeholder: ({ editor, node, pos }: { editor: any; node: any; pos: number }) => {
+      // the page's own hint on its empty top-level line; a callout's first line is its title
+      const $p = editor.state.doc.resolve(pos), parent = $p.parent
+      if (parent.type.name === 'callout') return parent.firstChild === node ? calloutTitle : ''
+      return $p.depth === 0 ? placeholder : ''
+    } }),
+    Callout, Toggle, EntityRef, YouTube, ImageBlock, LinkPreview, UnknownBlock, BlockDir, BlockId, Ways,
   ]
 }
 
@@ -152,7 +187,7 @@ function unwrapUnknown(n: Json): Json {
   if (n.type === 'unknownBlock') { try { return JSON.parse(n.attrs.raw) } catch { return { type: 'paragraph' } } }
   const out: Json = { ...n }
   // dirAuto only tells the browser to pick each block's direction; it is not content
-  if (out.attrs && 'dirAuto' in out.attrs) { const { dirAuto, ...rest } = out.attrs; if (Object.keys(rest).length) out.attrs = rest; else delete out.attrs }
+  if (out.attrs && ('dirAuto' in out.attrs || out.attrs.blockId === null)) { const { dirAuto, ...rest } = out.attrs; if (rest.blockId === null) delete rest.blockId; if (Object.keys(rest).length) out.attrs = rest; else delete out.attrs }
   if (n.content) out.content = n.content.map(unwrapUnknown)
   return out
 }
@@ -193,13 +228,21 @@ const COMMANDS: Record<string, Cmd> = {
 
 export interface Opts {
   content?: Json; editable?: boolean; lang?: string; placeholder?: string
-  blocks?: { id: string; label: Json; group: string; keywords?: string }[]
+  // The slash menu's blocks, as the Core lists them. `icon` is a name the Face draws (see `icon`); a block with `variants` opens a submenu.
+  blocks?: { id: string; label: Json; group: string; keywords?: string; icon?: string; variants?: { id: string; label: Json; keywords?: string; icon?: string }[] }[]
+  icon?: (name: string) => Node | null
   onChange?: (doc: Json) => void
   askUrl?: (label: string) => Promise<string | null>
+  // Makes a text block the title of a new page under this one; resolves with the new page, or null.
+  turnIntoPage?: (title: string) => Promise<{ id: string; title: string; icon?: string | null } | null>
   preview?: (url: string) => Promise<{ title?: string; description?: string | null; site?: string | null; image?: string | null } | null>
   pickRef?: () => Promise<{ kind: string; id: string; title: string } | null>
   onOpenRef?: (kind: string, id: string) => void
   toolbar?: boolean
+  // The block handles in the left margin (ADR 0046). Only a page has the room for them.
+  gutter?: boolean
+  // Comments on blocks (ADR 0046): how many threads each block has (by block id), and what to do when the comment button is pressed.
+  comments?: { counts: () => Record<string, number>; open: (blockId: string, anchor: HTMLElement) => void }
   askText?: (label: string, initial?: string) => Promise<string | null>
   // Opens the context menu at a point. The Face draws it (one menu for the whole app); items are {label, icon?, checked?, danger?, disabled?, heading?, onclick?, sub?}.
   menu?: (x: number, y: number, items: any[]) => void
@@ -227,17 +270,21 @@ const LBL: Record<string, Record<string, string>> = {
   en: { turnInto: 'Turn into', text: 'Text', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', bullets: 'Bulleted list', numbers: 'Numbered list', checklist: 'Checklist', quote: 'Quote', code: 'Code block', callout: 'Callout', toggle: 'Toggle',
     format: 'Format', bold: 'Bold', italic: 'Italic', underline: 'Underline', strike: 'Strikethrough', inlineCode: 'Code', highlight: 'Highlight', link: 'Link…', openLink: 'Open link', editLink: 'Edit link…', removeLink: 'Remove link', showAsCard: 'Show as card',
     lineAbove: 'Add a line above', lineBelow: 'Add a line below', moveUp: 'Move up', moveDown: 'Move down', duplicate: 'Duplicate', delete: 'Delete',
-    calloutType: 'Callout type', info: 'Info', tip: 'Tip', warning: 'Warning', danger: 'Danger', unwrap: 'Turn into text', exitBlock: 'Add a line after the callout',
+    calloutTitle: 'Title', turnPage: 'Page', calloutType: 'Callout type', info: 'Info', tip: 'Tip', warning: 'Warning', danger: 'Danger', unwrap: 'Turn into text', exitBlock: 'Add a line after the callout',
     openVideo: 'Open on YouTube', play: 'Play or interact', changeAddress: 'Change address…', youtubeAddress: 'YouTube address', size: 'Size', small: 'Small', medium: 'Medium', large: 'Large', wide: 'Wide', full: 'Full width', original: 'Original',
     shape: 'Shape', r169: '16:9', r43: '4:3', r11: 'Square', startAt: 'Start at…', startAsk: 'Start at (seconds, or 1:30)', showAs: 'Show as', asCard: 'Link card', asCompact: 'Compact link card', asLink: 'Plain link', embedVideo: 'Embed the video', refresh: 'Refresh preview',
     altText: 'Alt text…', altAsk: 'Describe the image', openImage: 'Open image', linkAddress: 'Link address', imageAddress: 'Image address' },
   ar: { turnInto: 'تحويل إلى', text: 'نص', h1: 'عنوان 1', h2: 'عنوان 2', h3: 'عنوان 3', bullets: 'قائمة نقطية', numbers: 'قائمة مرقمة', checklist: 'قائمة مهام', quote: 'اقتباس', code: 'كتلة كود', callout: 'تنبيه', toggle: 'قسم قابل للطي',
     format: 'تنسيق', bold: 'غامق', italic: 'مائل', underline: 'تسطير', strike: 'يتوسطه خط', inlineCode: 'كود', highlight: 'تمييز', link: 'رابط…', openLink: 'فتح الرابط', editLink: 'تعديل الرابط…', removeLink: 'إزالة الرابط', showAsCard: 'عرض كبطاقة',
     lineAbove: 'إضافة سطر أعلاه', lineBelow: 'إضافة سطر أسفله', moveUp: 'نقل للأعلى', moveDown: 'نقل للأسفل', duplicate: 'تكرار', delete: 'حذف',
-    calloutType: 'نوع التنبيه', info: 'معلومة', tip: 'نصيحة', warning: 'تحذير', danger: 'خطر', unwrap: 'تحويل إلى نص', exitBlock: 'إضافة سطر بعد التنبيه',
+    calloutTitle: 'العنوان', turnPage: 'صفحة', calloutType: 'نوع التنبيه', info: 'معلومة', tip: 'نصيحة', warning: 'تحذير', danger: 'خطر', unwrap: 'تحويل إلى نص', exitBlock: 'إضافة سطر بعد التنبيه',
     openVideo: 'فتح على يوتيوب', play: 'تشغيل أو تفاعل', changeAddress: 'تغيير العنوان…', youtubeAddress: 'عنوان يوتيوب', size: 'الحجم', small: 'صغير', medium: 'متوسط', large: 'كبير', wide: 'عريض', full: 'عرض كامل', original: 'الأصلي',
     shape: 'الشكل', r169: '16:9', r43: '4:3', r11: 'مربع', startAt: 'البدء من…', startAsk: 'البدء من (ثوانٍ أو 1:30)', showAs: 'العرض كـ', asCard: 'بطاقة رابط', asCompact: 'بطاقة رابط مضغوطة', asLink: 'رابط عادي', embedVideo: 'تضمين الفيديو', refresh: 'تحديث المعاينة',
     altText: 'النص البديل…', altAsk: 'صف الصورة', openImage: 'فتح الصورة', linkAddress: 'عنوان الرابط', imageAddress: 'عنوان الصورة' },
+}
+const GROUPS: Record<string, Record<string, string>> = {
+  en: { text: 'Text', list: 'Lists', layout: 'Layout', media: 'Media', embed: 'Embeds', reference: 'Links' },
+  ar: { text: 'نص', list: 'قوائم', layout: 'تخطيط', media: 'وسائط', embed: 'تضمين', reference: 'روابط' },
 }
 const CONTAINERS = ['doc', 'callout', 'toggle', 'blockquote', 'listItem', 'taskItem']
 const NEEDS_LINE_AFTER = new Set(['callout', 'toggle', 'youtube', 'image', 'linkPreview', 'unknownBlock', 'horizontalRule'])
@@ -305,7 +352,7 @@ function create(host: HTMLElement, o: Opts) {
   let silent = true
 
   const editor = new Editor({
-    element: body, extensions: extensions(o.placeholder || ''), editable,
+    element: body, extensions: extensions(o.placeholder || '', (LBL[lang] || LBL.en).calloutTitle), editable,
     content: wrapUnknown(o.content && o.content.type === 'doc' ? o.content : EMPTY),
     editorProps: {
       attributes: { dir: 'auto', class: 'ed-content', spellcheck: 'true' },
@@ -326,11 +373,38 @@ function create(host: HTMLElement, o: Opts) {
     bar.append(b)
     return { b, active }
   })
-  function paintBar() { for (const { b, active } of buttons) b.classList.toggle('on', editable && active(editor)); bar.hidden = !editable || o.toolbar === false }
+  // The format bar floats above a selected piece of text and is gone otherwise (Craft's way); the keys still work.
+  bar.classList.add('ed-bubble')
+  function paintBar() {
+    for (const { b, active } of buttons) b.classList.toggle('on', editable && active(editor))
+    const sel: any = editor.state.selection
+    const show = editable && o.toolbar !== false && !sel.empty && !sel.node && editor.view.hasFocus() && sel.$from.parent.type.name !== 'codeBlock'
+    bar.hidden = !show
+    if (!show) return
+    const a = editor.view.coordsAtPos(sel.from), z = editor.view.coordsAtPos(sel.to), r = host.getBoundingClientRect()
+    const mid = (Math.min(a.left, z.left) + Math.max(a.right, z.right)) / 2 - r.left, w = Math.min(bar.offsetWidth || 340, r.width)
+    bar.style.insetInlineStart = Math.max(0, Math.min(r.width - w, mid - w / 2)) + 'px'
+    // above the selection, or below it when the editor's top edge is too close (a small box such as a task's description)
+    const above = Math.min(a.top, z.top) - r.top - bar.offsetHeight - 8
+    bar.style.top = (above >= -2 ? above : Math.max(a.bottom, z.bottom) - r.top + 8) + 'px'
+  }
+  host.addEventListener('focusout', () => setTimeout(paintBar, 0))
 
   // slash menu
-  const known = (o.blocks || []).filter((b) => COMMANDS[b.id])
-  let items: typeof known = [], at = 0, from = -1
+  // One entry per row. A block with variants is a row that opens a submenu (callout -> info, tip, warning, danger); while typing a query the
+  // variants are listed flat ("Callout: Danger") so a search finds them at once.
+  type Entry = { id: string; label: string; group: string; keywords: string; icon?: string; variants?: Entry[] }
+  const lbl = (l: Json) => (l && (l[lang] || l.en)) || ''
+  const entries: Entry[] = (o.blocks || []).flatMap((b): Entry[] => {
+    const variants = (b.variants || []).filter((v) => COMMANDS[v.id]).map((v) => ({ id: v.id, label: lbl(v.label), group: b.group, keywords: (v.keywords || '') + ' ' + (b.keywords || '') + ' ' + lbl(b.label).toLowerCase(), icon: v.icon || b.icon }))
+    if (variants.length) return [{ id: b.id, label: lbl(b.label), group: b.group, keywords: b.keywords || '', icon: b.icon, variants }]
+    return COMMANDS[b.id] ? [{ id: b.id, label: lbl(b.label), group: b.group, keywords: b.keywords || '', icon: b.icon }] : []
+  })
+  let items: Entry[] = [], at = 0, from = -1
+  let sub: { parent: number; at: number } | null = null
+  const subMenu = document.createElement('div'); subMenu.className = 'ed-slash ed-sub'; subMenu.hidden = true; subMenu.setAttribute('role', 'listbox')
+  host.append(subMenu)
+  const iconOf = (name?: string): HTMLElement => { const s = document.createElement('span'); s.className = 'ed-ico'; const n = name && o.icon ? o.icon(name) : null; if (n) s.append(n); return s }
   function slashState() {
     const { state } = editor
     const $f = state.selection.$from
@@ -339,35 +413,88 @@ function create(host: HTMLElement, o: Opts) {
     const m = before.match(/(?:^|\s)\/([\p{L}\p{N}]*)$/u)
     return m ? { query: m[1].toLowerCase(), start: $f.pos - m[1].length - 1 } : null
   }
-  function slashUpdate() {
-    const s = slashState()
-    if (!s || !known.length) { menu.hidden = true; from = -1; return }
-    from = s.start
-    items = known.filter((b) => !s.query || (b.label[lang] || '').toLowerCase().includes(s.query) || b.id.toLowerCase().includes(s.query) || (b.keywords || '').includes(s.query))
-    if (!items.length) { menu.hidden = true; return }
-    at = Math.min(at, items.length - 1)
-    menu.replaceChildren(...items.map((b, i) => {
-      const d = document.createElement('div'); d.className = 'ed-item' + (i === at ? ' on' : ''); d.setAttribute('role', 'option'); d.textContent = b.label[lang] || b.label.en
-      d.onmousedown = (ev) => { ev.preventDefault(); choose(i) }
+  const matches = (e: Entry, q: string) => !q || e.label.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || e.keywords.includes(q)
+  function closeSub() { sub = null; subMenu.hidden = true }
+  function openSub(parent: number, rowEl?: HTMLElement) {
+    const p = items[parent]; if (!p || !p.variants) return
+    sub = { parent, at: sub && sub.parent === parent ? sub.at : 0 }
+    subMenu.replaceChildren(...p.variants.map((v, j) => {
+      const d = document.createElement('div'); d.className = 'ed-item' + (j === sub!.at ? ' on' : ''); d.setAttribute('role', 'option'); d.dataset.id = v.id
+      d.append(iconOf(v.icon), Object.assign(document.createElement('span'), { className: 'ed-label', textContent: v.label }))
+      d.onmousedown = (ev) => { ev.preventDefault(); chooseEntry(v) }
+      d.onmouseenter = () => { if (sub) { sub.at = j; subMenu.querySelectorAll('.ed-item').forEach((x, k) => x.classList.toggle('on', k === j)) } }
       return d
     }))
-    const c = editor.view.coordsAtPos(editor.state.selection.from), r = host.getBoundingClientRect()
-    menu.style.insetInlineStart = Math.max(0, c.left - r.left) + 'px'; menu.style.top = (c.bottom - r.top + 4) + 'px'
-    menu.hidden = false
+    subMenu.hidden = false
+    // beside the row, on the side with room
+    const row = rowEl || (menu.querySelectorAll('.ed-item')[parent] as HTMLElement | undefined), hr = host.getBoundingClientRect()
+    if (row) {
+      const rr = row.getBoundingClientRect(), mr = menu.getBoundingClientRect(), w = subMenu.offsetWidth || 190, rtl = getComputedStyle(host).direction === 'rtl'
+      const wantRight = !rtl && mr.right + 4 + w <= window.innerWidth - 8 || rtl && mr.left - 4 - w < 8
+      subMenu.style.insetInlineStart = (wantRight ? mr.right - hr.left + 4 : mr.left - hr.left - w - 4) + 'px'
+      subMenu.style.insetInlineEnd = 'auto'
+      subMenu.style.top = Math.max(0, rr.top - hr.top - 6) + 'px'
+    }
   }
-  function choose(i: number) {
-    const b = items[i]; if (!b) return
+  function slashUpdate() {
+    const s = slashState()
+    if (!s || !entries.length) { menu.hidden = true; closeSub(); from = -1; return }
+    from = s.start
+    // typing filters across every group at once; the groups only keep the list readable (ADR 0046)
+    const flat = s.query ? entries.flatMap((e) => (e.variants ? e.variants.map((v) => ({ ...v, label: e.label + ': ' + v.label })) : [e])) : entries
+    let list = flat.filter((e) => matches(e, s.query))
+    if (!list.length) { menu.hidden = true; closeSub(); return }
+    const order: string[] = []
+    for (const b of list) if (!order.includes(b.group)) order.push(b.group)
+    list = order.flatMap((g) => list.filter((b) => b.group === g))
+    items = list
+    at = Math.min(at, items.length - 1)
+    if (s.query) closeSub()
+    const rows: HTMLElement[] = []
+    items.forEach((b, i) => {
+      if (i === 0 || items[i - 1].group !== b.group) { const g = document.createElement('div'); g.className = 'ed-group'; g.setAttribute('role', 'presentation'); g.textContent = (GROUPS[lang] || GROUPS.en)[b.group] || b.group; rows.push(g) }
+      const d = document.createElement('div'); d.className = 'ed-item' + (i === at ? ' on' : '') + (b.variants ? ' has-sub' : ''); d.setAttribute('role', 'option'); d.dataset.id = b.id
+      if (b.variants) d.setAttribute('aria-haspopup', 'listbox')
+      d.append(iconOf(b.icon), Object.assign(document.createElement('span'), { className: 'ed-label', textContent: b.label }))
+      if (b.variants) { const m = document.createElement('span'); m.className = 'ed-more'; m.textContent = getComputedStyle(host).direction === 'rtl' ? '‹' : '›'; d.append(m) }
+      d.onmousedown = (ev) => { ev.preventDefault(); if (b.variants) openSub(i, d); else chooseEntry(b) }
+      d.onmouseenter = () => { if (b.variants) { at = i; menu.querySelectorAll('.ed-item').forEach((x, k) => x.classList.toggle('on', k === i)); openSub(i, d) } else if (sub) closeSub() }
+      rows.push(d)
+    })
+    menu.replaceChildren(...rows)
+    menu.querySelector('.ed-item.on')?.scrollIntoView({ block: 'nearest' })
+    const c = editor.view.coordsAtPos(editor.state.selection.from), r = host.getBoundingClientRect()
+    menu.hidden = false
+    // it opens below the line, or above it when the page ends sooner than the menu does
+    const box = (host.closest('.page-scroll') as HTMLElement | null)?.getBoundingClientRect(), mh = menu.offsetHeight
+    const room = (box ? box.bottom : window.innerHeight) - c.bottom, over = c.top - (box ? box.top : 0)
+    menu.style.insetInlineStart = Math.max(0, c.left - r.left) + 'px'
+    menu.style.top = (room < mh + 8 && over > room ? c.top - r.top - mh - 4 : c.bottom - r.top + 4) + 'px'
+    if (sub) openSub(sub.parent)
+  }
+  function chooseEntry(b: Entry) {
     const to = editor.state.selection.from
     editor.chain().focus().deleteRange({ from, to }).run()
-    menu.hidden = true
+    menu.hidden = true; closeSub()
     Promise.resolve(COMMANDS[b.id](editor, o)).catch(() => {})
   }
   function slashKey(ev: KeyboardEvent): boolean {
     if (menu.hidden) return false
+    const inSub = !!sub && !subMenu.hidden
+    if (inSub && sub) {
+      const vs = items[sub.parent]?.variants || []
+      const paint = () => subMenu.querySelectorAll('.ed-item').forEach((x, k) => x.classList.toggle('on', k === sub!.at))
+      if (ev.key === 'ArrowDown') { sub.at = (sub.at + 1) % vs.length; paint(); return true }
+      if (ev.key === 'ArrowUp') { sub.at = (sub.at + vs.length - 1) % vs.length; paint(); return true }
+      if (ev.key === 'Enter' || ev.key === 'Tab') { if (vs[sub.at]) chooseEntry(vs[sub.at]); return true }
+      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight' || ev.key === 'Escape') { closeSub(); return true }
+      return false
+    }
     if (ev.key === 'ArrowDown') { at = (at + 1) % items.length; slashUpdate(); return true }
     if (ev.key === 'ArrowUp') { at = (at + items.length - 1) % items.length; slashUpdate(); return true }
-    if (ev.key === 'Enter' || ev.key === 'Tab') { choose(at); return true }
-    if (ev.key === 'Escape') { menu.hidden = true; return true }
+    if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') { if (items[at]?.variants) { openSub(at); return true } return false }
+    if (ev.key === 'Enter' || ev.key === 'Tab') { const e = items[at]; if (e?.variants) openSub(at); else if (e) chooseEntry(e); return true }
+    if (ev.key === 'Escape') { menu.hidden = true; closeSub(); return true }
     return false
   }
 
@@ -385,7 +512,7 @@ function create(host: HTMLElement, o: Opts) {
   // clicking the empty space under the text puts the cursor at the end
   host.addEventListener('mousedown', (ev) => {
     const t = ev.target as HTMLElement
-    if (editable && (t === host || t === body)) { ev.preventDefault(); editor.commands.focus('end') }
+    if (editable && (t === host || t === body)) { ev.preventDefault(); focusNow() }
   })
   // while editing, a video does not swallow clicks; double-click it to play or use it
   body.addEventListener('dblclick', (ev) => { const e = (ev.target as HTMLElement).closest?.('.embed'); if (e && editable) e.classList.toggle('live') })
@@ -423,8 +550,8 @@ function create(host: HTMLElement, o: Opts) {
     return { kind: 'text' }
   }
 
-  function commonItems(): any[] {
-    const u = unitOf(editor), tr = () => editor.state.tr, isList = u && (u.node.type.name === 'listItem' || u.node.type.name === 'taskItem')
+  function commonItems(forced?: { from: number; to: number; node: any }): any[] {
+    const u = forced || unitOf(editor), tr = () => editor.state.tr, isList = u && (u.node.type.name === 'listItem' || u.node.type.name === 'taskItem')
     const blank = () => (isList ? u!.node.type.createAndFill() : editor.state.schema.nodes.paragraph.create())
     const hasPrev = !!u && !!editor.state.doc.resolve(u.from).nodeBefore, hasNext = !!u && !!editor.state.doc.resolve(u.to).nodeAfter
     return [
@@ -439,7 +566,7 @@ function create(host: HTMLElement, o: Opts) {
   }
   const sizeItems = (pos: number, cur: string, list: [string, string][]) => list.map(([v, k]) => ({ label: T(k), checked: cur === v, onclick: () => setAttrs(pos, { size: v }) }))
 
-  function menuItems(tg: { kind: string; pos?: number; node?: any }): any[] {
+  function menuItems(tg: { kind: string; pos?: number; node?: any }, forced?: { from: number; to: number; node: any }): any[] {
     const items: any[] = [], c = () => editor.chain().focus()
     if (tg.kind === 'youtube') {
       const { pos, node } = tg as any, a = node.attrs, live = () => { const d = editor.view.nodeDOM(pos) as HTMLElement | null; d?.classList.toggle('live') }
@@ -486,6 +613,16 @@ function create(host: HTMLElement, o: Opts) {
           { label: T('showAsCard'), icon: 'page', onclick: () => { const u = unitOf(editor); if (!u) return; editor.chain().focus().insertContentAt({ from: u.from, to: u.to }, { type: 'linkPreview', attrs: { url: href, title: href } }).run(); fillPreview(u.from, href) } })
       }
       if (items.length) items.push('-')
+      // a text line can become a page of its own: the line is the page's title, and a card in its place leads to it
+      const pageItem = (): any[] => {
+        const $f = editor.state.selection.$from, blk = $f.parent
+        if (!o.turnIntoPage || !blk.isTextblock || !['paragraph', 'heading'].includes(blk.type.name) || !blk.textContent.trim() || $f.depth !== 1) return []
+        const from = $f.before(), to = $f.after(), title = blk.textContent.trim()
+        return [{ label: T('turnPage'), icon: 'page', onclick: async () => {
+          const r = await o.turnIntoPage!(title); if (!r) return
+          editor.chain().focus().insertContentAt({ from, to }, { type: 'paragraph', content: [{ type: 'entityRef', attrs: { kind: 'pages.page', id: r.id, title: r.title, icon: r.icon || '' } }] }).run()
+        } }]
+      }
       items.push({ label: T('turnInto'), icon: 'more', sub: () => [
         { label: T('text'), onclick: () => c().clearNodes().run() },
         { label: T('h1'), checked: editor.isActive('heading', { level: 1 }), onclick: () => c().clearNodes().setNode('heading', { level: 1 }).run() },
@@ -497,7 +634,7 @@ function create(host: HTMLElement, o: Opts) {
         { label: T('quote'), checked: editor.isActive('blockquote'), onclick: () => c().toggleBlockquote().run() },
         { label: T('code'), checked: editor.isActive('codeBlock'), onclick: () => c().toggleCodeBlock().run() },
         { label: T('callout'), onclick: () => (inCallout ? c().updateAttributes('callout', { tone: 'info' }).run() : c().clearNodes().wrapIn('callout', { tone: 'info' }).run()) },
-        { label: T('toggle'), onclick: () => c().clearNodes().wrapIn('toggle').run() }] })
+        { label: T('toggle'), onclick: () => c().clearNodes().wrapIn('toggle').run() }, ...pageItem()] })
       if (inCallout) {
         const tone = editor.getAttributes('callout').tone || 'info'
         items.push({ label: T('calloutType'), icon: 'flag', sub: () => ['info', 'tip', 'warning', 'danger'].map((k) => ({ label: T(k), checked: tone === k, onclick: () => c().updateAttributes('callout', { tone: k }).run() })) },
@@ -507,8 +644,80 @@ function create(host: HTMLElement, o: Opts) {
       }
     } else if (tg.kind === 'unknownBlock' || tg.kind === 'horizontalRule') { /* only the common items */ }
     if (items.length) items.push('-')
-    items.push(...commonItems())
+    items.push(...commonItems(forced))
     return items
+  }
+
+  // ---- the block handles (ADR 0046): in the margin beside the block under the pointer ----
+  // The margin reads, from the text outward: drag handle, a space, then (later) comment count and reactions.
+  if (o.gutter) {
+    const gutter = document.createElement('div'); gutter.className = 'ed-gutter'; gutter.hidden = true
+    const cmt = document.createElement('button'); cmt.type = 'button'; cmt.className = 'ed-gbtn ed-cmt'; cmt.title = 'Comments'; cmt.setAttribute('aria-label', 'Comments'); cmt.hidden = !o.comments
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'ed-gbtn'; add.textContent = '+'; add.title = 'Add a block'; add.setAttribute('aria-label', 'Add a block')
+    const grip = document.createElement('button'); grip.type = 'button'; grip.className = 'ed-gbtn ed-grip'; grip.textContent = '⋮⋮'; grip.draggable = true; grip.title = 'Drag to move, click for options'; grip.setAttribute('aria-label', 'Block options')
+    gutter.append(cmt, add, grip); host.append(gutter)
+    let gPos = -1, hideT: number | undefined
+    // the top-level block at the pointer's height, with a little slack so the gaps between blocks do not lose the handles
+    const topBlockAt = (y: number) => {
+      let found = -1
+      editor.state.doc.forEach((_n, offset) => {
+        if (found >= 0) return
+        const dom = editor.view.nodeDOM(offset) as HTMLElement | null
+        if (!dom || !dom.getBoundingClientRect) return
+        const r = dom.getBoundingClientRect()
+        if (y >= r.top - 10 && y <= r.bottom + 10) found = offset
+      })
+      return found
+    }
+    const paintCmt = () => {
+      const n = gPos >= 0 ? editor.state.doc.nodeAt(gPos) : null, id = n && n.attrs.blockId, c = id && o.comments ? (o.comments.counts()[id] || 0) : 0
+      cmt.textContent = c ? '💬 ' + c : '💬'; cmt.classList.toggle('has', c > 0)
+    }
+    const place = (pos: number) => {
+      const dom = editor.view.nodeDOM(pos) as HTMLElement | null
+      if (!dom || !dom.getBoundingClientRect) return
+      const r = dom.getBoundingClientRect(), hr = host.getBoundingClientRect()
+      gPos = pos; paintCmt(); gutter.hidden = false; gutter.style.top = Math.max(0, r.top - hr.top + 2) + 'px'
+    }
+    const hide = () => { clearTimeout(hideT); hideT = window.setTimeout(() => { gutter.hidden = true; gPos = -1 }, 260) }
+    let raf = 0
+    host.addEventListener('mousemove', (ev) => {
+      if (!editable) return
+      if (gutter.contains(ev.target as Node)) { clearTimeout(hideT); return }
+      const y = ev.clientY
+      if (raf) return
+      raf = requestAnimationFrame(() => { raf = 0; const p = topBlockAt(y); if (p >= 0) { clearTimeout(hideT); if (p !== gPos) place(p) } })
+    })
+    host.addEventListener('mouseleave', hide); gutter.addEventListener('mouseenter', () => clearTimeout(hideT))
+    cmt.onclick = () => {
+      if (!o.comments) return
+      let n = gPos >= 0 ? editor.state.doc.nodeAt(gPos) : null; if (!n) return
+      // a block saved before ids existed gets its id now, so the thread has something to hang on
+      if (!n.attrs.blockId) { editor.view.dispatch(editor.state.tr.setNodeMarkup(gPos, undefined, { ...n.attrs, blockId: newBlockId() })); n = editor.state.doc.nodeAt(gPos) }
+      if (n && n.attrs.blockId) o.comments.open(n.attrs.blockId, cmt)
+    }
+    const unitAt = (pos: number) => { const n = editor.state.doc.nodeAt(pos); return n ? { from: pos, to: pos + n.nodeSize, node: n } : null }
+    add.onclick = () => {
+      const u = unitAt(gPos); if (!u) return
+      editor.chain().insertContentAt(u.to, { type: 'paragraph', content: [{ type: 'text', text: '/' }] }).focus(u.to + 2).run()
+      gutter.hidden = true
+    }
+    grip.onclick = () => {
+      const u = unitAt(gPos); if (!u || !o.menu) return
+      if (u.node.isAtom) editor.commands.setNodeSelection(u.from); else editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(u.from + 1))))
+      const r = grip.getBoundingClientRect()
+      o.menu(r.left, r.bottom + 4, menuItems(u.node.isAtom ? { kind: u.node.type.name, pos: u.from, node: u.node } : { kind: 'text' }, u))
+    }
+    grip.addEventListener('dragstart', (ev) => {
+      const u = unitAt(gPos); if (!u || !ev.dataTransfer) return
+      const sel = NodeSelection.create(editor.state.doc, u.from)
+      editor.view.dispatch(editor.state.tr.setSelection(sel))
+      ;(editor.view as any).dragging = { slice: sel.content(), move: true }
+      ev.dataTransfer.effectAllowed = 'move'
+      const dom = editor.view.nodeDOM(u.from) as HTMLElement | null
+      if (dom) ev.dataTransfer.setDragImage(dom, 0, 0)
+    })
+    grip.addEventListener('dragend', () => { gutter.hidden = true; gPos = -1 })
   }
   function openContext(ev: MouseEvent | null, x: number, y: number) { if (!o.menu) return; o.menu(x, y, menuItems(targetOf(ev))) }
   let lastLong = 0
@@ -529,14 +738,24 @@ function create(host: HTMLElement, o: Opts) {
   body.addEventListener('pointermove', (ev: PointerEvent) => { if (lp && Math.hypot(ev.clientX - lpAt.x, ev.clientY - lpAt.y) > 10) lpStop() })
   body.addEventListener('pointerup', lpStop); body.addEventListener('pointercancel', lpStop)
 
+  // the cursor goes to the end at once (the editor's own focus command waits a frame, and a key typed in that frame is lost)
+  function focusNow() { editor.view.focus(); editor.view.dispatch(editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)).scrollIntoView()) }
   paintBar()
+  // a block with threads wears its count in the margin even when the pointer is elsewhere
+  const cmtKey = new PluginKey('blockComments')
+  if (o.comments) editor.registerPlugin(new Plugin({ key: cmtKey, props: { decorations: (st) => {
+    const counts = o.comments!.counts(), ds: Decoration[] = []
+    st.doc.forEach((n, off) => { const c = n.attrs.blockId && counts[n.attrs.blockId]; if (c) ds.push(Decoration.node(off, off + n.nodeSize, { 'data-cmt': String(c) })) })
+    return DecorationSet.create(st.doc, ds)
+  } } }))
 
   return {
+    refreshComments: () => { editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false).setMeta(cmtKey, 1)) },
     json: () => unwrapUnknown(editor.getJSON()),
     set: (doc: Json) => { silent = true; editor.commands.setContent(wrapUnknown(doc && doc.type === 'doc' ? doc : EMPTY), { emitUpdate: false }); silent = false },
     setEditable: (b: boolean) => { editable = b; editor.setEditable(b); host.classList.toggle('ed-editable', b); paintBar() },
     isEmpty: () => editor.isEmpty,
-    focus: (end?: boolean) => (end === false ? editor.commands.focus() : editor.commands.focus("end")),
+    focus: (end?: boolean) => (end === false ? editor.commands.focus() : focusNow()),
     destroy: () => { editor.destroy(); host.replaceChildren() },
   }
 }
