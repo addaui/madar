@@ -5,6 +5,7 @@ import { link } from "../../api/link";
 import { useI18n } from "../../i18n/i18n";
 import { Emo } from "../../ui/emoji";
 import { Button } from "../../ui/Button";
+import { SkeletonLines } from "../../ui/Skeleton";
 
 type Item = [emoji: string, name: string, keywords: string, group: number];
 interface Catalog { groups: { key: string; name: string }[]; items: Item[] }
@@ -34,15 +35,17 @@ export function searchEmoji(items: Item[], q: string): Item[] {
 export function IconPicker({ icon, fallback, onPick, disabled }: { icon: string | null; fallback: string; onPick: (e: string | null) => void; disabled?: boolean }) {
   const { t, lang } = useI18n();
   const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
   const deferred = useDeferredValue(q.trim());
-  const cat = useQuery({ queryKey: ["emoji.catalog", { lang }], queryFn: () => link.call("emoji.catalog" as never, { lang } as never) as Promise<Catalog>, staleTime: Infinity, retry: false });
+  const cat = useQuery({ queryKey: ["emoji.catalog", { lang }], queryFn: () => link.call("emoji.catalog" as never, { lang } as never) as Promise<Catalog>, staleTime: Infinity, retry: false, enabled: open });
+  const loading = open && cat.isPending;
   const data: Catalog = cat.data ?? { groups: [{ key: "all", name: "" }], items: FALLBACK.map((e) => [e, "", "", 0] as Item) };
   const typed = /^[^\p{L}\p{N}\s]/u.test(deferred) ? firstEmoji(deferred) : "";
   const found = deferred ? searchEmoji(data.items, deferred).slice(0, 120) : [];
-  const cell = (e: string, name?: string, close?: () => void) => <button key={e + (name ?? "")} type="button" title={name} aria-label={name || e} onClick={() => { remember(e); onPick(e); close?.(); }} className="grid size-9 place-items-center rounded-md text-[22px] hover:bg-hover"><Emo ch={e} /></button>;
+  const cell = (e: string, name?: string, close?: () => void) => <button key={e + (name ?? "")} type="button" title={name} aria-label={name || e} onClick={() => { remember(e); onPick(e); close?.(); }} className="grid size-9 place-items-center rounded-md text-[22px] hoverable"><Emo ch={e} /></button>;
 
   return (
-    <DialogTrigger>
+    <DialogTrigger onOpenChange={setOpen}>
       <AriaButton isDisabled={disabled} aria-label={t("pickIcon")} className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-surface text-[21px] shadow-[0_0_0_1px_color-mix(in_srgb,var(--text)_14%,transparent)] outline-none hover:shadow-2 data-[focus-visible]:outline-2 data-[focus-visible]:outline-accent"><Emo ch={icon ?? fallback} /></AriaButton>
       <Popover placement="bottom start" className="w-[340px] rounded-md border border-line-strong bg-surface p-2.5 shadow-2">
         <Dialog aria-label={t("pickIcon")} className="outline-none">
@@ -50,14 +53,14 @@ export function IconPicker({ icon, fallback, onPick, disabled }: { icon: string 
             <div>
               <input autoFocus type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchEmoji")} aria-label={t("searchEmoji")} maxLength={60} autoComplete="off" className="field mb-2 w-full"
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const f = typed || found[0]?.[0]; if (f) { remember(f); onPick(f); close(); } } }} />
-              <div className="max-h-[300px] min-h-[200px] overflow-auto">
-                {deferred ? (
+              <div data-emoji-scroll className="max-h-[300px] min-h-[200px] overflow-auto">
+                {loading ? <SkeletonLines rows={6} className="p-1" /> : deferred ? (
                   <div className="flex flex-wrap">{typed && cell(typed, undefined, close)}{found.map((it) => cell(it[0], it[1], close))}{!typed && found.length === 0 && <p className="p-2 text-muted">{t("noEmojiFound")}</p>}</div>
                 ) : (
                   <>
                     {recent().length > 0 && <section><h4 className="m-0 px-1 py-1 text-xs font-semibold text-muted">{t("recentEmoji")}</h4><div className="flex flex-wrap">{recent().map((e) => cell(e, undefined, close))}</div></section>}
                     {data.groups.map((g, i) => (
-                      <section key={g.key}>{g.name && <h4 className="m-0 px-1 py-1 text-xs font-semibold text-muted">{g.name}</h4>}<div className="flex flex-wrap">{data.items.filter((it) => (it[3] || 0) === i).map((it) => cell(it[0], it[1], close))}</div></section>
+                      <section key={g.key}>{g.name && <h4 className="m-0 px-1 py-1 text-xs font-semibold text-muted">{g.name}</h4>}<LazyCells count={data.items.filter((it) => (it[3] || 0) === i).length}>{data.items.filter((it) => (it[3] || 0) === i).map((it) => cell(it[0], it[1], close))}</LazyCells></section>
                     ))}
                   </>
                 )}
@@ -71,3 +74,22 @@ export function IconPicker({ icon, fallback, onPick, disabled }: { icon: string 
   );
 }
 
+
+const CELL = 36, PER_ROW = 8;
+
+/** A group's emoji are made only when the group nears the scrolling window, so opening the picker draws the first screenful, not the whole catalog. Until then the group keeps its height, so the scrollbar does not jump. */
+function LazyCells({ count, children }: { count: number; children: React.ReactNode }) {
+  const [near, setNear] = useState(false);
+  return (
+    <div className="flex flex-wrap"
+      ref={(el) => {
+        if (!el || near) return;
+        el.style.minHeight = Math.ceil(count / PER_ROW) * CELL + "px";
+        const io = new IntersectionObserver((e) => { if (e.some((x) => x.isIntersecting)) { setNear(true); io.disconnect(); } }, { root: el.closest("[data-emoji-scroll]"), rootMargin: "240px" });
+        io.observe(el);
+        return () => io.disconnect();
+      }}>
+      {near ? children : null}
+    </div>
+  );
+}

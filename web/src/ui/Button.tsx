@@ -4,15 +4,15 @@ import { cn } from "../lib/cn";
 import { Icon } from "./Icon";
 
 const button = tv({
-  base: "inline-flex min-h-[34px] items-center gap-[7px] whitespace-nowrap border px-3.5 font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-45 [@media(pointer:coarse)]:min-h-10",
+  base: "inline-flex min-h-[var(--hit)] items-center gap-[7px] whitespace-nowrap border px-3.5 font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-45 ",
   variants: {
     kind: {
-      default: "rounded-btn border-line-strong bg-surface text-text hover:bg-hover",
+      default: "rounded-btn border-line-strong bg-surface text-text hoverable",
       primary: "rounded-btn border-primary bg-primary text-on-primary hover:bg-[color-mix(in_srgb,var(--primary)_88%,var(--text))]",
-      ghost: "rounded-btn border-transparent bg-transparent text-muted hover:bg-hover hover:text-text",
+      ghost: "rounded-btn border-transparent bg-transparent text-muted hoverable hover:text-text",
       danger: "rounded-btn border-[color-mix(in_srgb,var(--danger)_40%,transparent)] text-danger hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]",
     },
-    size: { md: "", sm: "min-h-7 px-2.5 text-[13px]" },
+    size: { md: "", sm: "min-h-[var(--hit-sm)] px-2.5 text-[13px]" },
   },
   defaultVariants: { kind: "default", size: "md" },
 });
@@ -30,8 +30,8 @@ export function Button({ kind, size, icon, className, children, type = "button",
 }
 
 const iconButton = tv({
-  base: "inline-grid size-[34px] shrink-0 place-items-center rounded-[10px] border-0 bg-transparent text-muted transition-colors duration-150 hover:bg-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-45 aria-expanded:bg-soft aria-expanded:text-accent aria-pressed:bg-soft aria-pressed:text-accent [@media(pointer:coarse)]:size-10",
-  variants: { size: { md: "", sm: "size-7" }, tone: { default: "", danger: "hover:text-danger" } },
+  base: "inline-grid size-[var(--hit)] shrink-0 place-items-center rounded-[10px] border-0 bg-transparent text-muted transition-colors duration-150 hoverable hover:text-text disabled:cursor-not-allowed disabled:opacity-45 aria-expanded:bg-soft aria-expanded:text-accent aria-pressed:bg-soft aria-pressed:text-accent [@media(pointer:coarse)]:size-10",
+  variants: { size: { md: "", sm: "size-[var(--hit-sm)]" }, tone: { default: "", danger: "hover:text-danger" } },
   defaultVariants: { size: "md", tone: "default" },
 });
 

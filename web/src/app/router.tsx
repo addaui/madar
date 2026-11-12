@@ -6,12 +6,21 @@ import { Today } from "../features/today/Today";
 
 import { useT } from "../i18n/i18n";
 import { queryClient } from "../api/link";
-import { reads, warm } from "../api/reads";
+import { reads, warm, type Read } from "../api/reads";
+import { StageSkeleton } from "../ui/Skeleton";
 import { spaceState } from "./ui-state";
 
 // the heavy screens load when first visited, so the first paint carries only the frame and Today
-const PageScreen = lazy(() => import("../features/pages/PageScreen").then((m) => ({ default: m.PageScreen })));
-const ProjectScreen = lazy(() => import("../features/projects/ProjectScreen").then((m) => ({ default: m.ProjectScreen })));
+const loadPageScreen = () => import("../features/pages/PageScreen");
+const loadProjectScreen = () => import("../features/projects/ProjectScreen");
+const PageScreen = lazy(() => loadPageScreen().then((m) => ({ default: m.PageScreen })));
+const ProjectScreen = lazy(() => loadProjectScreen().then((m) => ({ default: m.ProjectScreen })));
+
+/**
+ * A route's loader waits for what the screen shows (its reads and its code), so a navigation keeps the screen you are on until the next
+ * one can be drawn whole, and a screen never appears empty and fills in. A read that fails is left to the screen's own error handling.
+ */
+const ready = (reading: Read[], code?: () => Promise<unknown>) => Promise.all([warm(queryClient, reading), code?.()]).then(() => undefined, () => undefined);
 
 const rootRoute = createRootRoute({ component: Shell });
 
@@ -24,7 +33,7 @@ function TodayRoute() {
 const todayRoute = createRoute({
   getParentRoute: () => rootRoute, path: "today", component: TodayRoute,
   // the reads Today shows start together
-  loader: () => { void warm(queryClient, reads.today(spaceState.get())).catch(() => undefined); },
+  loader: () => ready(reads.today(spaceState.get())),
 });
 
 function PagesIndex() {
@@ -35,11 +44,11 @@ function PagesIndex() {
     </Stage>
   );
 }
-const pagesRoute = createRoute({ getParentRoute: () => rootRoute, path: "pages", component: PagesIndex, loader: () => { void warm(queryClient, reads.pages(spaceState.get())).catch(() => undefined); } });
+const pagesRoute = createRoute({ getParentRoute: () => rootRoute, path: "pages", component: PagesIndex, loader: () => ready(reads.pages(spaceState.get())) });
 const pageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "pages/$pageId",
-  loader: ({ params }) => { void warm(queryClient, params.pageId === "new" ? reads.pages(spaceState.get()) : reads.page(spaceState.get(), params.pageId)).catch(() => undefined); },
+  loader: ({ params }) => ready(params.pageId === "new" ? reads.pages(spaceState.get()) : reads.page(spaceState.get(), params.pageId), loadPageScreen),
   validateSearch: (s: Record<string, unknown>): { parent?: string } => ({ parent: typeof s.parent === "string" ? s.parent : undefined }),
   component: function PageRouteView() { const { pageId } = pageRoute.useParams(); const { parent } = pageRoute.useSearch(); return <PageScreen id={pageId} parent={parent} />; },
 });
@@ -48,7 +57,7 @@ export interface ProjectSearch { tab?: "board" | "list" | "overview" | "knowledg
 const projectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "p/$projectId",
-  loader: ({ params }) => { void warm(queryClient, reads.project(params.projectId)).catch(() => undefined); },
+  loader: ({ params }) => ready(reads.project(params.projectId), loadProjectScreen),
   validateSearch: (s: Record<string, unknown>): ProjectSearch => ({
     tab: ["board", "list", "overview", "knowledge"].includes(String(s.tab)) ? (s.tab as ProjectSearch["tab"]) : undefined,
     task: typeof s.task === "string" ? s.task : undefined,
@@ -60,7 +69,7 @@ const projectRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([indexRoute, todayRoute, pagesRoute, pageRoute, projectRoute]);
 
-export const router = createRouter({ routeTree, history: createHashHistory(), defaultPreload: "intent" });
+export const router = createRouter({ routeTree, history: createHashHistory(), defaultPreload: "intent", defaultPendingMs: 120, defaultPendingMinMs: 0, defaultPendingComponent: StageSkeleton });
 
 declare module "@tanstack/react-router" {
   interface Register { router: typeof router }

@@ -7,6 +7,7 @@ import { useI18n } from "../../i18n/i18n";
 import { useDateFormat } from "../../lib/format";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/Button";
+import { askConfirm, toast } from "../../ui/overlays";
 import { Window } from "../dialogs/Dialog";
 import { inputOf, keyOf, opOf, type PageScope } from "./scope";
 
@@ -26,10 +27,11 @@ export default function History({ page, scope, writer, onClose }: { page: Page; 
   const current = picked ?? versions[0]?.id ?? null;
   const one = useQuery({ queryKey: [opOf(scope, "version"), inputOf(scope, { id: page.id, version: current })], queryFn: () => call<{ title: string; body: unknown }>("version", { version: current }), enabled: !!current });
   const restore = async () => {
-    if (!current) return;
+    if (!current || !(await askConfirm(t("sureRestore"), { action: t("restoreVersion"), danger: false }))) return;
     const back = await call<Page>("restore", { version: current });
     qc.setQueryData(keyOf(scope, "get", { id: page.id }), back);
     await qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\./.test(String(q.queryKey[0])) });
+    toast(t("restored"));
     onClose();
   };
   return (
@@ -38,7 +40,7 @@ export default function History({ page, scope, writer, onClose }: { page: Page; 
         <ul className="m-0 grid max-h-[55vh] list-none content-start gap-0.5 overflow-auto p-0">
           {versions.length === 0 && <li className="p-2.5 text-muted">{t("noVersions")}</li>}
           {versions.map((v) => (
-            <li key={v.id}><button type="button" aria-current={v.id === current} onClick={() => setPicked(v.id)} className={cn("block w-full rounded-md px-2.5 py-2 text-start hover:bg-hover", v.id === current && "bg-hover")}>
+            <li key={v.id}><button type="button" aria-current={v.id === current} onClick={() => setPicked(v.id)} className={cn("block w-full rounded-md px-2.5 py-2 text-start hoverable", v.id === current && "bg-hover")}>
               <strong className="block">{f.time(v.at)}</strong><small className="block truncate text-muted" dir="auto">{name(v.by) + " · " + (v.text || "…")}</small></button></li>
           ))}
         </ul>

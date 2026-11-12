@@ -72,7 +72,7 @@ function PageTaskRow({ item }: { item: { page: string; title?: string; icon?: st
     await qc.invalidateQueries({ queryKey: ["pages.tasks"] });
   });
   return (
-    <div className="flex min-h-[42px] items-center gap-2.5 rounded-md px-2.5 py-1.5 hover:bg-hover">
+    <div className="flex min-h-[42px] items-center gap-2.5 rounded-md px-2.5 py-1.5 hoverable">
       <input type="checkbox" disabled={!item.block} title={item.block ? undefined : t("saveToTick")} aria-label={item.text} onChange={(e) => tick(e.target.checked)} className="size-[17px] accent-[var(--accent)]" />
       <span className="min-w-0 grow truncate" dir="auto">{item.text}</span>
       <Link to={item.project ? "/p/$projectId" : "/pages/$pageId"} params={item.project ? { projectId: item.project } : { pageId: item.page }} search={item.project ? { tab: "knowledge", page: item.page } : undefined}

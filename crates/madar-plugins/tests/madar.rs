@@ -440,7 +440,7 @@ fn a_retried_create_runs_once() {
 fn prefs_default_and_change_and_tell_only_their_owner() {
     let a = app();
     let (al, bo) = (who("alice"), who("bob"));
-    assert_eq!(a.ok(&al, "prefs.get", json!({}))["theme"], "phantom-onyx");
+    assert_eq!(a.ok(&al, "prefs.get", json!({}))["theme"], "elevated");
     assert_eq!(a.ok(&al, "prefs.get", json!({}))["scheme"], "auto");
     let (ca, cb) = (a.core.pulse_now().unwrap(), a.core.pulse_now().unwrap());
     a.ok(&al, "prefs.set", json!({"theme": "ink", "language": "ar"}));

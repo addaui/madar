@@ -1,12 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { NuahError } from "@nuah/link-client";
-import { startTransition, useActionState, useRef, useState } from "react";
+import { startTransition, Suspense, useActionState, useRef, useState } from "react";
+import { SkeletonLines } from "../../ui/Skeleton";
 import { link } from "../../api/link";
 import { usePrefs } from "../../api/session";
 import type { Project, Task } from "../../api/types";
 import { useI18n } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
 import { codeOf } from "../../lib/codes";
+import { CopyCode } from "../../ui/CopyCode";
 import { Button, IconButton } from "../../ui/Button";
 import { Icon } from "../../ui/Icon";
 import { askConfirm, openContextMenu } from "../../ui/overlays";
@@ -40,6 +42,9 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
       due: String(form.get("due") ?? "") || null, assignee: String(form.get("assignee") ?? "") || null, labels: form.getAll("label").map(String),
     };
     if (description.current) input.description = description.current;
+    const unit = String(form.get("repeat_unit") ?? "");
+    const repeat = unit ? { every: Math.max(1, Math.min(365, Number(form.get("repeat_every")) || 1)), unit } : null;
+    if (JSON.stringify(repeat) !== JSON.stringify(task.repeat ?? null)) input.repeat = repeat;
     const custom: Record<string, unknown> = {};
     for (const a of project.attributes ?? []) {
       const raw = form.get("custom." + a.key); const old = custom0[a.key] ?? null;
@@ -83,7 +88,7 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <div hidden={tab !== "d"}>
-            {code && <div dir="ltr" className="mb-2 text-xs text-muted">{code}</div>}
+            {code && <div className="mb-2"><CopyCode code={code} /></div>}
             <div className="grid gap-2.5">
               <Prop icon="task" label={t("status")}><select name="status" defaultValue={task.status} disabled={!writer} aria-label={t("status")} className="field">{project.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Prop>
               <Prop icon="flag" label={t("priority")}>
@@ -93,6 +98,15 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
                 </div>
               </Prop>
               <Prop icon="calendar" label={t("due")}><input name="due" type="date" defaultValue={task.due ?? ""} disabled={!writer} aria-label={t("due")} className="field" /></Prop>
+              <Prop icon="repeat" label={t("repeat")}>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted">{t("every")}</span>
+                  <input name="repeat_every" type="number" min={1} max={365} defaultValue={task.repeat?.every ?? 1} disabled={!writer} aria-label={t("every")} className="field w-[70px]" />
+                  <select name="repeat_unit" defaultValue={task.repeat?.unit ?? ""} disabled={!writer} aria-label={t("repeat")} className="field">
+                    <option value="">{t("noRepeat")}</option><option value="day">{t("days")}</option><option value="week">{t("weeks")}</option><option value="month">{t("months")}</option>
+                  </select>
+                </div>
+              </Prop>
               <Prop icon="user" label={t("assignee")}><select name="assignee" defaultValue={task.assignee ?? ""} disabled={!writer} aria-label={t("assignee")} className="field"><option value="">{t("nobody")}</option>{members.map((m) => <option key={m.subject} value={m.subject}>{m.display ?? m.subject}</option>)}</select></Prop>
               {labels.length > 0 && <Prop icon="tag" label={t("labels")}><div className="flex flex-wrap gap-1.5">{labels.map((l) => <label key={l.id} className="inline-flex items-center gap-1 rounded-chip border border-line px-2 py-0.5 text-xs"><input type="checkbox" name="label" value={l.id} defaultChecked={task.labels.includes(l.id)} disabled={!writer} /><span dir="auto">{l.name}</span></label>)}</div></Prop>}
               {(project.attributes ?? []).map((a) => (
@@ -115,7 +129,7 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
               </>
             )}
           </div>
-          <div hidden={tab !== "a"}><Activity project={project.id} target={{ type: "tasks.task", id: task.id }} writer={writer} /></div>
+          <div hidden={tab !== "a"}><Suspense fallback={<SkeletonLines rows={4} />}><Activity project={project.id} target={{ type: "tasks.task", id: task.id }} writer={writer} /></Suspense></div>
         </div>
         {writer && dirty && (
           <div className="flex items-center gap-2 border-t border-line bg-surface px-3 py-2.5">

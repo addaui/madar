@@ -6,9 +6,10 @@ import type { Page } from "../../api/types";
 import { useI18n } from "../../i18n/i18n";
 import { IconPicker } from "./IconPicker";
 import { link } from "../../api/link";
-import { askRef } from "../../ui/overlays";
+import { askRef, toast } from "../../ui/overlays";
 import { LegacyEditor, type EditorJson } from "./LegacyEditor";
 import { saverFor, useSaveState } from "./pageSaver";
+import { useBlockComments } from "./useBlockComments";
 import { inputOf, keyOf, opOf, type PageScope } from "./scope";
 import { paintPage } from "./style/paint";
 import type { PageSettings } from "./style/settings";
@@ -34,6 +35,7 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
   const dirty = useRef(false);
   const root = useRef<HTMLDivElement>(null), sheet = useRef<HTMLDivElement>(null), titlebar = useRef<HTMLDivElement>(null);
   const scheme = useAppScheme();
+  const comments = useBlockComments(scope, page.id);
 
   // a changed copy from outside (another device or tab; a conflict) replaces what is here, unless something here is waiting to be saved
   const seen = useRef(page.rev);
@@ -43,7 +45,7 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
     if (dirty.current || saver.busy) return;
     setTitle(page.title); setDoc(page.body as EditorJson); latest.current = page.body as EditorJson; setVersion((v) => v + 1);
   }, [page, saver]);
-  useEffect(() => { const f = () => { dirty.current = false; }; saver.conflicts.add(f); return () => { saver.conflicts.delete(f); }; }, [saver]);
+  useEffect(() => { const f = () => { dirty.current = false; toast(t("pageChanged")); }; saver.conflicts.add(f); return () => { saver.conflicts.delete(f); }; }, [saver, t]);
 
   useEffect(() => { onSave(state === "saving" ? t("saving") : state === "saved" ? t("saved") : state === "offline" ? t("offline") : ""); }, [state, onSave, t]);
   useEffect(() => () => { clearTimeout(timer.current); }, []);
@@ -72,7 +74,7 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
             <input value={title} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} dir="auto" aria-label={t("title")} maxLength={200}
               className="page-title min-w-0 flex-1 border-0 bg-transparent py-1 text-[32px] font-bold leading-tight tracking-tight text-[var(--page-fg,var(--text))] outline-none" />
           </div>
-          <LegacyEditor doc={doc} version={version} editable lang={lang} blocks={blocks.blocks} placeholder={t("writeHere")} onChange={onChange}
+          <LegacyEditor doc={doc} version={version} editable lang={lang} {...comments.editor} blocks={blocks.blocks} placeholder={t("writeHere")} onChange={onChange}
             onReady={() => { countWords(latest.current); setReady((r) => r + 1); }}
             onOpenRef={(kind, rid) => { location.hash = kind === "pages.page" ? (scope.project ? `#/p/${scope.project}?tab=knowledge&page=${rid}` : `#/pages/${rid}`) : `#/today`; }}
             pickRef={askRef}
@@ -85,6 +87,7 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
             }} />
         </div>
       </div>
+      {comments.dialog}
     </div>
   );
 }

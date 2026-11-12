@@ -28,12 +28,12 @@ export function ImageDialog({ label, onDone }: { label: string; onDone: (url: st
   const words = !step ? "" : step.step === "read" ? t("readingFile") : step.step === "send" ? `${t("sendingFile")} ${Math.round(step.fraction * 100)}%` : t("savingFile");
 
   return (
-    <ModalOverlay isOpen isDismissable={!busy} isKeyboardDismissDisabled={busy} onOpenChange={(o) => { if (!o && !busy) onDone(null); }} className="fixed inset-0 z-[60] grid place-items-start justify-center bg-black/40 pt-[10vh] backdrop-blur-[3px]">
+    <ModalOverlay isOpen isDismissable={!busy} isKeyboardDismissDisabled={busy} onOpenChange={(o) => { if (!o && !busy) onDone(null); }} className="fixed inset-0 z-[60] grid place-items-start justify-center bg-scrim pt-[10vh] backdrop-blur-[3px]">
       <Modal className="w-[min(460px,94vw)] rounded-lg bg-surface p-5 shadow-2">
         <Dialog aria-label={label} className="outline-none">
           <form onSubmit={(e) => { e.preventDefault(); if (busy) return; const v = String(new FormData(e.currentTarget).get("url") ?? "").trim(); onDone(v || null); }}>
             <Heading slot="title" className="m-0 mb-3 text-lg font-semibold">{label}</Heading>
-            <input name="url" type="text" autoFocus disabled={busy} placeholder="https://…" aria-label={label} className="field w-full" />
+            <input name="url" type="text" autoFocus disabled={busy} placeholder="https://…" aria-label={t("imageAddr")} className="field w-full" />
             {canUpload && (
               <div className="mt-2.5">
                 <Button icon="upload" disabled={busy} onClick={() => file.current?.click()}>{t("uploadImage")}</Button>

@@ -1,11 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { startTransition, useState } from "react";
 import { link } from "../../api/link";
-import { useSuspending } from "../../api/hooks";
+import { useRead, useSuspending } from "../../api/hooks";
+import { useHasOp } from "../../api/session";
 import type { PageItem } from "../../api/types";
 import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
-import { askConfirm, openContextMenu, type MenuItems } from "../../ui/overlays";
+import { askConfirm, openContextMenu, toast, type MenuItems } from "../../ui/overlays";
 import { Button, IconButton } from "../../ui/Button";
 import { Emo } from "../../ui/emoji";
 import { Icon } from "../../ui/Icon";
@@ -29,6 +30,8 @@ export function Explorer({ scope, nav }: { scope: PageScope; nav: ExplorerNav })
   const { current, draft } = nav;
   const [edit, setEdit] = useState<Edit>(null);
   const closed = useCollapsed();
+  const spaces = useRead("workspaces.list").data.workspaces;
+  const canMove = useHasOp("pages.set_space") && !scope.project && spaces.length > 1;
 
   const refresh = () => qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\.list/.test(String(q.queryKey[0])) });
   const run = (f: () => Promise<unknown>) => startTransition(async () => { await f(); await refresh(); });
@@ -45,6 +48,7 @@ export function Explorer({ scope, nav }: { scope: PageScope; nav: ExplorerNav })
   };
   const move = (id: string, parent: string | null, before: string | null) => run(() => call("move", { id, parent, before }));
 
+  const moveToSpace = (id: string, space: string) => run(async () => { await link.call("pages.set_space", { id, space }); toast(t("movedToSpace")); });
   const items = (pg: PageItem): MenuItems => {
     const sibs = childrenOf(list, pg.parent ?? null);
     const i = sibs.findIndex((x) => x.id === pg.id);
@@ -59,6 +63,7 @@ export function Explorer({ scope, nav }: { scope: PageScope; nav: ExplorerNav })
       { label: t("pgDown"), icon: "down", disabled: i < 0 || i >= sibs.length - 1, onclick: () => move(pg.id, pg.parent ?? null, sibs[i + 2]?.id ?? null) },
       prev?.folder ? { label: t("pgIntoPrev"), icon: "folder", onclick: () => move(pg.id, prev.id, null) } : null,
       up ? { label: t("pgOutdent"), icon: "up", onclick: () => move(pg.id, up.parent ?? null, upSibs[upSibs.findIndex((x) => x.id === up.id) + 1]?.id ?? null) } : null,
+      canMove ? { label: t("moveToSpace"), icon: "move", sub: () => spaces.filter((w) => w.id !== scope.space).map((w) => ({ label: w.builtin ? t("mySpace") : w.name, icon: "folder", onclick: () => void moveToSpace(pg.id, w.id) })) } : null,
       "-",
       { label: t("delete"), icon: "trash", danger: true, onclick: () => void remove(pg) },
     ];
@@ -75,7 +80,7 @@ export function Explorer({ scope, nav }: { scope: PageScope; nav: ExplorerNav })
       {childrenOf(list, null).map((p) => <Row key={p.id} pg={p} depth={0} ctx={ctx} />)}
       {edit?.mode === "folder" && edit.parent === null && <FolderRow depth={0} onDone={(v) => { setEdit(null); if (v) void createFolder(null, v); }} />}
       {draft && !nav.draftParent && <DraftRow depth={0} label={t("untitled")} />}
-      {list.length === 0 && !draft && <p className="px-2.5 py-2 text-[13px] text-muted">{t("noPages")}</p>}
+      {list.length === 0 && !draft && <p className="px-2.5 py-2 text-[13px] text-muted">{scope.project ? t("noPagesHint") : t("noPages")}</p>}
     </div>
   );
 
@@ -110,7 +115,7 @@ function Row({ pg, depth, ctx }: { pg: PageItem; depth: number; ctx: Ctx }) {
         onContextMenu={(e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, items(pg)); }}
         onClick={() => { if (editing) return; if (pg.folder) collapsed.toggle(pg.id); else open(pg.id); }}
         style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }}
-        className={cn("group/row flex min-h-[30px] cursor-pointer items-center gap-1 rounded-sm pe-1 hover:bg-hover", cur && "bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]")}>
+        className={cn("group/row flex min-h-[30px] cursor-pointer items-center gap-1 rounded-sm pe-1 hoverable", cur && "bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]")}>
         {kids.length || pg.folder ? (
           <button type="button" tabIndex={-1} aria-label={isOpen ? t("collapse") : t("expand")} onClick={(e) => { e.stopPropagation(); collapsed.toggle(pg.id); }} className="grid size-5 place-items-center text-muted">
             <Icon name="chevron" className={cn("size-3.5 transition-transform", isOpen && "rotate-90 rtl:-rotate-90")} />
@@ -136,8 +141,9 @@ function Row({ pg, depth, ctx }: { pg: PageItem; depth: number; ctx: Ctx }) {
 }
 
 function DraftRow({ depth, label }: { depth: number; label: string }) {
+  const t = useT();
   return (
-    <div role="treeitem" aria-selected aria-current="page" style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }} className="flex min-h-[30px] items-center gap-1 rounded-sm bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]">
+    <div role="treeitem" aria-selected aria-current="page" title={t("notSavedYet")} style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }} className="flex min-h-[30px] items-center gap-1 rounded-sm bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]">
       <span className="size-5" /><span aria-hidden="true" className="w-5 text-center">{PAGE_EMOJI}</span><span className="truncate text-muted">{label}</span>
     </div>
   );

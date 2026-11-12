@@ -229,6 +229,7 @@ export const ar: Record<keyof typeof en, string> = {
   "tabActivity": "النشاط",
   "words": "كلمة",
   "minRead": "د للقراءة",
+  "taskDetails": "تفاصيل المهمة",
   "toggleInfo": "إظهار اللوحة الجانبية أو إخفاؤها",
   "infoTab": "معلومات",
   "pageTab": "الصفحة",
@@ -336,7 +337,7 @@ export const ar: Record<keyof typeof en, string> = {
   "attachScroll": "تتحرك مع الصفحة",
   "notSavedYet": "لم تُحفظ بعد: تُحفظ عندما تكتب شيئاً.",
   "tabEmoji": "إيموجي",
-  "searchEmoji": "ابحث عن إيموجي",
+  "searchEmoji": "ابحث عن إيموجي…",
   "recentEmoji": "الأخيرة",
   "noEmojiFound": "لا إيموجي مطابق.",
   "addSubpage": "صفحة فرعية",
@@ -382,4 +383,5 @@ export const ar: Record<keyof typeof en, string> = {
   "mySpace": "مساحتي",
   "kFocus": "وضع التركيز",
   "advanced": "إظهار كل الإعدادات",
+  "skipToContent": "تخطَّ إلى المحتوى",
 };

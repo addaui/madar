@@ -4,17 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import { lazy, Suspense } from "react";
 import { link } from "../api/link";
 import { useRead } from "../api/hooks";
-import { useDescribe } from "../api/session";
+import { useDescribe, useHasOp } from "../api/session";
 import { useT } from "../i18n/i18n";
 import { cn } from "../lib/cn";
 import { Avatar } from "../ui/Avatar";
 import { IconButton } from "../ui/Button";
+import { askText, openContextMenu, type MenuItems } from "../ui/overlays";
+import { copyText } from "../ui/CopyCode";
 import { Icon } from "../ui/Icon";
 import { Explorer } from "../features/pages/Explorer";
 import { ownScope } from "../features/pages/scope";
 import { openDialog } from "./dialogs";
 import { LiveDot } from "./LiveDot";
-import { drawerState, sideState, sideTabState, spaceState, useDrawer, useIsNarrow, usePersistedValue } from "./ui-state";
+import { drawerState, sideTabState, spaceState, useDrawer, usePersistedValue, useSideMode } from "./ui-state";
 
 const BellMenu = lazy(() => import("./SidebarMenus").then((m) => ({ default: m.BellMenu })));
 const SpacesMenu = lazy(() => import("./SidebarMenus").then((m) => ({ default: m.SpacesMenu })));
@@ -24,26 +26,27 @@ const PEEK_MS = 800;
 
 export function Sidebar() {
   const t = useT();
-  const side = usePersistedValue(sideState);
-  const [peek, setPeek] = useState(false);
+  const [hover, setPeek] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const narrow = useIsNarrow(), drawer = useDrawer();
-  const rail = !narrow && side === "closed" && !peek;
+  const { closed, auto } = useSideMode();
+  const drawer = useDrawer();
+  // a rail opens over the page while the pointer rests on it, or while the toggle holds it open (a screen too small for the sidebar open)
+  const peek = hover || (auto && drawer);
+  const rail = closed && !peek;
   // the list follows where you are: pages show your pages, a project shows the projects
   const path = useRouterState({ select: (r) => r.location.pathname });
   useEffect(() => { if (path.startsWith("/pages")) sideTabState.set("pages"); else if (path.startsWith("/p/")) sideTabState.set("tasks"); drawerState.set(false); }, [path]);
-  const closed = side === "closed" && !narrow;
 
   return (
     <aside
-      data-side={side} data-peek={peek} data-rail={rail} data-drawer={drawer}
+      data-side={closed ? "closed" : "open"} data-peek={peek} data-rail={rail} data-drawer={drawer}
       onPointerEnter={(e) => { if (closed && e.pointerType === "mouse") { clearTimeout(timer.current); timer.current = setTimeout(() => setPeek(true), PEEK_MS); } }}
-      onPointerLeave={() => { clearTimeout(timer.current); setPeek(false); }}
+      onPointerLeave={() => { clearTimeout(timer.current); setPeek(false); if (auto) drawerState.set(false); }}
       className={cn(
         "group/side relative z-40 flex h-full min-h-0 flex-col overflow-hidden transition-[inline-size,box-shadow] duration-200 ease-out",
         "panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-[var(--glass-side,var(--surface))] panels:shadow-1",
         "max-md:fixed max-md:inset-y-0 max-md:start-0 max-md:z-50 max-md:hidden max-md:w-[min(86vw,320px)] max-md:rounded-e-lg max-md:bg-surface max-md:shadow-2 max-md:data-[drawer=true]:flex",
-        "w-[var(--side)] data-[side=closed]:w-[var(--rail)] data-[peek=true]:w-[272px] data-[peek=true]:rounded-lg data-[peek=true]:bg-surface data-[peek=true]:shadow-2",
+        "w-[var(--side)] data-[rail=true]:w-[var(--rail)] data-[peek=true]:w-[272px] data-[peek=true]:rounded-lg data-[peek=true]:bg-surface data-[peek=true]:shadow-2",
       )}
     >
       <div className="flex items-center gap-2.5 px-4 pb-2 pt-4 group-data-[rail=true]/side:flex-col group-data-[rail=true]/side:px-2">
@@ -68,10 +71,10 @@ export function Sidebar() {
   );
 }
 
-function NavLink({ to, icon, label, params }: { to: string; icon: string; label: string; params?: Record<string, string> }) {
+function NavLink({ to, icon, label, params, items }: { to: string; icon: string; label: string; params?: Record<string, string>; items?: () => MenuItems }) {
   return (
-    <Link to={to} params={params} title={label}
-      className="flex min-h-[38px] w-full items-center gap-2.5 rounded-[12px] px-3 text-text hover:bg-hover aria-[current=page]:bg-surface aria-[current=page]:font-semibold aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,.08)] group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
+    <Link to={to} params={params} title={label} onContextMenu={items ? (e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, items()); } : undefined}
+      className="flex min-h-[38px] w-full items-center gap-2.5 rounded-[12px] px-3 text-text hoverable aria-[current=page]:bg-surface aria-[current=page]:font-semibold aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,.08)] group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
       <Icon name={icon} className="text-muted" />
       <span className="min-w-0 flex-1 truncate group-data-[rail=true]/side:hidden" dir="auto">{label}</span>
     </Link>
@@ -83,7 +86,7 @@ function SearchPill() {
   if (!useDescribe().operations["search.query"]) return null;
   return (
     <button type="button" onClick={() => openDialog("search")}
-      className="mx-3 mb-2.5 mt-1.5 flex min-h-[38px] items-center gap-[9px] rounded-btn border border-line-strong bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] px-3 text-muted hover:bg-hover group-data-[rail=true]/side:mx-2 group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
+      className="mx-3 mb-2.5 mt-1.5 flex min-h-[38px] items-center gap-[9px] rounded-btn border border-line-strong bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] px-3 text-muted hoverable group-data-[rail=true]/side:mx-2 group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
       <Icon name="search" />
       <span className="group-data-[rail=true]/side:hidden">{t("search").replace("…", "")}</span>
       <kbd dir="ltr" className="ms-auto rounded border border-line px-1.5 text-xs group-data-[rail=true]/side:hidden">/</kbd>
@@ -120,12 +123,33 @@ function ProjectsList() {
   const ws = useRead("workspaces.list").data;
   const space = usePersistedValue(spaceState);
   const place = new Map(ws.placements.map((p) => [p.project, p.workspace]));
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const canCreate = useHasOp("projects.create"), canPlace = useHasOp("workspaces.place");
+  const create = async () => {
+    const name = await askText(t("newProject"));
+    if (!name) return;
+    const p = await link.call("projects.create", { name }) as { id: string };
+    if (space !== "default" && canPlace) await link.call("workspaces.place", { project: p.id, workspace: space });
+    await qc.invalidateQueries();
+    void navigate({ to: "/p/$projectId", params: { projectId: p.id } });
+  };
+  const menu = (p: { id: string; key?: string | null }) => (): MenuItems => {
+    const go = (tab?: "knowledge" | "overview") => void navigate({ to: "/p/$projectId", params: { projectId: p.id }, search: tab ? { tab } : {} });
+    return [
+      { label: t("open"), icon: "board", onclick: () => go() },
+      { label: t("knowledge"), icon: "page", onclick: () => go("knowledge") },
+      { label: t("overview"), icon: "chart", onclick: () => go("overview") },
+      p.key ? "-" : null,
+      p.key ? { label: t("copyId") + " · " + p.key, icon: "link", onclick: () => void copyText(p.key!, t("copied")) } : null,
+    ];
+  };
   const mine = projects.filter((p) => (place.get(p.id) ?? "default") === (ws.workspaces.some((w) => w.id === space) ? space : "default"));
   return (
     <>
-      <div className="mt-1.5 flex items-center px-3 text-[11px] font-semibold uppercase tracking-wider text-muted"><span className="grow">{t("projects")}</span></div>
+      <div className="mt-1.5 flex items-center px-3 text-[11px] font-semibold uppercase tracking-wider text-muted"><span className="grow">{t("projects")}</span>{canCreate && <IconButton icon="plus" size="sm" label={t("newProject")} onClick={() => void create()} />}</div>
       {mine.length === 0 && <p className="px-2.5 py-2 text-[13px] text-muted">{t("noProjectsHere")}</p>}
-      {mine.map((p) => <NavLink key={p.id} to="/p/$projectId" params={{ projectId: p.id }} icon="board" label={p.name} />)}
+      {mine.map((p) => <NavLink key={p.id} to="/p/$projectId" params={{ projectId: p.id }} icon="board" label={p.name} items={menu(p)} />)}
     </>
   );
 }

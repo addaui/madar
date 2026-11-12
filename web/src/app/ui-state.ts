@@ -36,11 +36,24 @@ export const pageSideState = createPersistedState<"0" | "1">("madar.pageside", "
 /** The Space you are in; it decides which projects and pages the sidebar lists. */
 export const spaceState = createPersistedState<string>("madar.space", "default");
 
-/** A phone-width screen: the sidebar is a drawer that opens over the page, not a column. */
-const narrowQuery = () => matchMedia("(max-width: 767px)");
-export function useIsNarrow(): boolean {
-  return useSyncExternalStore((cb) => { const m = narrowQuery(); m.addEventListener("change", cb); return () => m.removeEventListener("change", cb); }, () => narrowQuery().matches, () => false);
+/**
+ * How much room the screen has, as one of four layouts (the breaks leave the workspace at least ~520px beside the columns):
+ * wide (1280+): the sidebar and the side panel both open · medium (1024–1279): the sidebar is a rail, the panel is open ·
+ * compact (768–1023): both are rails that open over the workspace while the pointer rests on them · phone (below 768): both are hidden and open over it.
+ */
+export type Tier = "wide" | "medium" | "compact" | "phone";
+const tierQueries = { wide: "(min-width: 1280px)", medium: "(min-width: 1024px)", compact: "(min-width: 768px)" } as const;
+const tierNow = (): Tier => (matchMedia(tierQueries.wide).matches ? "wide" : matchMedia(tierQueries.medium).matches ? "medium" : matchMedia(tierQueries.compact).matches ? "compact" : "phone");
+export function useTier(): Tier {
+  return useSyncExternalStore((cb) => {
+    const ms = Object.values(tierQueries).map((q) => matchMedia(q));
+    ms.forEach((m) => m.addEventListener("change", cb));
+    return () => ms.forEach((m) => m.removeEventListener("change", cb));
+  }, tierNow, () => "wide");
 }
+
+/** A phone-width screen: the sidebar is a drawer that opens over the page, not a column. */
+export const useIsNarrow = (): boolean => useTier() === "phone";
 
 /** Whether the drawer is open (phones only; not remembered: every visit starts with the page). */
 let drawer = false;
@@ -51,3 +64,14 @@ export const drawerState = {
   subscribe: (l: () => void) => { drawerListeners.add(l); return () => { drawerListeners.delete(l); }; },
 };
 export const useDrawer = (): boolean => useSyncExternalStore(drawerState.subscribe, drawerState.get, () => false);
+
+/**
+ * What the sidebar is doing now. `closed`: shown as a rail (you minimized it, or the screen is too small for it open). `auto`: the screen decides,
+ * so the toggle opens the sidebar over the page instead of changing the saved choice. `phone`: a drawer.
+ */
+export function useSideMode(): { closed: boolean; auto: boolean; phone: boolean } {
+  const tier = useTier();
+  const side = usePersistedValue(sideState);
+  const phone = tier === "phone", auto = tier === "medium" || tier === "compact";
+  return { closed: !phone && (side === "closed" || auto), auto, phone };
+}

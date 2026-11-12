@@ -227,6 +227,7 @@ export const en = {
   "tabActivity": "Activity",
   "words": "words",
   "minRead": "min read",
+  "taskDetails": "Task details",
   "toggleInfo": "Show or hide the side panel",
   "infoTab": "Info",
   "pageTab": "Page",
@@ -334,7 +335,7 @@ export const en = {
   "attachScroll": "Moves with page",
   "notSavedYet": "Not saved yet: it is saved when you write something.",
   "tabEmoji": "Emoji",
-  "searchEmoji": "Search emoji",
+  "searchEmoji": "Search emoji…",
   "recentEmoji": "Recent",
   "noEmojiFound": "No emoji found.",
   "addSubpage": "Subpage",
@@ -380,4 +381,5 @@ export const en = {
   "mySpace": "My Space",
   "kFocus": "Focus mode",
   "advanced": "Show every setting",
+  "skipToContent": "Skip to content",
 } as const;

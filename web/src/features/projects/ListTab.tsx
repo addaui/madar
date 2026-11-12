@@ -43,7 +43,7 @@ export function ListTab({ project, members, today, onOpen }: { project: Project;
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} tabIndex={0} onClick={() => onOpen(r.id)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(r.id); }} className="cursor-pointer border-t border-line hover:bg-hover">
+              <tr key={r.id} tabIndex={0} onClick={() => onOpen(r.id)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(r.id); }} className="cursor-pointer border-t border-line hoverable">
                 <td className="px-3 py-2" dir="auto">{r.parent && <Icon name="subtask" className="me-1 inline size-3.5" />}{r.title}</td>
                 <td className="px-3 py-2"><span className="rounded-chip border border-line px-2 py-0.5 text-xs">{project.statuses.find((s) => s.id === r.status)?.name ?? r.status}</span></td>
                 <td className="px-3 py-2"><PriorityChip band={r.band} /></td>

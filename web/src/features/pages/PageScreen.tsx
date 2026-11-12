@@ -33,7 +33,7 @@ function Crumbs({ id, title }: { id: string | null; title: string }) {
   const ancestors = id ? pathTo(list, id).slice(0, -1) : [];
   return (
     <>
-      <Link to="/pages" className="rounded-sm px-1.5 py-1 hover:bg-hover">{t("pages")}</Link>
+      <Link to="/pages" className="rounded-sm px-1.5 py-1 hoverable">{t("pages")}</Link>
       {ancestors.map((a) => <span key={a.id} className="flex items-center gap-0.5"><span aria-hidden="true">›</span><span className="px-1.5">{a.title}</span></span>)}
       <span aria-hidden="true">›</span>
       <span aria-current="page" className="truncate px-1.5 font-semibold text-text" dir="auto">{title || t("untitled")}</span>

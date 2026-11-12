@@ -24,7 +24,7 @@ export function DueChip({ due, today, done }: { due: string | null | undefined; 
 export function TaskRow({ task, today }: { task: MyTask; today: string }) {
   return (
     <Link to="/p/$projectId" params={{ projectId: task.project }} search={{ task: task.id }}
-      className="flex min-h-[42px] items-center gap-2.5 rounded-md px-2.5 py-1.5 hover:bg-hover">
+      className="flex min-h-[42px] items-center gap-2.5 rounded-md px-2.5 py-1.5 hoverable">
       <Icon name="task" className="text-muted" />
       <span className="min-w-0 grow truncate" dir="auto">{task.title}</span>
       <PriorityChip band={task.band} />

@@ -53,8 +53,14 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
             {h.project_name && <span className="rounded-chip border border-line px-2 py-0.5 text-xs" dir="auto">{h.project_name}</span>}
           </li>
         ))}
-        {query.length >= 2 && items.length === 0 && <li className="px-2.5 py-6 text-center text-muted">{t("none")}</li>}
+        {query.length < 2 && <li className="px-3 py-3.5 text-muted">{t("searchHint")}</li>}
+        {query.length >= 2 && items.length === 0 && <li className="grid justify-items-center gap-2 px-2.5 py-8 text-muted"><Icon name="search" /><b className="text-text">{t("noResults")}</b></li>}
       </ul>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 text-xs text-muted">
+        <span><kbd className="rounded border border-line px-1">↑</kbd> <kbd className="rounded border border-line px-1">↓</kbd> {t("kMove")}</span>
+        <span><kbd className="rounded border border-line px-1">↵</kbd> {t("kOpen")}</span>
+        <span><kbd className="rounded border border-line px-1">Esc</kbd> {t("close")}</span>
+      </div>
     </Window>
   );
 }

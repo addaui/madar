@@ -8,7 +8,7 @@ import "./legacy-editor.css";
  * to it; the new editor replaces this file behind the same props.
  */
 export interface EditorJson { type: "doc"; content?: unknown[] }
-interface EditorHandle { json(): EditorJson; set(doc: EditorJson): void; setEditable(on: boolean): void; focus(atEnd?: boolean): void; destroy(): void; isEmpty(): boolean }
+interface EditorHandle { json(): EditorJson; set(doc: EditorJson): void; setEditable(on: boolean): void; focus(atEnd?: boolean): void; destroy(): void; isEmpty(): boolean; refreshComments?(): void }
 interface EditorOptions {
   content: EditorJson | null; editable: boolean; lang: string; blocks: unknown[]; placeholder: string; gutter: boolean;
   onChange: (doc: EditorJson) => void;
@@ -19,6 +19,7 @@ interface EditorOptions {
   pickRef?: () => Promise<{ kind: string; id: string; title: string } | null>;
   onOpenRef?: (kind: string, id: string) => void;
   turnIntoPage?: (title: string) => Promise<{ id: string; title: string; icon?: string | null } | null>;
+  comments?: { counts: () => Record<string, number>; open: (blockId: string, anchor: HTMLElement) => void };
 }
 declare global { interface Window { MadarEditor?: { create(host: HTMLElement, o: EditorOptions): EditorHandle; text(doc: unknown): string } } }
 
@@ -54,12 +55,15 @@ export interface LegacyEditorProps {
   pickRef?: EditorOptions["pickRef"];
   preview?: EditorOptions["preview"];
   turnIntoPage?: EditorOptions["turnIntoPage"];
+  /** The comments on each block (a margin button opens a block's thread). `commentsVersion` changes when the counts do. */
+  comments?: EditorOptions["comments"];
+  commentsVersion?: number;
   /** Changes when the document was replaced from outside (a fresh copy after a conflict, a restored version). */
   version: number;
 }
 
 /** Mounts the editor into a div and keeps it in step: made once per page, handed a new document only when `version` changes. */
-export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChange, onReady, onOpenRef, pickRef, preview, turnIntoPage, version }: LegacyEditorProps) {
+export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChange, onReady, onOpenRef, pickRef, preview, turnIntoPage, comments, commentsVersion, version }: LegacyEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<EditorHandle | null>(null);
   const latest = useRef({ onChange, onOpenRef });
@@ -77,6 +81,7 @@ export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChang
         menu: openContextMenu, preview, pickRef,
         onOpenRef: (k, i) => latest.current.onOpenRef?.(k, i),
         turnIntoPage,
+        comments,
       });
       onReady?.(api.current);
     });
@@ -87,6 +92,7 @@ export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChang
 
   useEffect(() => { if (api.current && doc) api.current.set(doc); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { api.current?.setEditable(editable); }, [editable]);
+  useEffect(() => { api.current?.refreshComments?.(); }, [commentsVersion]);
 
   return <div ref={host} className="ed-host" />;
 }

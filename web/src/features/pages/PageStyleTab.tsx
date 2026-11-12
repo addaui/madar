@@ -7,7 +7,7 @@ import { useI18n, type Key } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
 import { Button, IconButton } from "../../ui/Button";
 import { Icon } from "../../ui/Icon";
-import { askConfirm, askImage, askText } from "../../ui/overlays";
+import { askConfirm, askImage, askText, toast } from "../../ui/overlays";
 import { saverFor } from "./pageSaver";
 import { keyOf, type PageScope } from "./scope";
 import { autumnImage } from "./style/art";
@@ -44,6 +44,7 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
     const name = await askText(t("styleName")); if (!name) return;
     await link.call("pages.style_save", { name, settings: eff } as never);
     await qc.invalidateQueries({ queryKey: ["pages.styles"] });
+    toast(t("styleSaved"));
   };
 
   const has = (k: keyof PageSettings) => st[k] !== undefined && st[k] !== false;
@@ -73,7 +74,7 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
         </div>
         <div className="grid grid-cols-3 gap-2">
           {PAGE_PRESETS.map((p) => <PresetTile key={p.id} label={t(("pre_" + p.id) as Key)} settings={p[shown]} on={(st.preset ?? "default") === p.id && !own} disabled={!writer} onClick={() => applyBuiltin(p, mode)} />)}
-          <button type="button" onClick={() => setMore(true)} aria-label={t("moreStyles")} className="grid gap-1 rounded-[10px] border border-line p-1.5 text-center text-xs hover:bg-hover"><span className="grid h-[34px] place-items-center rounded-md bg-sunken text-xl tracking-[2px] text-muted">···</span>{t("moreStyles")}</button>
+          <button type="button" onClick={() => setMore(true)} aria-label={t("moreStyles")} className="grid gap-1 rounded-[10px] border border-line p-1.5 text-center text-xs hoverable"><span className="grid h-[34px] place-items-center rounded-md bg-sunken text-xl tracking-[2px] text-muted">···</span>{t("moreStyles")}</button>
         </div>
         {own && writer && hasStyles && <div><Button kind="ghost" size="sm" icon="plus" onClick={() => void saveAs()}>{t("saveStyle")}</Button></div>}
       </Section>
@@ -116,6 +117,7 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
         <div className="flex items-center gap-2.5">
           <div className="grid size-[72px] place-items-center rounded-md border border-line bg-sunken text-xs text-muted" ref={(el) => { if (el) { el.style.backgroundImage = eff.bg_image ? `url("${eff.bg_image}")` : ""; el.style.backgroundSize = "cover"; } }}>{!eff.bg_image && t("noImage")}</div>
           {writer && <Button icon="image" onClick={() => void pickImage("bg_image")}>{eff.bg_image ? t("changeImage") : t("chooseImage")}</Button>}
+          {writer && eff.bg_image && <Button kind="ghost" icon="trash" onClick={() => put("bg_image", undefined)}>{t("removeImage")}</Button>}
         </div>
         {eff.bg_image && (
           <>
@@ -135,7 +137,7 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
 function PresetTile({ label, settings, on, disabled, onClick }: { label: string; settings: PageSettings; on: boolean; disabled?: boolean; onClick: () => void }) {
   const s = settings;
   return (
-    <button type="button" disabled={disabled} aria-pressed={on} onClick={onClick} className={cn("grid gap-1 rounded-[10px] border border-line p-1.5 text-center text-xs hover:bg-hover", on && "border-accent shadow-[0_0_0_1px_var(--accent)]")}>
+    <button type="button" disabled={disabled} aria-pressed={on} onClick={onClick} className={cn("grid gap-1 rounded-[10px] border border-line p-1.5 text-center text-xs hoverable", on && "border-accent shadow-[0_0_0_1px_var(--accent)]")}>
       <div className="grid h-[42px] place-items-center rounded-md border border-line" ref={(el) => {
         if (!el) return;
         el.style.backgroundColor = s.bg_color ?? "var(--sunken)";
@@ -166,7 +168,7 @@ function MoreStyles({ shown, onClose, writer, hasStyles, onBuiltin, onSaved, onS
   if (styles === null) void load();
   const remove = async (s: Saved) => { if (!(await askConfirm(t("sure")))) return; await link.call("pages.style_delete", { id: s.id } as never); await qc.invalidateQueries({ queryKey: ["pages.styles"] }); await load(); };
   return (
-    <div role="dialog" aria-label={t("pageStyles")} className="fixed inset-0 z-[60] grid place-items-start justify-center bg-black/40 pt-[8vh] backdrop-blur-[3px]" onClick={onClose}>
+    <div role="dialog" aria-label={t("pageStyles")} className="fixed inset-0 z-[60] grid place-items-start justify-center bg-scrim pt-[8vh] backdrop-blur-[3px]" onClick={onClose}>
       <div className="w-[min(720px,94vw)] rounded-lg bg-surface p-5 shadow-2" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center"><h2 className="m-0 grow text-lg font-semibold">{t("pageStyles")}</h2><IconButton icon="close" label={t("close")} onClick={onClose} /></div>
         <h3 className="mb-2 text-[13px] font-semibold text-muted">{t("builtInStyles")}</h3>

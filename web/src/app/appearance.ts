@@ -3,7 +3,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { themesOf, useDescribe, useOverrides, usePrefs } from "../api/session";
 import type { Lang } from "../i18n/i18n";
 
-export const DEFAULT_THEME = "phantom-onyx";
+export const DEFAULT_THEME = "elevated";
 
 const prefersDark = {
   subscribe(cb: () => void) { const m = matchMedia("(prefers-color-scheme: dark)"); m.addEventListener("change", cb); return () => m.removeEventListener("change", cb); },

@@ -8,6 +8,7 @@ import { DEFAULT_THEME } from "../../app/appearance";
 import { useI18n, type Key } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/Button";
+import { toast } from "../../ui/overlays";
 import { Window } from "./Dialog";
 
 type Value = string | number | boolean;
@@ -23,16 +24,18 @@ export function Appearance({ onClose }: { onClose: () => void }) {
   const saved = useOverrides();
   const schema = useRead("appearance.schema").data as Schema;
   const themes = themesOf(describe);
-  const name = prefs.theme ?? DEFAULT_THEME;
-  const preset: Preset = (themes.find((x) => x.id === "@nuah/theme-" + name) ?? themes[0])!.tokens;
+  const [theme, setTheme] = useState<string>(prefs.theme ?? DEFAULT_THEME);
+  const [scheme, setScheme] = useState<string>(prefs.scheme ?? "auto");
+  const preset: Preset = (themes.find((x) => x.id === "@nuah/theme-" + theme) ?? themes[0])!.tokens;
   const [draft, setDraft] = useState<Record<string, Value>>({ ...saved });
   const [advanced, setAdvanced] = useState(false);
+  const [importing, setImporting] = useState<string | null>(null);   // the text to import (or to copy by hand), while the box is open
   const rtl = lang === "ar";
-  const T = resolve(preset, draft, prefs.scheme, rtl);
+  const T = resolve(preset, draft, scheme, rtl);
   const sc = T.sc;
 
   // the draft is shown live; closing without saving puts the saved look back
-  useEffect(() => { apply(preset, draft, prefs.scheme, rtl); }, [preset, draft, prefs.scheme, rtl]);
+  useEffect(() => { apply(preset, draft, scheme, rtl); }, [preset, draft, scheme, rtl]);
   useEffect(() => () => { apply(preset, saved, prefs.scheme, rtl); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const baseOf = (k: string): Value => {
@@ -45,8 +48,31 @@ export function Appearance({ onClose }: { onClose: () => void }) {
   const val = (k: string) => draft[k] ?? baseOf(k);
   const set = (k: string, v: Value) => setDraft((d) => { const n = { ...d }; if (v === baseOf(k)) delete n[k]; else n[k] = v; return n; });
   const clear = (k: string) => setDraft((d) => { const n = { ...d }; delete n[k]; return n; });
-  const save = async () => { await link.call("appearance.save", { overrides: draft } as never); await qc.invalidateQueries({ queryKey: ["appearance.get"] }); onClose(); };
-  const reset = async () => { await link.call("appearance.reset", {} as never); await qc.invalidateQueries({ queryKey: ["appearance.get"] }); setDraft({}); };
+  const save = async () => {
+    await link.call("appearance.save", { overrides: draft } as never);
+    const changed: Record<string, string> = {};
+    if (theme !== (prefs.theme ?? DEFAULT_THEME)) changed.theme = theme;
+    if (scheme !== (prefs.scheme ?? "auto")) changed.scheme = scheme;
+    if (Object.keys(changed).length) qc.setQueryData(["prefs.get", {}], await link.call("prefs.set", changed as never));
+    await qc.invalidateQueries({ queryKey: ["appearance.get"] });
+    onClose();
+  };
+  const known = new Set(schema.items.map((i) => i.key));
+  const exportLook = async () => {
+    const text = JSON.stringify({ theme, scheme, overrides: draft }, null, 2);
+    try { await navigator.clipboard.writeText(text); toast(t("lookCopied")); } catch { setImporting(text); }
+  };
+  const applyImport = () => {
+    try {
+      const j = JSON.parse(importing ?? "") as { theme?: string; scheme?: string; overrides?: Record<string, Value> };
+      if (!j || typeof j !== "object" || typeof j.overrides !== "object" || j.overrides === null) throw new Error("not a look");
+      if (j.theme && themes.some((x) => x.id === "@nuah/theme-" + j.theme)) setTheme(j.theme);
+      if (j.scheme && ["auto", "light", "dark"].includes(j.scheme)) setScheme(j.scheme);
+      setDraft(Object.fromEntries(Object.entries(j.overrides).filter(([k]) => known.has(k.replace(/^(light|dark):/, "")))));
+      setImporting(null);
+    } catch { toast(t("lookBad")); }
+  };
+  const chip = (on: boolean, text: string, pick: () => void) => <button type="button" aria-pressed={on} onClick={pick} className="rounded-chip border border-line px-3 py-1 text-[13px] aria-pressed:border-accent aria-pressed:bg-soft aria-pressed:font-semibold">{text}</button>;
 
   const p = T.pal;
   const rows: [string, string, string, number][] = [[t("cBody"), p.text, p.surface, 75], [t("cMuted"), p.muted, p.surface, 60], [t("cButton"), T.on(p.primary), p.primary, 60], [t("cAccent"), p.accent, p.surface, 45]];
@@ -61,7 +87,7 @@ export function Appearance({ onClose }: { onClose: () => void }) {
       <span className="inline-flex items-center gap-2">
         {it.type === "number_or_auto" && <label className="inline-flex items-center gap-1 text-xs text-muted"><input type="checkbox" checked={auto} onChange={(e) => set(k, e.target.checked ? "auto" : Number(it.min ?? 0))} />auto</label>}
         <input id={id} type="range" min={it.min} max={it.max} step={k === "bw" ? 0.5 : 1} value={auto ? Number(it.min ?? 0) : Number(v)} disabled={auto} onChange={(e) => set(k, Number(e.target.value))} className="w-36" />
-        <output dir="ltr" className="w-9 text-end text-muted">{auto ? "auto" : String(v)}</output>
+        <output dir="ltr" className="w-9 text-end text-muted">{auto ? t("auto") : (k === "rbtn" || k === "rchip") && Number(v) >= 40 ? t("pill") : String(v)}</output>
       </span>
     );
   };
@@ -72,6 +98,10 @@ export function Appearance({ onClose }: { onClose: () => void }) {
         <div className="mb-1 text-muted">{t("contrast")}</div>
         {rows.map(([n, a, b, goal]) => { const lc = Math.round(apca(a, b)); return <div key={n} className="flex justify-between"><span>{n}</span><span dir="ltr" className={lc >= goal ? "text-ok" : "text-danger"}>Lc {lc} / {t("target")} {goal}</span></div>; })}
       </div>
+      <div className="mb-3 grid gap-1.5"><b className="text-[13px]">{t("preset")}</b>
+        <div className="flex flex-wrap gap-1.5">{themes.map((th) => { const val = th.id.replace(/^@nuah\/theme-/, ""); return <span key={th.id}>{chip(theme === val, (th.tokens as unknown as { name?: string }).name ?? val, () => { setTheme(val); setDraft({}); })}</span>; })}</div></div>
+      <div className="mb-3 grid gap-1.5"><b className="text-[13px]">{t("mode")}</b>
+        <div className="flex flex-wrap gap-1.5">{chip(scheme === "auto", t("modeAuto"), () => setScheme("auto"))}{chip(scheme === "light", t("modeLight"), () => setScheme("light"))}{chip(scheme === "dark", t("modeDark"), () => setScheme("dark"))}</div></div>
       <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={advanced} onChange={(e) => setAdvanced(e.target.checked)} />{t("advanced")}</label>
       <div className="max-h-[52vh] overflow-auto">
         {schema.groups.map((g) => {
@@ -85,7 +115,13 @@ export function Appearance({ onClose }: { onClose: () => void }) {
           );
         })}
       </div>
-      <div className="mt-4 flex justify-end gap-2"><Button kind="ghost" onClick={() => void reset()}>{t("resetLook")}</Button><Button onClick={onClose}>{t("cancel")}</Button><Button kind="primary" onClick={() => void save()}>{t("save")}</Button></div>
+      {importing !== null && (
+        <div className="mt-3 grid gap-2">
+          <textarea rows={6} dir="ltr" value={importing} onChange={(e) => setImporting(e.target.value)} placeholder={t("importPh")} aria-label={t("importLook")} className="field w-full" />
+          <div><Button size="sm" onClick={applyImport}>{t("applyImport")}</Button></div>
+        </div>
+      )}
+      <div className="mt-4 flex flex-wrap justify-end gap-2"><Button kind="ghost" onClick={() => { setDraft({}); }}>{t("resetLook")}</Button><Button kind="ghost" onClick={() => void exportLook()}>{t("exportLook")}</Button><Button kind="ghost" onClick={() => setImporting(importing === null ? "" : null)}>{t("importLook")}</Button><span className="grow" /><Button onClick={onClose}>{t("cancel")}</Button><Button kind="primary" onClick={() => void save()}>{t("saveLook")}</Button></div>
     </Window>
   );
 }

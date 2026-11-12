@@ -7,6 +7,8 @@
  * right-to-left.
  */
 @theme inline {
+  --default-transition-duration: var(--dur-fast);
+  --default-transition-timing-function: var(--ease);
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-raised: var(--raised);
@@ -31,6 +33,7 @@
   --radius-chip: var(--r-chip);
   --shadow-1: var(--shadow-1);
   --shadow-2: var(--shadow-2);
+  --color-scrim: var(--scrim);
   --font-sans: var(--font);
   --font-head: var(--head);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -53,6 +56,17 @@
   --r-lg: 22px; --r-md: 14px; --r-sm: 10px; --r-btn: 999px; --r-chip: 999px;
   --shadow-1: 0 1px 2px rgb(18 40 36 / 0.05), 0 6px 18px -8px rgb(18 40 36 / 0.16);
   --shadow-2: 0 2px 6px rgb(18 40 36 / 0.08), 0 24px 56px -16px rgb(18 40 36 / 0.28);
+  /* what a theme may tune beyond the engine's own tokens (every one has a default, so a theme sets only what differs) */
+  --sh: 20,24,40;                                   /* shadow tint, as r,g,b (the theme's own hue; the engine writes it) */
+  --shadow-lift: 0 1px 2px rgb(var(--sh) / 0.06), 0 8px 20px -10px rgb(var(--sh) / 0.22);   /* a raised thing under the pointer */
+  --shadow-raised: 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent), 0 2px 5px rgb(var(--sh) / 0.07), 0 18px 40px -12px rgb(var(--sh) / 0.3);   /* the one raised workspace */
+  --press: color-mix(in srgb, var(--text) 11%, transparent);   /* pressed: stronger than hover, which is stronger than rest */
+  --scrim: rgb(var(--sh) / 0.4);                    /* behind dialogs and drawers */
+  --focus: var(--accent); --focus-w: 2px; --focus-offset: 2px;
+  --hit: 34px; --hit-sm: 28px;                      /* the smallest comfortable target; larger for touch, below */
+  --dur-fast: 0.14s; --dur: 0.18s; --dur-slow: 0.24s; --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --lift: -1px;                                     /* how far a hovered card rises */
+  --safe-t: env(safe-area-inset-top, 0px); --safe-r: env(safe-area-inset-right, 0px); --safe-b: env(safe-area-inset-bottom, 0px); --safe-l: env(safe-area-inset-left, 0px);
   --side: 268px; --rail: 64px; --pane: 0px; --gap: 12px; --frame: 12px;
 }
 :root[data-scheme="dark"] {
@@ -67,14 +81,45 @@
   button, input, select, textarea { font: inherit; color: inherit; }
   ::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }
   :focus { outline: none; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  :focus-visible { outline: var(--focus-w) solid var(--focus); outline-offset: var(--focus-offset); }
+  html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+  @media (pointer: fine) { html { overscroll-behavior: none; } }
+  @media (pointer: coarse) { :root { --hit: 44px; --hit-sm: 44px; } }
+  button, a, summary, [role=button], [role=menuitem], select, input[type=checkbox], input[type=radio], label { touch-action: manipulation; }
+  [role=dialog], [role=menu], [role=listbox], [data-overlay] { overscroll-behavior: contain; }
+  select { background-color: var(--surface); color: var(--text); }
+  :target, [id] { scroll-margin-top: 5rem; }
+  h1, h2, h3 { text-wrap: balance; } p, li { text-wrap: pretty; }
   * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
   [hidden] { display: none !important; }
 }
 
 /* the raised surface of the page, board and Today (the Elevated look's one raised object) */
 @utility elevated {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent), 0 2px 5px rgb(0 0 0 / 0.07), 0 18px 40px -12px rgb(0 0 0 / 0.3);
+  box-shadow: var(--shadow-raised);
+}
+/* the frame around the app keeps clear of notches and home bars */
+@utility safe-frame {
+  padding-block-start: max(var(--frame), var(--safe-t)); padding-block-end: max(var(--frame), var(--safe-b));
+  padding-inline-start: max(var(--frame), var(--safe-l)); padding-inline-end: max(var(--frame), var(--safe-r));
+}
+
+/* One hover language for the whole app. `hoverable`: flat things (rows, buttons, links) take the --hover tint.
+   `hover-lift`: raised things (cards) keep their shadow, darken their edge a little and rise one pixel.
+   Pointer devices only; the selected item (aria-current / aria-selected) keeps its own look. */
+@utility hoverable {
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  @media (hover: hover) {
+    &:hover:not(:disabled, [aria-disabled=true], [aria-current=page], [aria-selected=true]) { background-color: var(--hover); }
+  }
+  &:active:not(:disabled, [aria-disabled=true]) { background-color: var(--press); }
+}
+@utility hover-lift {
+  transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease), translate var(--dur) var(--ease);
+  @media (hover: hover) {
+    &:hover:not([aria-disabled=true]) { border-color: var(--line-strong); translate: 0 var(--lift); box-shadow: var(--shadow-lift); }
+  }
+  &:active:not([aria-disabled=true]) { translate: 0 0; box-shadow: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -83,12 +128,13 @@
 
 /* form controls */
 @utility field {
-  min-block-size: 34px; max-inline-size: 100%; padding: 7px 10px; background: var(--surface); border: var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius: var(--r-sm);
+  min-block-size: var(--hit); max-inline-size: 100%; padding: 7px 10px; background: var(--surface); border: var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius: var(--r-sm);
   transition: border-color 0.16s;
   &:hover { border-color: color-mix(in srgb, var(--text) 30%, transparent); }
   &:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent); }
   &::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent); }
   &:disabled { opacity: 0.6; }
+  @media (pointer: coarse) { font-size: 16px; }   /* iOS zooms into smaller fields */
 }
 
 @keyframes progress-slide { 0% { margin-inline-start: -33%; } 100% { margin-inline-start: 100%; } }

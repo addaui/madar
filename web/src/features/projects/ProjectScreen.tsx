@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { startTransition, useEffect, useEffectEvent } from "react";
 import { link } from "../../api/link";
 import { useRead } from "../../api/hooks";
+import { CopyCode } from "../../ui/CopyCode";
 import { useDescribe } from "../../api/session";
 import type { Task } from "../../api/types";
 import { useI18n } from "../../i18n/i18n";
@@ -91,9 +92,9 @@ export function ProjectScreen({ projectId, search }: { projectId: string; search
 
   return (
     <Stage
-      topbar={<Topbar crumbs={<><Link to="/today" className="rounded-sm px-1.5 py-1 hover:bg-hover">{t("projects")}</Link><span aria-hidden="true">›</span><span aria-current="page" className="px-1.5 font-semibold text-text" dir="auto">{project.name}</span>{project.key && <span dir="ltr" className="ms-1 rounded-chip border border-line px-1.5 text-xs">{project.key}</span>}</>} actions={actions} />}
+      topbar={<Topbar crumbs={<><Link to="/today" className="rounded-sm px-1.5 py-1 hoverable">{t("projects")}</Link><span aria-hidden="true">›</span><span aria-current="page" className="px-1.5 font-semibold text-text" dir="auto">{project.name}</span>{project.key && <CopyCode code={project.key} className="ms-1 text-xs" />}</>} actions={actions} />}
       pane={open && tab !== "knowledge" ? <TaskDrawer key={open.id} project={project} task={open} members={members} labels={labels} subtasks={tasks.filter((x) => x.parent === open.id)} writer={writer} onClose={() => go({ ...search, task: undefined })} /> : undefined}
-      paneWidth={440}
+      paneWidth={440} paneLabel={t("taskDetails")} paneIcon="task" paneTransient
     >
       <div role="tablist" className="mb-3 flex gap-1 border-b border-line">
         {tabs.map((x) => (

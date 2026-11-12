@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { link } from "../../api/link";
 import { useRead } from "../../api/hooks";
+import { askConfirm } from "../../ui/overlays";
 import type { Project, Task } from "../../api/types";
 import { useI18n, translate, type Key } from "../../i18n/i18n";
 import { useDateFormat } from "../../lib/format";
@@ -67,7 +68,7 @@ export function Settings({ project, onClose }: { project: Project; onClose: () =
           <input value={c.name} maxLength={60} aria-label={t("columnName")} onChange={(e) => setCols((all) => all.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)))} className="field min-w-0 grow" />
           {i === cols.length - 1 && <span className="rounded-chip border border-line px-2 py-0.5 text-xs">{t("doneN")}</span>}
           <IconButton icon="up" label={t("up")} size="sm" onClick={() => move(i, -1)} /><IconButton icon="down" label={t("down")} size="sm" onClick={() => move(i, 1)} />
-          <IconButton icon="close" label={t("delete")} size="sm" tone="danger" disabled={cols.length <= 2} onClick={() => setCols((all) => all.filter((_, k) => k !== i))} />
+          <IconButton icon="close" label={t("delete")} size="sm" tone="danger" disabled={cols.length <= 2} onClick={() => void askConfirm(t("sureColumn")).then((ok) => { if (ok) setCols((all) => all.filter((_, k) => k !== i)); })} />
         </div>
       ))}
       <form className="mb-4 mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); const n = String(new FormData(e.currentTarget).get("name") ?? "").trim(); if (!n || cols.length >= 12) return; setCols((all) => [...all.slice(0, -1), { id: unique(n), name: n }, all[all.length - 1]!]); e.currentTarget.reset(); }}>
@@ -116,7 +117,7 @@ export function History({ project, onClose }: { project: Project; onClose: () =>
   const sentence = (e: Entry) => {
     const key = "h" + e.kind.charAt(0).toUpperCase() + e.kind.slice(1).replace(/\./g, "_");
     const d = e.data ?? {};
-    const task = (d.task as { title?: string } | undefined)?.title ?? "", name = String((d.name as string | undefined) ?? (d.project as string | undefined) ?? "");
+    const task = (d.task as { title?: string } | undefined)?.title ?? (d.title as string | undefined) ?? t("aTask"), name = String((d.name as string | undefined) ?? (d.project as string | undefined) ?? "");
     const s = translate(lang, key, { actor: who(e.actor), task, name });
     return s === key ? `${who(e.actor)} · ${e.kind}` : s;
   };
