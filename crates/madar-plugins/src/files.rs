@@ -74,6 +74,9 @@ impl Plugin for Files {
                     "input": {"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false}, "output": {"type":"object","required":["id"]}},
                 "files.download": {"kind": "query", "description": "A file's bytes (base64) with its type; the server turns this into GET /files/{id}",
                     "input": {"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false}, "output": {"type":"object","required":["data","type"]}},
+                "files.list": {"kind": "query", "description": "The pictures uploaded in one place, newest first: a project's (shared with its members), or your own",
+                    "input": {"type":"object","properties":{"project":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200}},"additionalProperties":false},
+                    "output": {"type":"object","required":["files"]}},
                 "files.sweep": {"kind": "command", "description": "Delete your own uploads that no page, task or comment shows (older than `older_than_days`, default 1)",
                     "input": {"type":"object","properties":{"older_than_days":{"type":"integer","minimum":0,"maximum":365}},"additionalProperties":false},
                     "output": {"type":"object","required":["removed"]}},
@@ -106,6 +109,21 @@ impl Plugin for Files {
             let d = tx.get(FILES, text(&i, "id"))?.filter(|d| !d.deleted).ok_or_else(|| Error::not_found("file"))?;
             if !allowed(tx, &d, false) { return Err(Error::not_found("file")); }
             Ok(info(&d))
+        });
+        b.op("files.list", |tx, i| {
+            let me = tx.who().subject.clone();
+            let limit = i.get("limit").and_then(|l| l.as_u64()).unwrap_or(60).min(200) as usize;
+            let q = match i.get("project").and_then(|p| p.as_str()) {
+                Some(p) => {
+                    let ok = tx.call("projects.get", json!({"project": p})).ok().is_some_and(|v| v["can"].as_array().is_some_and(|c| c.iter().any(|x| x == "projects.read")));
+                    if !ok { return Err(Error::not_found("project")); }
+                    Query::new().eq("project", p)
+                }
+                None => Query::new().eq("owner", me.as_str()).eq("project", Value::Null),
+            };
+            let rows = tx.query(FILES, &q.desc("created_at").limit(200))?.items;
+            let files: Vec<Value> = rows.iter().filter(|d| !d.deleted && text(&d.body, "type").starts_with("image/")).take(limit).map(info).collect();
+            Ok(json!({"files": files}))
         });
         b.op("files.download", |tx, i| {
             let d = tx.get(FILES, text(&i, "id"))?.filter(|d| !d.deleted).ok_or_else(|| Error::not_found("file"))?;

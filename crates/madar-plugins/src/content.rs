@@ -31,8 +31,41 @@ pub mod richtext {
         if v["type"] != "doc" {
             return Err(Error::invalid(field, "must be a document: {\"type\":\"doc\",\"content\":[..]}"));
         }
+        stickers_ok(field, &v["attrs"]["stickers"])?;
         let (mut nodes, mut text) = (0usize, 0usize);
         walk(field, v, 0, &mut nodes, &mut text)
+    }
+
+    pub const MAX_STICKERS: usize = 200;
+
+    /// The stickers on a page (ADR 0071) live in the document's attributes: a list of small objects. Each is checked so a saved page cannot
+    /// carry an absurd position or size, or a source that is not an emoji or one of our own files.
+    fn stickers_ok(field: &str, v: &Value) -> Result<()> {
+        if v.is_null() {
+            return Ok(());
+        }
+        let bad = |why: &str| Err(Error::invalid(field, why));
+        let Some(list) = v.as_array() else { return bad("has stickers that are not a list") };
+        if list.len() > MAX_STICKERS {
+            return bad("has too many stickers");
+        }
+        let num = |s: &Value, k: &str, lo: f64, hi: f64| s[k].as_f64().is_some_and(|x| x.is_finite() && x >= lo && x <= hi);
+        let mut ids = std::collections::HashSet::new();
+        for s in list {
+            let id_ok = s["id"].as_str().is_some_and(|i| word(i) && ids.insert(i.to_string()));
+            let src_ok = match s["kind"].as_str() {
+                Some("emoji") => s["value"].as_str().is_some_and(|e| !e.is_empty() && e.chars().count() <= 16),
+                Some("image") => s["value"].as_str().is_some_and(|u| file_id(u).is_some()),
+                Some("pack") => s["value"].as_str().is_some_and(word),
+                _ => false,
+            };
+            let anchor_ok = s["anchor"].is_null() || s["anchor"].as_str().is_some_and(word);
+            let z_ok = s["z"].as_str().is_some_and(|z| !z.is_empty() && z.len() <= 40 && z.chars().all(|c| c.is_ascii_alphanumeric()));
+            if !(id_ok && src_ok && anchor_ok && z_ok && num(s, "x", -2.0, 3.0) && num(s, "y", -2000.0, 2000.0) && num(s, "w", 0.01, 4.0) && num(s, "rot", -360.0, 360.0)) {
+                return bad("has a sticker that is not valid");
+            }
+        }
+        Ok(())
     }
 
     fn walk(field: &str, n: &Value, depth: usize, nodes: &mut usize, text: &mut usize) -> Result<()> {
@@ -119,6 +152,14 @@ pub mod richtext {
         }
         let mut out = vec![];
         go(v, &mut out);
+        // A sticker made from an uploaded picture keeps its file alive too (ADR 0071).
+        for st in v["attrs"]["stickers"].as_array().into_iter().flatten() {
+            if let Some(id) = st["value"].as_str().and_then(file_id) {
+                if !out.iter().any(|(a, b)| a == "files.file" && b == id) {
+                    out.push(("files.file".to_string(), id.to_string()));
+                }
+            }
+        }
         out
     }
 
@@ -226,6 +267,7 @@ impl Plugin for EditorBasic {
                 block("file", "fileAttachment", json!({}), "File", "ملف", "media", "attachment upload", "attachment"),
                 block("youtube", "youtube", json!({}), "YouTube", "يوتيوب", "embed", "video", "video"),
                 block("linkPreview", "linkPreview", json!({}), "Link preview", "معاينة رابط", "embed", "url bookmark", "bookmark"),
+                block("subpage", "entityRef", json!({}), "Page", "صفحة", "reference", "page subpage new child nested", "page"),
                 block("entityRef", "entityRef", json!({}), "Link to a page or task", "رابط إلى صفحة أو مهمة", "reference", "mention reference link", "mention")
             ]}))
         });

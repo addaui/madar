@@ -1,12 +1,13 @@
-import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Outlet, useMatches, useNavigate, useRouterState } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { usePulse } from "../api/session";
 import { useT } from "../i18n/i18n";
-import { Button } from "../ui/Button";
+import { BaseButton, Button } from "../ui/Button";
 import { SkeletonLines, StageSkeleton } from "../ui/Skeleton";
 import { useApplyAppearance } from "./appearance";
 import { openDialog } from "./dialogs";
+import { Frame, RegionsProvider } from "./regions";
 import { Sidebar } from "./Sidebar";
 import { drawerState, focusState, useDrawer, usePersistedValue, useSideMode } from "./ui-state";
 
@@ -14,7 +15,7 @@ function Failed({ error, resetErrorBoundary }: FallbackProps) {
   const t = useT();
   return (
     <div role="alert" className="grid h-full place-items-center p-8 text-center">
-      <div className="grid gap-3"><b>{t("offline")}</b><p className="m-0 text-muted">{error instanceof Error ? error.message : String(error)}</p><Button onClick={resetErrorBoundary}>{t("retry")}</Button></div>
+      <div className="grid gap-3"><b>{t("offline")}</b><p className="m-0 text-muted">{error instanceof Error ? error.message : String(error)}</p><Button onPress={resetErrorBoundary}>{t("retry")}</Button></div>
     </div>
   );
 }
@@ -43,6 +44,10 @@ function useShortcuts() {
 
 /** The frame: the sidebar beside whatever the route shows. Each region fails and loads on its own. */
 export function Shell() {
+  return <RegionsProvider><ShellFrame /></RegionsProvider>;
+}
+
+function ShellFrame() {
   useApplyAppearance();
   usePulse(true);
   const { closed } = useSideMode();
@@ -50,6 +55,7 @@ export function Shell() {
   useShortcuts();
   const t = useT();
   const drawer = useDrawer();
+  const flush = useMatches().some((m) => m.staticData?.flush);
   return (
     <div data-side={closed ? "closed" : "open"} data-focus={focus ? "1" : "0"}
       className="grid h-dvh grid-cols-[var(--side)_minmax(0,1fr)] gap-[var(--gap)] bg-bg safe-frame data-[side=closed]:grid-cols-[var(--rail)_minmax(0,1fr)] data-[focus=1]:grid-cols-1 max-md:grid-cols-1 max-md:p-[var(--safe-t)_var(--safe-r)_var(--safe-b)_var(--safe-l)] max-md:data-[side=closed]:grid-cols-1">
@@ -58,9 +64,9 @@ export function Shell() {
         <ErrorBoundary FallbackComponent={Failed}><Suspense fallback={<SkeletonLines rows={7} className="p-4" />}><Sidebar /></Suspense></ErrorBoundary>
       </div>
       <div className="min-h-0 min-w-0">
-        <ErrorBoundary FallbackComponent={Failed}><Suspense fallback={<StageSkeleton />}><Outlet /></Suspense></ErrorBoundary>
+        <Frame flush={flush}><ErrorBoundary FallbackComponent={Failed}><Suspense fallback={<StageSkeleton />}><Outlet /></Suspense></ErrorBoundary></Frame>
       </div>
-      {drawer && <button type="button" aria-label="close" onClick={() => drawerState.set(false)} className="fixed inset-0 z-40 bg-transparent max-md:bg-scrim" />}
+      {drawer && <BaseButton aria-label={t("close")} onPress={() => drawerState.set(false)} className="fixed inset-0 z-40 bg-transparent max-md:bg-scrim" />}
       <Suspense fallback={null}><DialogsHost /></Suspense>
     </div>
   );

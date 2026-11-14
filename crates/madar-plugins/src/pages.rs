@@ -24,6 +24,7 @@ fn view(d: &Doc, with_body: bool) -> Value {
     let mut v = json!({
         "id": d.id, "rev": d.rev, "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"], "icon": b["icon"], "space": if b["project"].is_null() { b.get("space").cloned().unwrap_or_else(|| json!("default")) } else { Value::Null }, "folder": b.get("folder").cloned().unwrap_or(json!(false)), "parent": b["parent"], "position": b["position"],
         "project": b["project"], "created_by": b["created_by"], "created_at": b["created_at"], "updated_at": b["updated_at"], "settings": b.get("settings").cloned().unwrap_or_else(|| json!({})),
+        "tags": b.get("tags").cloned().unwrap_or_else(|| json!([])),
     });
     if with_body {
         v["body"] = b["body"].clone();
@@ -281,6 +282,28 @@ fn shown(b: &Value) -> Value {
     json!({"type": "doc", "content": [b["body"].clone(), {"type": "background", "attrs": {"src": pic("bg_image")}}, {"type": "background", "attrs": {"src": pic("sheet_image")}}]})
 }
 
+const MAX_TAGS: usize = 20;
+const MAX_TAG: usize = 40;
+
+/// A page's tags as stored: trimmed, 1 to 40 characters without control characters, no two alike when case is ignored, at most 20.
+fn tags_ok(v: &Value) -> Result<Vec<String>> {
+    let a = v.as_array().ok_or_else(|| Error::invalid("tags", "must be a list"))?;
+    let mut out: Vec<String> = vec![];
+    for t in a {
+        let t = t.as_str().ok_or_else(|| Error::invalid("tags", "must be text"))?.trim();
+        if t.is_empty() || t.chars().count() > MAX_TAG || t.chars().any(|c| c.is_control()) {
+            return Err(Error::invalid("tags", "a tag is 1 to 40 characters"));
+        }
+        if !out.iter().any(|o| o.to_lowercase() == t.to_lowercase()) {
+            out.push(t.to_string());
+        }
+    }
+    if out.len() > MAX_TAGS {
+        return Err(Error::reason(Category::Invalid, "pages.too_many_tags", "A page can have up to 20 tags"));
+    }
+    Ok(out)
+}
+
 fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let old = get(tx, &s, text(i, "id"))?;
@@ -302,6 +325,13 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
         icon_ok(Some(icon))?;
         b["icon"] = icon.clone();
         changes.insert("icon".into(), json!([old.body["icon"], icon]));
+    }
+    if let Some(tg) = i.get("tags") {
+        let tags = json!(tags_ok(tg)?);
+        if tags != old.body.get("tags").cloned().unwrap_or_else(|| json!([])) {
+            b["tags"] = tags;
+            changes.insert("tags".into(), json!(true));
+        }
     }
     if let Some(st) = i.get("settings") {
         check_settings(st)?;
@@ -506,10 +536,28 @@ fn remove(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
 
 fn search(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
-    let q = text(i, "q").to_lowercase();
+    let raw = text(i, "q").trim().to_lowercase();
+    // `#name` means the tag
+    let (q, by_tag) = match raw.strip_prefix('#') { Some(t) => (t.to_string(), true), None => (raw, false) };
     let page = tx.query(PAGES, &s.query().limit(2000))?;
-    let hits: Vec<Value> = page.items.iter().filter(|d| d.body.get("folder") != Some(&json!(true)) && text(&d.body, "title").to_lowercase().contains(&q)).take(30).map(|d| view(d, false)).collect();
+    let tagged = |d: &Doc| d.body["tags"].as_array().is_some_and(|t| t.iter().any(|x| x.as_str().is_some_and(|x| if by_tag { x.to_lowercase() == q } else { x.to_lowercase().contains(&q) })));
+    let hits: Vec<Value> = page.items.iter().filter(|d| d.body.get("folder") != Some(&json!(true)) && ((!by_tag && text(&d.body, "title").to_lowercase().contains(&q)) || tagged(d))).take(30).map(|d| view(d, false)).collect();
     Ok(json!({"pages": hits}))
+}
+
+/// The tags in use on these pages, most used first, for suggestions and filtering.
+fn tags(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = tx.query(PAGES, &s.query().limit(2000))?;
+    let mut count: std::collections::BTreeMap<String, (String, u32)> = Default::default();
+    for d in &page.items {
+        for t in d.body["tags"].as_array().into_iter().flatten().filter_map(|t| t.as_str()) {
+            count.entry(t.to_lowercase()).or_insert_with(|| (t.to_string(), 0)).1 += 1;
+        }
+    }
+    let mut rows: Vec<(String, u32)> = count.into_values().collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase())));
+    Ok(json!({"tags": rows.into_iter().map(|(tag, pages)| json!({"tag": tag, "pages": pages})).collect::<Vec<_>>()}))
 }
 
 // ---- your own page styles: a look you saved, with its background image, kept with your data ----
@@ -602,17 +650,18 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
         add("style_delete", "command", true, "Delete one of your saved page styles", json!({"id": id}), vec!["id"]);
         add("set_space", "command", true, "Move one of your pages, with the pages under it, into another Space", json!({"id": id, "space": {"type":"string","minLength":1,"maxLength":60}}), vec!["id", "space"]);
     }
-    add("update", "command", true, "Change a page's title, body or icon", json!({"id": id, "title": title, "body": doc, "icon": nullable, "settings": {"type":"object"}, "expected_rev": {"type":"integer","minimum":1}}), vec!["id"]);
+    add("update", "command", true, "Change a page's title, body, icon or tags", json!({"id": id, "title": title, "body": doc, "icon": nullable, "settings": {"type":"object"}, "tags": {"type":"array","maxItems":20,"items":{"type":"string","minLength":1,"maxLength":40}}, "expected_rev": {"type":"integer","minimum":1}}), vec!["id"]);
     add("move", "command", true, "Move a page under another (or to the top), before a sibling", json!({"id": id, "parent": nullable, "before": nullable}), vec!["id"]);
     add("delete", "command", true, "Delete a page and everything under it", json!({"id": id}), vec!["id"]);
     add("versions", "query", false, "The saved earlier pictures of a page, newest first", json!({"id": id}), vec!["id"]);
     add("version", "query", false, "One earlier picture of a page, with its body", json!({"id": id, "version": id}), vec!["id", "version"]);
     add("restore", "command", true, "Put an earlier picture back", json!({"id": id, "version": id}), vec!["id", "version"]);
-    add("search", "query", false, &format!("Find pages in {scope} by title"), json!({"q": {"type":"string","minLength":1,"maxLength":100}}), vec!["q"]);
+    add("tags", "query", false, &format!("The tags in use on {scope}, most used first"), json!({}), vec![]);
+    add("search", "query", false, &format!("Find pages in {scope} by title or tag (#tag for a tag)"), json!({"q": {"type":"string","minLength":1,"maxLength":100}}), vec!["q"]);
     // what each operation returns, from `schemas` (the Core checks it; the Face's client is generated from it)
     for (name, out) in [("create", crate::schemas::page()), ("get", crate::schemas::page()), ("list", crate::schemas::pages()), ("update", crate::schemas::page()),
         ("move", crate::schemas::page_item()), ("delete", crate::schemas::removed()), ("restore", crate::schemas::page()), ("tasks", crate::schemas::page_tasks()),
-        ("set_space", crate::schemas::page_item()), ("styles", crate::schemas::page_styles()), ("style_delete", crate::schemas::removed())] {
+        ("set_space", crate::schemas::page_item()), ("tags", crate::schemas::page_tags()), ("styles", crate::schemas::page_styles()), ("style_delete", crate::schemas::removed())] {
         if let Some(op) = m.get_mut(&format!("{prefix}.{name}")) {
             op["output"] = out;
         }
@@ -664,6 +713,8 @@ impl Plugin for Pages {
     fn bind(&self, b: &mut Bindings) {
         b.provide("search.source", |tx, i| {
             let q = text(&i, "q").to_string();
+            // `#name` asks for the pages that carry that tag; anything else searches words
+            let by_tag = q.trim().strip_prefix('#').map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty());
             let projects = tx.call("projects.list", json!({}))?;
             let me = tx.who().subject.clone();
             let mut items = vec![];
@@ -671,9 +722,12 @@ impl Plugin for Pages {
                 if d.body.get("folder") == Some(&json!(true)) {
                     return;
                 }
-                let body = richtext::text_of(&d.body["body"]);
-                if let Some((score, snippet)) = crate::search::score(&q, text(&d.body, "title"), &body) {
-                    items.push(json!({"kind": kind, "id": d.id, "title": d.body["title"], "snippet": snippet, "score": score,
+                let found = match &by_tag {
+                    Some(t) => d.body["tags"].as_array().is_some_and(|x| x.iter().any(|y| y.as_str().is_some_and(|y| y.to_lowercase() == *t))).then(|| (10.0, String::new())),
+                    None => crate::search::score(&q, text(&d.body, "title"), &richtext::text_of(&d.body["body"])),
+                };
+                if let Some((score, snippet)) = found {
+                    items.push(json!({"kind": kind, "id": d.id, "title": d.body["title"], "snippet": snippet, "score": score, "tags": d.body.get("tags").cloned().unwrap_or_else(|| json!([])),
                         "project": project.map(|p| p["id"].clone()).unwrap_or(Value::Null), "project_name": project.map(|p| p["name"].clone()).unwrap_or(Value::Null),
                         "space": if project.is_none() { d.body.get("space").cloned().unwrap_or_else(|| json!("default")) } else { Value::Null }}));
                 }
@@ -698,7 +752,7 @@ impl Plugin for Pages {
         b.op("pages.set_task", |tx, i| set_task(tx, &i, true));
         b.op("knowledge.set_task", |tx, i| set_task(tx, &i, false));
         type H = fn(&mut Tx, &Value, bool) -> Result<Value>;
-        let all: [(&str, H); 10] = [("versions", versions), ("version", version), ("restore", restore), ("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search)];
+        let all: [(&str, H); 11] = [("versions", versions), ("version", version), ("restore", restore), ("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search), ("tags", tags)];
         for (prefix, personal) in [("knowledge", false), ("pages", true)] {
             for (name, f) in all {
                 b.op(&format!("{prefix}.{name}"), move |tx, i| f(tx, &i, personal));

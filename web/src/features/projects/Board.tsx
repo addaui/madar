@@ -6,6 +6,7 @@ import type { Project, Task } from "../../api/types";
 import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
 import { openContextMenu, type MenuItems } from "../../ui/overlays";
+import { TextField } from "../../ui/Field";
 import { TaskCard } from "./TaskCard";
 
 const COL_COLORS = ["var(--p-low,#5d8696)", "var(--info,#3d6f8e)", "var(--warn)", "#8b6fd1", "#d0629a"];
@@ -86,8 +87,8 @@ function Column({ project, status, color, items, tasks, today, writer, selected,
         ))}
       </div>
       {writer && (
-        <form onSubmit={(e) => { e.preventDefault(); const input = e.currentTarget.elements.namedItem("title") as HTMLInputElement; const v = input.value.trim(); if (v) { add(v); input.value = ""; } }} className="pt-1">
-          <input name="title" type="text" dir="auto" placeholder={"+  " + t("addPh")} aria-label={t("add") + ": " + status.name} className="field w-full" />
+        <form onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget, v = String(new FormData(form).get("title") ?? "").trim(); if (v) { add(v); form.reset(); } }} className="pt-1">
+          <TextField name="title" dir="auto" placeholder={"+  " + t("addPh")} label={t("add") + ": " + status.name} />
         </form>
       )}
     </section>

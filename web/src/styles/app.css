@@ -31,6 +31,7 @@
   --radius-sm: var(--r-sm);
   --radius-btn: var(--r-btn);
   --radius-chip: var(--r-chip);
+  --radius-inner: max(0px, calc(var(--r-sm) - 3px));   /* a control inside a padded group: concentric with it */
   --shadow-1: var(--shadow-1);
   --shadow-2: var(--shadow-2);
   --color-scrim: var(--scrim);
@@ -50,7 +51,7 @@
   --line: color-mix(in srgb, var(--text) 9%, transparent);
   --line-strong: color-mix(in srgb, var(--text) 18%, transparent);
   --hover: color-mix(in srgb, var(--text) 6%, transparent);
-  --sunken: color-mix(in srgb, var(--text) 4.5%, var(--surface));
+  --sunken: var(--sunk, color-mix(in srgb, var(--text) 4.5%, var(--surface)));
   --soft: color-mix(in srgb, var(--accent) 11%, var(--surface));
   --raised: var(--surface);
   --r-lg: 22px; --r-md: 14px; --r-sm: 10px; --r-btn: 999px; --r-chip: 999px;
@@ -59,7 +60,8 @@
   /* what a theme may tune beyond the engine's own tokens (every one has a default, so a theme sets only what differs) */
   --sh: 20,24,40;                                   /* shadow tint, as r,g,b (the theme's own hue; the engine writes it) */
   --shadow-lift: 0 1px 2px rgb(var(--sh) / 0.06), 0 8px 20px -10px rgb(var(--sh) / 0.22);   /* a raised thing under the pointer */
-  --shadow-raised: 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent), 0 2px 5px rgb(var(--sh) / 0.07), 0 18px 40px -12px rgb(var(--sh) / 0.3);   /* the one raised workspace */
+  --shadow-raised: 0 0 0 1px color-mix(in srgb, var(--text) 9%, transparent), 0 1px 2px rgb(var(--sh) / 0.08), 0 6px 16px -4px rgb(var(--sh) / 0.10), 0 28px 56px -18px rgb(var(--sh) / 0.30);   /* the one raised workspace */
+  --panel-bg: var(--sunken); --panel-line: var(--line);   /* a group of things inside the workspace: flat, never floating */
   --press: color-mix(in srgb, var(--text) 11%, transparent);   /* pressed: stronger than hover, which is stronger than rest */
   --scrim: rgb(var(--sh) / 0.4);                    /* behind dialogs and drawers */
   --focus: var(--accent); --focus-w: 2px; --focus-offset: 2px;
@@ -67,6 +69,7 @@
   --dur-fast: 0.14s; --dur: 0.18s; --dur-slow: 0.24s; --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --lift: -1px;                                     /* how far a hovered card rises */
   --safe-t: env(safe-area-inset-top, 0px); --safe-r: env(safe-area-inset-right, 0px); --safe-b: env(safe-area-inset-bottom, 0px); --safe-l: env(safe-area-inset-left, 0px);
+  --row: 32px;                                      /* one row height in the sidebar: a link, a page, a project, the search box */
   --side: 268px; --rail: 64px; --pane: 0px; --gap: 12px; --frame: 12px;
 }
 :root[data-scheme="dark"] {
@@ -88,6 +91,7 @@
   button, a, summary, [role=button], [role=menuitem], select, input[type=checkbox], input[type=radio], label { touch-action: manipulation; }
   [role=dialog], [role=menu], [role=listbox], [data-overlay] { overscroll-behavior: contain; }
   select { background-color: var(--surface); color: var(--text); }
+  input[type=checkbox], input[type=radio], input[type=range], progress { accent-color: var(--accent); }
   :target, [id] { scroll-margin-top: 5rem; }
   h1, h2, h3 { text-wrap: balance; } p, li { text-wrap: pretty; }
   * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
@@ -97,6 +101,15 @@
 /* the raised surface of the page, board and Today (the Elevated look's one raised object) */
 @utility elevated {
   box-shadow: var(--shadow-raised);
+}
+/* a group of things inside the workspace (a list, a stat, a frame): flat and tinted, with a hairline, never a floating card */
+@utility panel {
+  background: var(--panel-bg); border: var(--bw, 1px) var(--bstyle, solid) var(--panel-line); border-radius: var(--r-md);
+}
+/* a small control keeps its look but its hit area grows to 24px (44px on touch, see --hit) */
+@utility hit {
+  position: relative;
+  &::after { content: ""; position: absolute; inset: min(0px, calc((100% - var(--hit-min, 24px)) / 2)); }
 }
 /* the frame around the app keeps clear of notches and home bars */
 @utility safe-frame {
@@ -117,7 +130,8 @@
 @utility hover-lift {
   transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease), translate var(--dur) var(--ease);
   @media (hover: hover) {
-    &:hover:not([aria-disabled=true]) { border-color: var(--line-strong); translate: 0 var(--lift); box-shadow: var(--shadow-lift); }
+    &:hover:not([aria-disabled=true]) { translate: 0 var(--lift); box-shadow: var(--shadow-lift); }
+    &:hover:not([aria-disabled=true], [aria-current]) { border-color: var(--line-strong); }
   }
   &:active:not([aria-disabled=true]) { translate: 0 0; box-shadow: none; }
 }

@@ -1693,3 +1693,71 @@ fn a_saved_page_style_is_yours_and_keeps_its_background_image() {
     a.settle();
     assert_eq!(a.err(&al, "files.info", json!({"id": file})).category, Category::NotFound);
 }
+
+#[test]
+fn a_page_can_be_tagged_and_found_by_its_tags() {
+    let a = app();
+    let al = who("alice");
+    let p1 = a.ok(&al, "pages.create", json!({"title": "Plan"}));
+    let p2 = a.ok(&al, "pages.create", json!({"title": "Other"}));
+    assert_eq!(p1["tags"], json!([]), "a page starts with none");
+    let t = a.ok(&al, "pages.update", json!({"id": p1["id"], "tags": [" Work ", "work", "urgent"]}));
+    assert_eq!(t["tags"], json!(["Work", "urgent"]), "trimmed, and no two alike when case is ignored");
+    a.ok(&al, "pages.update", json!({"id": p2["id"], "tags": ["work"]}));
+    let names = |v: Value| v["pages"].as_array().unwrap().iter().map(|p| p["title"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    assert_eq!(names(a.ok(&al, "pages.search", json!({"q": "#WORK"}))).len(), 2, "#tag finds by tag, ignoring case");
+    assert_eq!(names(a.ok(&al, "pages.search", json!({"q": "#urg"}))).len(), 0, "#tag is the whole tag");
+    assert_eq!(names(a.ok(&al, "pages.search", json!({"q": "urg"}))), ["Plan"], "plain text also finds a tag");
+    let all = a.ok(&al, "pages.tags", json!({}));
+    assert_eq!(all["tags"][0], json!({"tag": "Work", "pages": 2}), "most used first");
+    assert_eq!(a.err(&al, "pages.update", json!({"id": p1["id"], "tags": [""]})).category, Category::Invalid);
+    assert_eq!(a.err(&al, "pages.update", json!({"id": p1["id"], "tags": (0..21).map(|n| format!("t{n}")).collect::<Vec<_>>()})).category, Category::Invalid);
+}
+
+#[test]
+fn searching_for_a_hash_finds_the_pages_with_that_tag() {
+    let a = app();
+    let al = who("alice");
+    let p1 = a.ok(&al, "pages.create", json!({"title": "Plan"}));
+    let p2 = a.ok(&al, "pages.create", json!({"title": "Other"}));
+    a.ok(&al, "pages.update", json!({"id": p1["id"], "tags": ["Work"]}));
+    a.ok(&al, "pages.update", json!({"id": p2["id"], "tags": ["home"]}));
+    let hits = a.ok(&al, "search.query", json!({"q": "#work"}));
+    let titles: Vec<&str> = hits["items"].as_array().unwrap().iter().map(|x| x["title"].as_str().unwrap()).collect();
+    assert_eq!(titles, ["Plan"], "the tag, ignoring case, and only that tag");
+    assert_eq!(hits["items"][0]["tags"], json!(["Work"]));
+    assert!(a.ok(&al, "search.query", json!({"q": "#wor"}))["items"].as_array().unwrap().is_empty(), "a tag is matched whole");
+}
+
+#[test]
+fn files_list_shows_the_pictures_of_one_place_only() {
+    let a = app();
+    let (al, bo, vera) = (who("alice"), who("bob"), viewer("vera"));
+    let p = a.project(&al, "Stickers");
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "vera", "level": "viewer"}));
+    let shared = a.ok(&al, "files.upload", json!({"name": "shared.png", "data": PNG, "project": p}));
+    let mine = a.ok(&al, "files.upload", json!({"name": "mine.png", "data": PNG}));
+    let in_project = a.ok(&vera, "files.list", json!({"project": p}));
+    let ids: Vec<_> = in_project["files"].as_array().unwrap().iter().map(|f| f["id"].clone()).collect();
+    assert_eq!(ids, vec![shared["id"].clone()], "members see the project's pictures, not alice's own");
+    let own = a.ok(&al, "files.list", json!({}));
+    assert_eq!(own["files"].as_array().unwrap().iter().map(|f| f["id"].clone()).collect::<Vec<_>>(), vec![mine["id"].clone()]);
+    assert_eq!(a.err(&who("mallory"), "files.list", json!({"project": p})).category, Category::NotFound);
+    assert!(a.ok(&bo, "files.list", json!({}))["files"].as_array().unwrap().is_empty(), "personal pictures are their uploader's alone");
+}
+
+#[test]
+fn stickers_on_a_page_are_checked_and_keep_their_pictures_alive() {
+    use madar_plugins::content::richtext;
+    let ok = |stickers: serde_json::Value| richtext::check("body", &json!({"type": "doc", "attrs": {"stickers": stickers}, "content": [{"type": "paragraph"}]}));
+    let s = |extra: serde_json::Value| { let mut b = json!({"id": "s1", "kind": "emoji", "value": "🎉", "anchor": "b1", "x": 0.3, "y": 1.5, "w": 0.2, "rot": 0, "z": "a0"}); for (k, v) in extra.as_object().unwrap() { b[k] = v.clone(); } b };
+    assert!(ok(json!([s(json!({}))])).is_ok());
+    assert!(ok(json!([s(json!({"anchor": null}))])).is_ok(), "pinned to the page");
+    assert!(ok(json!([s(json!({"x": 99}))])).is_err(), "far outside the page");
+    assert!(ok(json!([s(json!({"w": 0}))])).is_err());
+    assert!(ok(json!([s(json!({"kind": "image", "value": "https://evil.example/x.png"}))])).is_err(), "only our own files");
+    assert!(ok(json!([s(json!({})), s(json!({}))])).is_err(), "ids are unique");
+    assert!(ok(json!("nope")).is_err());
+    let doc = json!({"type": "doc", "attrs": {"stickers": [s(json!({"kind": "image", "value": "/files/abc123"}))]}, "content": []});
+    assert_eq!(richtext::files_of(&doc), vec!["abc123".to_string()]);
+}

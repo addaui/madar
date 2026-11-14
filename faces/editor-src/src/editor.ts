@@ -67,6 +67,37 @@ const BlockId = Extension.create({
   },
 })
 
+// ---- stickers (ADR 0071): the list lives in the document's attributes; the Face draws them (they are not part of the text) ----
+// A sticker is anchored to a block by its id. When that block goes (deleted, or turned into something with no id), the sticker moves to the
+// nearest block before it that is still there, so it never disappears and undo restores both together.
+const blockIdsOf = (doc: any): string[] => { const out: string[] = []; doc.descendants((n: any) => { if (n.attrs && n.attrs.blockId) out.push(n.attrs.blockId) }); return out }
+const StickerData = Extension.create({
+  name: 'stickerData',
+  addGlobalAttributes() { return [{ types: ['doc'], attributes: { stickers: { default: [], rendered: false } } }] },
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey('stickerAnchors'),
+      appendTransaction(trs, oldState, state) {
+        if (!trs.some((t) => t.docChanged)) return null
+        const list: any[] = state.doc.attrs.stickers || []
+        if (!list.length) return null
+        const now = new Set(blockIdsOf(state.doc))
+        if (list.every((s) => s.anchor === null || now.has(s.anchor))) return null
+        const before = blockIdsOf(oldState.doc), first = blockIdsOf(state.doc)[0] ?? null
+        const next = list.map((s) => {
+          if (s.anchor === null || now.has(s.anchor)) return s
+          const at = before.indexOf(s.anchor)
+          let to: string | null = null
+          for (let i = at - 1; i >= 0 && !to; i--) if (now.has(before[i])) to = before[i]
+          for (let i = at + 1; i < before.length && !to && at >= 0; i++) if (now.has(before[i])) to = before[i]
+          return { ...s, anchor: to ?? first }
+        })
+        return state.tr.setDocAttribute('stickers', next)
+      },
+    })]
+  },
+})
+
 // ---- the blocks this editor draws ----
 const Callout = Node.create({
   name: 'callout', group: 'block', content: 'block+', defining: true,
@@ -163,7 +194,7 @@ function extensions(placeholder: string, calloutTitle: string): any[] {
       if (parent.type.name === 'callout') return parent.firstChild === node ? calloutTitle : ''
       return $p.depth === 0 ? placeholder : ''
     } }),
-    Callout, Toggle, EntityRef, YouTube, ImageBlock, LinkPreview, UnknownBlock, BlockDir, BlockId, Ways,
+    Callout, Toggle, EntityRef, YouTube, ImageBlock, LinkPreview, UnknownBlock, BlockDir, BlockId, StickerData, Ways,
   ]
 }
 
@@ -186,6 +217,7 @@ function unwrapUnknown(n: Json): Json {
   if (!n || typeof n !== 'object') return n
   if (n.type === 'unknownBlock') { try { return JSON.parse(n.attrs.raw) } catch { return { type: 'paragraph' } } }
   const out: Json = { ...n }
+  if (n.type === 'doc' && out.attrs) { const { stickers, ...rest } = out.attrs; if (stickers && stickers.length) out.attrs = { ...rest, stickers }; else if (Object.keys(rest).length) out.attrs = rest; else delete out.attrs }
   // dirAuto only tells the browser to pick each block's direction; it is not content
   if (out.attrs && ('dirAuto' in out.attrs || out.attrs.blockId === null)) { const { dirAuto, ...rest } = out.attrs; if (rest.blockId === null) delete rest.blockId; if (Object.keys(rest).length) out.attrs = rest; else delete out.attrs }
   if (n.content) out.content = n.content.map(unwrapUnknown)
@@ -210,7 +242,9 @@ const COMMANDS: Record<string, Cmd> = {
   calloutTip: (e) => e.chain().focus().insertContent({ type: 'callout', attrs: { tone: 'tip' }, content: [{ type: 'paragraph' }] }).run(),
   calloutWarning: (e) => e.chain().focus().insertContent({ type: 'callout', attrs: { tone: 'warning' }, content: [{ type: 'paragraph' }] }).run(),
   calloutDanger: (e) => e.chain().focus().insertContent({ type: 'callout', attrs: { tone: 'danger' }, content: [{ type: 'paragraph' }] }).run(),
-  image: async (e, o) => { const u = await o.askUrl?.('Image address'); if (u && safeUrl(u)) e.chain().focus().insertContent({ type: 'image', attrs: { src: u } }).run() },
+  image: async (e, o) => {
+    if (o.pickImage) { const c = e.view.coordsAtPos(e.state.selection.from); const u = await o.pickImage({ left: c.left, top: c.top, bottom: c.bottom }); if (u && safeUrl(u)) e.chain().focus().insertContent({ type: 'image', attrs: { src: u } }).run(); return }
+    const u = await o.askUrl?.('Image address'); if (u && safeUrl(u)) e.chain().focus().insertContent({ type: 'image', attrs: { src: u } }).run() },
   youtube: async (e, o) => { const u = await o.askUrl?.('YouTube address'); if (u && embedUrl(u)) e.chain().focus().insertContent({ type: 'youtube', attrs: { src: u } }).run() },
   linkPreview: async (e, o) => {
     const u = await o.askUrl?.('Link address')
@@ -223,8 +257,12 @@ const COMMANDS: Record<string, Cmd> = {
     e.state.doc.descendants((n: any, pos: number) => { if (at < 0 && n.type.name === 'linkPreview' && n.attrs.url === u && n.attrs.title === u && !n.attrs.site) at = pos; return at < 0 })
     if (at >= 0) e.view.dispatch(e.state.tr.setNodeMarkup(at, undefined, { url: u, title: p.title || u, description: p.description || '', site: p.site || '', image: p.image || '' }))
   },
+  subpage: async (e, o) => { const r = await o.newPage?.(); if (r) e.chain().focus().insertContent([{ type: 'entityRef', attrs: { kind: 'pages.page', id: r.id, title: r.title, icon: r.icon || '' } }, { type: 'text', text: ' ' }]).run() },
   entityRef: async (e, o) => { const r = await o.pickRef?.(); if (r) e.chain().focus().insertContent([{ type: 'entityRef', attrs: r }, { type: 'text', text: ' ' }]).run() },
 }
+
+/** A point on screen, for a popover to open at. */
+export interface Spot { left: number; top: number; bottom: number }
 
 export interface Opts {
   content?: Json; editable?: boolean; lang?: string; placeholder?: string
@@ -238,6 +276,15 @@ export interface Opts {
   preview?: (url: string) => Promise<{ title?: string; description?: string | null; site?: string | null; image?: string | null } | null>
   pickRef?: () => Promise<{ kind: string; id: string; title: string } | null>
   onOpenRef?: (kind: string, id: string) => void
+  // Host hooks (ADR 0068). The Face owns the interface and the upload; the editor only reports what happened and where, and takes content back.
+  // The Image block: the Face shows its own popover at the caret and resolves with the address of the picture, or null.
+  pickImage?: (at: Spot) => Promise<string | null>
+  // The Page block: the Face makes a new page under this one and resolves with it, or null.
+  newPage?: () => Promise<{ id: string; title: string; icon?: string | null } | null>
+  // Pictures pasted or dropped. `pos` is a place in the document (a drop is placed between blocks, shown by a line).
+  onFiles?: (files: File[], pos: number) => void
+  // A lone address was pasted (it is already in the text); the Face may offer to turn it into a picture.
+  onPasteUrl?: (url: string, at: Spot) => void
   toolbar?: boolean
   // The block handles in the left margin (ADR 0046). Only a page has the room for them.
   gutter?: boolean
@@ -246,6 +293,13 @@ export interface Opts {
   askText?: (label: string, initial?: string) => Promise<string | null>
   // Opens the context menu at a point. The Face draws it (one menu for the whole app); items are {label, icon?, checked?, danger?, disabled?, heading?, onclick?, sub?}.
   menu?: (x: number, y: number, items: any[]) => void
+  // Stickers (ADR 0071): the Face draws them in two layers (behind the text, in front of it) that the editor makes and hands over.
+  stickers?: {
+    onList: (list: any[]) => void
+    onLayers: (l: { back: HTMLElement; front: HTMLElement }) => void
+    onLayout: () => void
+    menu: (x: number, y: number) => any[]
+  }
 }
 
 const TOOLS: [string, string, (e: Editor) => void, (e: Editor) => boolean][] = [
@@ -350,20 +404,88 @@ function create(host: HTMLElement, o: Opts) {
   const lang = o.lang === 'ar' ? 'ar' : 'en'
   let editable = o.editable !== false
   let silent = true
+  let lastStickers: any[] = []
+
+  // A picture dragged over the page shows a line where it will be placed: between two blocks, nearest the pointer (ADR 0068).
+  const dropLine = document.createElement('div'); dropLine.className = 'ed-dropline'; dropLine.hidden = true
+  body.append(dropLine)
+  const layers = o.stickers ? { back: document.createElement('div'), front: document.createElement('div') } : null
+  let dropAt = -1
+  const hideDrop = () => { dropLine.hidden = true; dropAt = -1 }
+  const showDrop = (ev: DragEvent) => {
+    const v = editor.view, hit = v.posAtCoords({ left: ev.clientX, top: ev.clientY })
+    if (!hit) { hideDrop(); return }
+    // the top-level block under the pointer (an atom such as a picture is found through `inside`, a text block through its position)
+    const doc = v.state.doc
+    let start = -1, end = -1
+    if (hit.inside >= 0) { const $i = doc.resolve(hit.inside); if ($i.depth === 0) { start = hit.inside; end = start + doc.nodeAt(start)!.nodeSize } else { start = $i.before(1); end = $i.after(1) } }
+    else { const $p = doc.resolve(hit.pos); if ($p.depth >= 1) { start = $p.before(1); end = $p.after(1) } }
+    let pos = hit.pos, y: number, rect: DOMRect | null = null
+    if (start >= 0) {
+      const dom = v.nodeDOM(start) as HTMLElement | null
+      rect = dom && dom.getBoundingClientRect ? dom.getBoundingClientRect() : null
+      if (!rect) { hideDrop(); return }
+      const before = ev.clientY < rect.top + rect.height / 2
+      pos = before ? start : end; y = before ? rect.top : rect.bottom
+    } else { y = v.coordsAtPos(pos).top }
+    dropAt = pos
+    const b = body.getBoundingClientRect(), r = rect || b
+    dropLine.hidden = false
+    dropLine.style.top = (y - b.top) + 'px'; dropLine.style.left = (r.left - b.left) + 'px'; dropLine.style.width = r.width + 'px'
+  }
+  const images = (list?: FileList | null) => [...(list || [])].filter((f) => /^image\//i.test(f.type))
+  const spot = (): Spot => { const c = editor.view.coordsAtPos(editor.state.selection.from); return { left: c.left, top: c.top, bottom: c.bottom } }
 
   const editor = new Editor({
     element: body, extensions: extensions(o.placeholder || '', (LBL[lang] || LBL.en).calloutTitle), editable,
     content: wrapUnknown(o.content && o.content.type === 'doc' ? o.content : EMPTY),
     editorProps: {
       attributes: { dir: 'auto', class: 'ed-content', spellcheck: 'true' },
+      handlePaste: (view, ev) => {
+        const cd = ev.clipboardData
+        if (!editable || !cd) return false
+        const files = images(cd.files)
+        if (files.length && o.onFiles) { ev.preventDefault(); o.onFiles(files, view.state.selection.from); return true }
+        const text = cd.getData('text/plain').trim()
+        if (o.onPasteUrl && /^https?:\/\/\S+$/i.test(text)) setTimeout(() => o.onPasteUrl!(text, spot()), 0)
+        return false
+      },
+      handleDrop: (view, ev, _slice, moved) => {
+        const d = ev as DragEvent, files = images(d.dataTransfer?.files), at = dropAt
+        hideDrop()
+        if (moved || !editable || !files.length || !o.onFiles) return false
+        d.preventDefault()
+        o.onFiles(files, at >= 0 ? at : (view.posAtCoords({ left: d.clientX, top: d.clientY })?.pos ?? view.state.selection.from))
+        return true
+      },
+      handleDOMEvents: {
+        dragover: (_v, ev) => { const d = ev as DragEvent; if (editable && o.onFiles && d.dataTransfer && [...d.dataTransfer.types].includes('Files')) { d.preventDefault(); d.dataTransfer.dropEffect = 'copy'; showDrop(d) } return false },
+        dragleave: (v, ev) => { const to = (ev as DragEvent).relatedTarget as Node | null; if (!to || !v.dom.contains(to)) hideDrop(); return false },
+        dragend: () => { hideDrop(); return false },
+      },
       handleClick: (_v, _p, ev) => { const t = (ev.target as HTMLElement).closest?.('.entity-ref') as HTMLElement | null; if (t && o.onOpenRef) { o.onOpenRef(t.dataset.kind || '', t.dataset.id || ''); return true } return false },
       handleKeyDown: (_v, ev) => { if (editable && o.menu && (ev.key === 'ContextMenu' || (ev.shiftKey && ev.key === 'F10'))) { ev.preventDefault(); const c = editor.view.coordsAtPos(editor.state.selection.from); openContext(null, c.left, c.bottom); return true } return slashKey(ev) },
     },
     onUpdate: () => { slashUpdate(); if (!silent) o.onChange?.(unwrapUnknown(editor.getJSON())) },
     onSelectionUpdate: () => { slashUpdate(); paintBar() },
-    onTransaction: () => { paintBar(); ensureTrailing() },
+    onTransaction: () => {
+      paintBar(); ensureTrailing()
+      if (o.stickers) {
+        const list = editor.state.doc.attrs.stickers || []
+        if (list !== lastStickers) { lastStickers = list; o.stickers.onList(list) }
+        o.stickers.onLayout()
+      }
+    },
   })
   silent = false
+  if (layers && o.stickers) {
+    body.classList.add('ed-has-stickers')
+    layers.back.className = 'ed-stickers ed-stickers-back'; layers.front.className = 'ed-stickers ed-stickers-front'
+    body.prepend(layers.back); body.append(layers.front)
+    o.stickers.onLayers(layers)
+    lastStickers = editor.state.doc.attrs.stickers || []
+    o.stickers.onList(lastStickers)
+  }
 
   // toolbar
   const buttons = TOOLS.map(([label, title, run, active]) => {
@@ -398,7 +520,7 @@ function create(host: HTMLElement, o: Opts) {
   const entries: Entry[] = (o.blocks || []).flatMap((b): Entry[] => {
     const variants = (b.variants || []).filter((v) => COMMANDS[v.id]).map((v) => ({ id: v.id, label: lbl(v.label), group: b.group, keywords: (v.keywords || '') + ' ' + (b.keywords || '') + ' ' + lbl(b.label).toLowerCase(), icon: v.icon || b.icon }))
     if (variants.length) return [{ id: b.id, label: lbl(b.label), group: b.group, keywords: b.keywords || '', icon: b.icon, variants }]
-    return COMMANDS[b.id] ? [{ id: b.id, label: lbl(b.label), group: b.group, keywords: b.keywords || '', icon: b.icon }] : []
+    return COMMANDS[b.id] && (b.id !== 'subpage' || o.newPage) ? [{ id: b.id, label: lbl(b.label), group: b.group, keywords: b.keywords || '', icon: b.icon }] : []
   })
   let items: Entry[] = [], at = 0, from = -1
   let sub: { parent: number; at: number } | null = null
@@ -719,10 +841,14 @@ function create(host: HTMLElement, o: Opts) {
     })
     grip.addEventListener('dragend', () => { gutter.hidden = true; gPos = -1 })
   }
-  function openContext(ev: MouseEvent | null, x: number, y: number) { if (!o.menu) return; o.menu(x, y, menuItems(targetOf(ev))) }
+  function openContext(ev: MouseEvent | null, x: number, y: number) {
+    if (!o.menu) return
+    const own = menuItems(targetOf(ev)), extra = o.stickers ? o.stickers.menu(x, y) : []
+    o.menu(x, y, extra.length ? [...extra, '-', ...own] : own)
+  }
   let lastLong = 0
   body.addEventListener('contextmenu', (ev) => {
-    if (!editable || !o.menu || ev.shiftKey) return   // Shift keeps the browser's own menu
+    if (!editable || !o.menu || ev.shiftKey || (ev.target as HTMLElement).closest?.('.ed-stickers')) return   // Shift keeps the browser's own menu; a sticker has its own
     ev.preventDefault()
     if (Date.now() - lastLong < 900) return
     openContext(ev, ev.clientX, ev.clientY)
@@ -731,7 +857,7 @@ function create(host: HTMLElement, o: Opts) {
   let lp: number | undefined, lpAt = { x: 0, y: 0 }
   const lpStop = () => { if (lp) clearTimeout(lp); lp = undefined }
   body.addEventListener('pointerdown', (ev: PointerEvent) => {
-    if (ev.pointerType === 'mouse' || !editable || !o.menu || !(ev.target as HTMLElement).closest?.('.embed, img, a.link-card, hr, .callout:not(:has(p:hover))')) return
+    if (ev.pointerType === 'mouse' || !editable || !o.menu || !(ev.target as HTMLElement).closest?.('.embed, img, a.link-card, hr, .callout:not(:has(p:hover))') || (ev.target as HTMLElement).closest?.('.ed-stickers')) return
     lpAt = { x: ev.clientX, y: ev.clientY }
     lp = window.setTimeout(() => { lastLong = Date.now(); openContext(ev, lpAt.x, lpAt.y) }, 450)
   })
@@ -750,6 +876,37 @@ function create(host: HTMLElement, o: Opts) {
   } } }))
 
   return {
+    // Content goes between blocks: onto an empty line (which it replaces), or after the block the place is in.
+    insert: (content: Json, pos?: number) => {
+      const $p = editor.state.doc.resolve(Math.min(pos ?? editor.state.selection.from, editor.state.doc.content.size))
+      let range = { from: $p.pos, to: $p.pos }
+      if ($p.depth >= 1) { const from = $p.before(1), to = $p.after(1), top = $p.node(1); range = top.isTextblock && top.content.size === 0 ? { from, to } : { from: to, to } }
+      editor.chain().focus().insertContentAt(range, content).run()
+    },
+    // The paragraph that is only this address becomes `content` (a pasted address that turned out to be a picture, or that stays a link).
+    replaceUrl: (url: string, content: Json) => {
+      let range: { from: number; to: number } | null = null
+      editor.state.doc.forEach((n, off) => { if (!range && n.type.name === 'paragraph' && n.textContent.trim() === url) range = { from: off, to: off + n.nodeSize } })
+      if (range) editor.chain().insertContentAt(range, content).run()
+    },
+    stickers: () => (editor.state.doc.attrs.stickers || []) as any[],
+    setStickers: (list: any[]) => { editor.view.dispatch(editor.state.tr.setDocAttribute('stickers', list)) },
+    // The block under a point (any block with an id; one without gets an id now). Above the first block it is the first, below the last the last.
+    blockAt: (x: number, y: number): { id: string } | null => {
+      const v = editor.view, doc = editor.state.doc, r = v.dom.getBoundingClientRect()
+      const hit = v.posAtCoords({ left: Math.min(Math.max(x, r.left + 2), r.right - 2), top: Math.min(Math.max(y, r.top + 2), r.bottom - 2) })
+      if (!hit) return null
+      const $p = doc.resolve(hit.inside >= 0 ? hit.inside : hit.pos)
+      const cands: { pos: number; node: any }[] = []
+      if (hit.inside >= 0) { const n = doc.nodeAt(hit.inside); if (n && BLOCK_TYPES.includes(n.type.name)) cands.push({ pos: hit.inside, node: n }) }
+      for (let d = $p.depth; d >= 1; d--) { const n = $p.node(d); if (BLOCK_TYPES.includes(n.type.name)) cands.push({ pos: $p.before(d), node: n }) }
+      const c = cands[0]
+      if (!c) return null
+      if (c.node.attrs.blockId) return { id: c.node.attrs.blockId }
+      const id = newBlockId()
+      v.dispatch(editor.state.tr.setNodeMarkup(c.pos, undefined, { ...c.node.attrs, blockId: id }).setMeta('addToHistory', false))
+      return { id }
+    },
     refreshComments: () => { editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false).setMeta(cmtKey, 1)) },
     json: () => unwrapUnknown(editor.getJSON()),
     set: (doc: Json) => { silent = true; editor.commands.setContent(wrapUnknown(doc && doc.type === 'doc' ? doc : EMPTY), { emitUpdate: false }); silent = false },

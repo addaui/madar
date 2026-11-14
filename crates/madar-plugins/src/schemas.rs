@@ -134,6 +134,7 @@ pub fn page_item() -> Value {
             "id": s(), "rev": int(), "title": s(), "folder": boolean(), "icon": nullable(STR), "parent": nullable(STR), "position": num(),
             "project": nullable(STR), "space": nullable(STR), "number": nullable("integer"), "settings": {"type": "object"},
             "created_at": int(), "updated_at": int(), "created_by": s(),
+            "tags": json!({"type": "array", "items": {"type": "string"}}),
         }),
     )
 }
@@ -143,6 +144,10 @@ pub fn page() -> Value {
     p["required"] = json!(["id", "rev", "title", "folder", "body"]);
     p["properties"]["body"] = json!({"type": "object"});
     p
+}
+
+pub fn page_tags() -> Value {
+    obj(&["tags"], json!({"tags": list(obj(&["tag", "pages"], json!({"tag": s(), "pages": int()})))}))
 }
 
 pub fn pages() -> Value {
@@ -174,6 +179,6 @@ pub fn audit() -> Value {
 pub fn search_items() -> Value {
     obj(
         &["items"],
-        json!({"items": list(obj(&["kind", "id", "title"], json!({"kind": s(), "id": s(), "title": s(), "snippet": s(), "score": num(), "project": nullable(STR), "project_name": nullable(STR), "space": nullable(STR)})))}),
+        json!({"items": list(obj(&["kind", "id", "title"], json!({"kind": s(), "id": s(), "title": s(), "snippet": s(), "score": num(), "project": nullable(STR), "project_name": nullable(STR), "space": nullable(STR), "tags": json!({"type": "array", "items": {"type": "string"}})})))}),
     )
 }

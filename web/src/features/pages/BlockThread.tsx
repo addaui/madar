@@ -7,6 +7,7 @@ import { useDateFormat } from "../../lib/format";
 import { cn } from "../../lib/cn";
 import { Avatar } from "../../ui/Avatar";
 import { Button } from "../../ui/Button";
+import { TextArea } from "../../ui/Field";
 import { askConfirm } from "../../ui/overlays";
 import { Window } from "../dialogs/Dialog";
 
@@ -39,8 +40,8 @@ export default function BlockThread({ project, page, block, manager, onClose }: 
       <div className="mb-1 flex items-center gap-2"><Avatar subject={c.author} name={c.author_display ?? c.author} size="sm" /><b dir="auto">{c.author_display ?? c.author}</b><small className="text-muted">{f.time(c.at)}</small></div>
       <div className="whitespace-pre-wrap" dir="auto">{textOf(c.body)}</div>
       <div className="mt-1 flex gap-1">
-        {!reply && <Button size="sm" kind="ghost" onClick={() => setReplyTo(c)}>{t("reply")}</Button>}
-        {(manager || c.author === me) && <Button size="sm" kind="ghost" onClick={() => void remove(c)}>{t("delete")}</Button>}
+        {!reply && <Button size="sm" kind="ghost" onPress={() => setReplyTo(c)}>{t("reply")}</Button>}
+        {(manager || c.author === me) && <Button size="sm" kind="ghost" onPress={() => void remove(c)}>{t("delete")}</Button>}
       </div>
     </div>
   );
@@ -51,8 +52,8 @@ export default function BlockThread({ project, page, block, manager, onClose }: 
         {roots.length === 0 ? <p className="m-0 text-muted">{t("noThread")}</p> : roots.flatMap((c) => [one(c, false), ...rows.filter((x) => x.parent === c.id).map((x) => one(x, true))])}
       </div>
       <form onSubmit={(e) => void add(e)} className="mt-3 grid gap-2">
-        {replyTo && <div className="text-muted">{t("replyingTo")} {replyTo.author_display ?? replyTo.author} · <Button size="sm" kind="ghost" onClick={() => setReplyTo(null)}>{t("cancelReply")}</Button></div>}
-        <textarea name="body" rows={3} dir="auto" autoFocus placeholder={t("write")} aria-label={t("write")} className="field" />
+        {replyTo && <div className="text-muted">{t("replyingTo")} {replyTo.author_display ?? replyTo.author} · <Button size="sm" kind="ghost" onPress={() => setReplyTo(null)}>{t("cancelReply")}</Button></div>}
+        <TextArea name="body" rows={3} dir="auto" autoFocus placeholder={t("write")} label={t("write")} />
         <div><Button kind="primary" type="submit">{t("post")}</Button></div>
       </form>
     </Window>

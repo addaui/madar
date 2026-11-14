@@ -1006,6 +1006,7 @@ dependencies = [
  "nuah-emoji",
  "nuah-http",
  "nuah-kernel",
+ "nuah-link-analyzer",
  "nuah-metric-prometheus",
  "nuah-prefs",
  "nuah-setup-web",
@@ -1146,6 +1147,17 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+]
+
+[[package]]
+name = "nuah-link-analyzer"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "nuah-kernel",
+ "parking_lot 0.12.5",
+ "serde_json",
+ "url",
 ]
 
 [[package]]

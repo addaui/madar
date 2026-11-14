@@ -5,6 +5,7 @@ import { useRead } from "../../api/hooks";
 import { useI18n } from "../../i18n/i18n";
 import { useDateFormat } from "../../lib/format";
 import { Button } from "../../ui/Button";
+import { TextArea } from "../../ui/Field";
 
 interface Item { id: string; kind: string; at: number; actor?: string; author?: string; author_display?: string; body?: unknown; text?: string }
 
@@ -24,8 +25,8 @@ export function Activity({ project, target, writer }: { project: string; target:
     <div>
       <h3 className="mb-2 text-[13px] font-semibold text-muted">{t("timeline")}</h3>
       {writer && (
-        <form onSubmit={(e) => { e.preventDefault(); const i = e.currentTarget.elements.namedItem("c") as HTMLTextAreaElement; const v = i.value.trim(); if (v) { add(v); i.value = ""; } }} className="mb-3 grid gap-2">
-          <textarea name="c" rows={2} dir="auto" placeholder={t("write")} aria-label={t("comments")} className="field" />
+        <form onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget, v = String(new FormData(form).get("c") ?? "").trim(); if (v) { add(v); form.reset(); } }} className="mb-3 grid gap-2">
+          <TextArea name="c" rows={2} dir="auto" placeholder={t("write")} label={t("comments")} />
           <div><Button kind="primary" type="submit" size="sm">{t("post")}</Button></div>
         </form>
       )}

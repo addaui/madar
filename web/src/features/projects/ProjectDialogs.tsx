@@ -8,6 +8,8 @@ import { useI18n, translate, type Key } from "../../i18n/i18n";
 import { useDateFormat } from "../../lib/format";
 import { Avatar } from "../../ui/Avatar";
 import { Button, IconButton } from "../../ui/Button";
+import { TextField } from "../../ui/Field";
+import { Select } from "../../ui/Select";
 import { Window } from "../dialogs/Dialog";
 
 export type ProjectDialog = "members" | "settings" | "archived" | "history";
@@ -25,7 +27,7 @@ export function Members({ project, manager, onClose }: { project: Project; manag
       <ul className="m-0 grid list-none gap-1 p-0">
         {members.map((m) => (
           <li key={m.subject} className="flex items-center gap-2.5 rounded-md px-2 py-1.5"><Avatar subject={m.subject} name={m.display ?? m.subject} /><span className="min-w-0 grow truncate" dir="auto">{m.display ?? m.subject}</span><span className="rounded-chip border border-line px-2 py-0.5 text-xs">{t(m.level as "editor")}</span>
-            {manager && m.level !== "owner" && <IconButton icon="close" label={t("remove")} size="sm" tone="danger" onClick={async () => { await link.call("projects.unshare", { project: project.id, subject: m.subject }); await refreshAll(qc); }} />}</li>
+            {manager && m.level !== "owner" && <IconButton icon="close" label={t("remove")} size="sm" tone="danger" onPress={async () => { await link.call("projects.unshare", { project: project.id, subject: m.subject }); await refreshAll(qc); }} />}</li>
         ))}
       </ul>
       {manager && (
@@ -33,8 +35,8 @@ export function Members({ project, manager, onClose }: { project: Project; manag
           e.preventDefault(); const f = new FormData(e.currentTarget), name = String(f.get("name") ?? "").trim(); if (!name) return;
           try { await link.call("projects.share", { project: project.id, name, level: String(f.get("level")) as "editor" }); e.currentTarget.reset(); setError(null); await refreshAll(qc); } catch (x) { setError(x instanceof Error ? x.message : t("offline")); }
         }}>
-          <input name="name" dir="auto" placeholder={t("person")} aria-label={t("person")} className="field min-w-0 grow" />
-          <select name="level" aria-label="level" className="field"><option value="editor">{t("editor")}</option><option value="viewer">{t("viewer")}</option></select>
+          <TextField name="name" dir="auto" placeholder={t("person")} label={t("person")} className="min-w-0 grow" />
+          <Select name="level" label={t("accessLevel")} defaultValue="editor" options={[{ value: "editor", label: t("editor") }, { value: "viewer", label: t("viewer") }]} />
           <Button kind="primary" type="submit">{t("share")}</Button>
         </form>
       )}
@@ -65,27 +67,27 @@ export function Settings({ project, onClose }: { project: Project; onClose: () =
       <p className="mb-2 mt-0 text-muted">{t("doneNote")}</p>
       {cols.map((c, i) => (
         <div key={c.id} className="mb-1 flex items-center gap-1.5">
-          <input value={c.name} maxLength={60} aria-label={t("columnName")} onChange={(e) => setCols((all) => all.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)))} className="field min-w-0 grow" />
+          <TextField value={c.name} maxLength={60} label={t("columnName")} onChange={(v) => setCols((all) => all.map((x, k) => (k === i ? { ...x, name: v } : x)))} className="min-w-0 grow" />
           {i === cols.length - 1 && <span className="rounded-chip border border-line px-2 py-0.5 text-xs">{t("doneN")}</span>}
-          <IconButton icon="up" label={t("up")} size="sm" onClick={() => move(i, -1)} /><IconButton icon="down" label={t("down")} size="sm" onClick={() => move(i, 1)} />
-          <IconButton icon="close" label={t("delete")} size="sm" tone="danger" disabled={cols.length <= 2} onClick={() => void askConfirm(t("sureColumn")).then((ok) => { if (ok) setCols((all) => all.filter((_, k) => k !== i)); })} />
+          <IconButton icon="up" label={t("up")} size="sm" onPress={() => move(i, -1)} /><IconButton icon="down" label={t("down")} size="sm" onPress={() => move(i, 1)} />
+          <IconButton icon="close" label={t("delete")} size="sm" tone="danger" isDisabled={cols.length <= 2} onPress={() => void askConfirm(t("sureColumn")).then((ok) => { if (ok) setCols((all) => all.filter((_, k) => k !== i)); })} />
         </div>
       ))}
       <form className="mb-4 mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); const n = String(new FormData(e.currentTarget).get("name") ?? "").trim(); if (!n || cols.length >= 12) return; setCols((all) => [...all.slice(0, -1), { id: unique(n), name: n }, all[all.length - 1]!]); e.currentTarget.reset(); }}>
-        <input name="name" maxLength={60} placeholder={t("columnName")} className="field min-w-0 grow" /><Button type="submit">{t("addColumn")}</Button>
+        <TextField name="name" maxLength={60} placeholder={t("columnName")} label={t("columnName")} className="min-w-0 grow" /><Button type="submit">{t("addColumn")}</Button>
       </form>
       <h3 className="mb-2 text-[13px] font-semibold uppercase text-muted">{t("attributes")}</h3>
       {attrs.map((a, i) => (
         <div key={i} className="mb-1 flex flex-wrap items-center gap-1.5">
-          <input value={a.label} maxLength={60} placeholder={t("fieldLabel")} aria-label={t("fieldLabel")} onChange={(e) => setAttrs((all) => all.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)))} className="field min-w-0 grow" />
-          <input value={a.key} maxLength={30} placeholder={t("fieldKey")} aria-label={t("fieldKey")} onChange={(e) => setAttrs((all) => all.map((x, k) => (k === i ? { ...x, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") } : x)))} className="field w-28" />
-          <select value={a.type} aria-label={t("fieldType")} onChange={(e) => setAttrs((all) => all.map((x, k) => (k === i ? { ...x, type: e.target.value as Attr["type"] } : x)))} className="field">{(["text", "number", "date", "boolean", "choice"] as const).map((ty) => <option key={ty} value={ty}>{t(("t_" + ty) as Key)}</option>)}</select>
-          {a.type === "choice" && <input value={a.choices} placeholder={t("fieldChoices")} onChange={(e) => setAttrs((all) => all.map((x, k) => (k === i ? { ...x, choices: e.target.value } : x)))} className="field" />}
-          <IconButton icon="close" label={t("delete")} size="sm" tone="danger" onClick={() => setAttrs((all) => all.filter((_, k) => k !== i))} />
+          <TextField value={a.label} maxLength={60} placeholder={t("fieldLabel")} label={t("fieldLabel")} onChange={(v) => setAttrs((all) => all.map((x, k) => (k === i ? { ...x, label: v } : x)))} className="min-w-0 grow" />
+          <TextField value={a.key} maxLength={30} placeholder={t("fieldKey")} label={t("fieldKey")} onChange={(v) => setAttrs((all) => all.map((x, k) => (k === i ? { ...x, key: v.toLowerCase().replace(/[^a-z0-9_]/g, "_") } : x)))} className="w-28" />
+          <Select value={a.type} label={t("fieldType")} onChange={(v) => setAttrs((all) => all.map((x, k) => (k === i ? { ...x, type: v as Attr["type"] } : x)))} options={(["text", "number", "date", "boolean", "choice"] as const).map((ty) => ({ value: ty, label: t(("t_" + ty) as Key) }))} />
+          {a.type === "choice" && <TextField value={a.choices} placeholder={t("fieldChoices")} label={t("fieldChoices")} onChange={(v) => setAttrs((all) => all.map((x, k) => (k === i ? { ...x, choices: v } : x)))} />}
+          <IconButton icon="close" label={t("delete")} size="sm" tone="danger" onPress={() => setAttrs((all) => all.filter((_, k) => k !== i))} />
         </div>
       ))}
-      <Button icon="plus" onClick={() => setAttrs((all) => [...all, { key: "", label: "", type: "text", choices: "" }])}>{t("addAttribute")}</Button>
-      <div className="mt-4 flex justify-end gap-2"><Button onClick={onClose}>{t("cancel")}</Button><Button kind="primary" onClick={() => void save()}>{t("save")}</Button></div>
+      <Button icon="plus" onPress={() => setAttrs((all) => [...all, { key: "", label: "", type: "text", choices: "" }])}>{t("addAttribute")}</Button>
+      <div className="mt-4 flex justify-end gap-2"><Button onPress={onClose}>{t("cancel")}</Button><Button kind="primary" onPress={() => void save()}>{t("save")}</Button></div>
     </Window>
   );
 }
@@ -99,7 +101,7 @@ export function Archived({ project, writer, onClose }: { project: Project; write
   return (
     <Window title={t("archived")} onClose={onClose}>
       {tasks.length === 0 ? <p className="m-0 text-muted">{t("noArchived")}</p> : <ul className="m-0 grid list-none gap-1 p-0">{tasks.map((x) => (
-        <li key={x.id} className="flex items-center gap-2 rounded-md px-2 py-1.5"><span className="min-w-0 grow truncate" dir="auto">{x.title}</span>{writer && <Button size="sm" onClick={async () => { await link.call("tasks.update", { project: project.id, id: x.id, archived: false }); await refreshAll(qc); }}>{t("restore")}</Button>}</li>
+        <li key={x.id} className="flex items-center gap-2 rounded-md px-2 py-1.5"><span className="min-w-0 grow truncate" dir="auto">{x.title}</span>{writer && <Button size="sm" onPress={async () => { await link.call("tasks.update", { project: project.id, id: x.id, archived: false }); await refreshAll(qc); }}>{t("restore")}</Button>}</li>
       ))}</ul>}
     </Window>
   );

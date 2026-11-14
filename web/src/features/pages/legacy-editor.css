@@ -157,3 +157,32 @@
 .entity-ref .er-ico { flex:none; margin-inline-end:5px; }
 .ed-content p > .entity-ref[data-kind="pages.page"]:first-child:not(:has(~ :not(img.ProseMirror-separator):not(br.ProseMirror-trailingBreak))) .er-ico { margin:0; font-size:1.25em; line-height:1.3; }
 .ed-content p > .entity-ref[data-kind="pages.page"]:first-child:not(:has(~ :not(img.ProseMirror-separator):not(br.ProseMirror-trailingBreak))) .er-title { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5; line-clamp:5; overflow:hidden; min-inline-size:0; overflow-wrap:anywhere; }
+
+/* the line a dragged picture will land on (ADR 0068) */
+.ed-dropline { position:absolute; block-size:3px; margin-block-start:-1.5px; border-radius:2px; background:var(--accent); pointer-events:none; z-index:6; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.ed-dropline::before, .ed-dropline::after { content:""; position:absolute; inset-block-start:-3px; inline-size:9px; block-size:9px; border-radius:50%; background:var(--accent); }
+.ed-dropline::before { inset-inline-start:-4px; } .ed-dropline::after { inset-inline-end:-4px; }
+
+/* Stickers (ADR 0071): two layers the editor makes, one under the text and one over it; the Face places each sticker (never by CSS), so these only draw. */
+.ed-body.ed-has-stickers { position:relative; }
+.ed-has-stickers > .ed-content { position:relative; z-index:1; }
+.ed-stickers { position:absolute; inset:0; pointer-events:none; }
+.ed-stickers-back { z-index:0; }
+.ed-stickers-front { z-index:2; }
+.sticker { position:absolute; pointer-events:auto; touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none; display:grid; place-items:center; line-height:1; transform-origin:center; filter:drop-shadow(0 1px 2px rgb(0 0 0 / .2)); outline:none; }
+.sticker[data-locked] { cursor:default; }
+.ed-stickers-back .sticker { pointer-events:none; }
+.sticker-emoji { display:grid; place-items:center; inline-size:100%; block-size:100%; line-height:1; }
+.sticker-emoji img { inline-size:1em; block-size:1em; }
+.sticker-frame { position:absolute; z-index:50; pointer-events:none; outline:2px solid var(--accent); outline-offset:3px; border-radius:6px; transform-origin:center; }
+.sticker-move { position:absolute; inset:0; pointer-events:auto; cursor:grab; touch-action:none; }
+.sticker-frame[data-locked] .sticker-move { cursor:default; }
+.sticker-handle { position:absolute; inline-size:14px; block-size:14px; border-radius:50%; background:var(--surface); border:2px solid var(--accent); box-shadow:var(--shadow-1); pointer-events:auto; touch-action:none; }
+.sticker-handle::before { content:""; position:absolute; inset:-14px; }
+.sticker-resize { inset-inline-end:-10px; inset-block-end:-10px; cursor:nwse-resize; }
+.sticker-rotate { inset-inline-start:calc(50% - 7px); inset-block-start:-30px; cursor:grab; }
+@media (pointer:coarse) { .sticker-handle { inline-size:22px; block-size:22px; } .sticker-resize { inset-inline-end:-14px; inset-block-end:-14px; } .sticker-rotate { inset-inline-start:calc(50% - 11px); inset-block-start:-38px; } }
+.sticker-tether { position:absolute; z-index:49; block-size:0; border-block-start:2px dashed var(--accent); transform-origin:0 0; pointer-events:none; }
+.sticker-guide { position:absolute; inset-block:0; inline-size:0; border-inline-start:1px dashed var(--accent); pointer-events:none; z-index:48; }
+.sticker-target { outline:2px dashed color-mix(in srgb, var(--accent) 60%, transparent); outline-offset:2px; border-radius:4px; }
+@media (prefers-reduced-motion:no-preference) { .sticker-frame { transition:opacity var(--dur, .15s) var(--ease, ease); } }

@@ -16,6 +16,7 @@
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^4.0.0",
     "@atlaskit/pragmatic-drag-and-drop-hitbox": "^3.0.0",
+    "@internationalized/date": "3.12.4",
     "@nuah/link-client": "link:../../nuah-plugins/packages/link-client",
     "@nuah/theme-engine": "link:../../nuah-plugins/packages/theme-engine",
     "@tanstack/react-query": "^5.107.1",

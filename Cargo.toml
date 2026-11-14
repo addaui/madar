@@ -23,3 +23,5 @@ nuah-appearance = { path = "../nuah-plugins/crates/nuah-appearance" }
 nuah-metric-prometheus = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.2.0" }
 # not released yet: becomes a tag of nuah-plugins when `@nuah/emoji` is released (ADR 0053)
 nuah-emoji = { path = "../nuah-plugins/crates/nuah-emoji" }
+# not released yet: becomes a tag of nuah-plugins when `@nuah/link-analyzer` is released (ADR 0068)
+nuah-link-analyzer = { path = "../nuah-plugins/crates/nuah-link-analyzer" }

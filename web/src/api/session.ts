@@ -1,18 +1,18 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import type { Preset } from "@nuah/theme-engine";
 import { link } from "./link";
 import { affectedBy } from "./pulse";
 import { invalidate, useRead, useSuspending } from "./hooks";
-import type { Describe } from "@nuah/link-client";
+import type { Describe, PulseState } from "@nuah/link-client";
 
 /** What `describe` says: the operations this person may use, the events, the themes, and who they are. */
 export function useDescribe(): Describe {
   return useSuspending({ queryKey: ["describe"], queryFn: () => link.describe(), staleTime: Infinity });
 }
 
-export interface ThemeEntry { id: string; tokens: Preset }
-export const themesOf = (d: Describe): ThemeEntry[] => ((d.themes as { id: string; tokens: Preset }[] | undefined) ?? []).filter((t) => t.tokens?.schema === "theme/1");
+export interface ThemeEntry { id: string; name?: string; tokens: Preset }
+export const themesOf = (d: Describe): ThemeEntry[] => ((d.themes as { id: string; name?: string; tokens: Preset }[] | undefined) ?? []).filter((t) => t.tokens?.schema === "theme/1");
 
 /** The person's preferences (`prefs.get`): theme, scheme, language, density, defaults. */
 export interface Prefs {
@@ -35,6 +35,16 @@ export function useHasOp(op: string): boolean {
 }
 
 /** Keeps what is shown in step with the Core: Pulse events refetch the reads they make stale. */
+/** Whether live updates are flowing. A store, not an event: the status in the sidebar may appear after the connection is already up. */
+let pulse: PulseState = "connecting";
+const pulseListeners = new Set<() => void>();
+export const pulseState = {
+  get: () => pulse,
+  set(s: PulseState) { pulse = s; pulseListeners.forEach((l) => l()); },
+  subscribe: (l: () => void) => { pulseListeners.add(l); return () => { pulseListeners.delete(l); }; },
+};
+export const usePulseState = (): PulseState => useSyncExternalStore(pulseState.subscribe, pulseState.get, () => "connecting");
+
 export function usePulse(enabled: boolean) {
   const client = useQueryClient();
   useEffect(() => {
@@ -42,7 +52,7 @@ export function usePulse(enabled: boolean) {
     const stop = link.watch({
       onEvent: (kind) => { const ops = affectedBy(kind); if (ops.length) void invalidate(client, ops); },
       onReset: () => { void client.invalidateQueries(); },
-      onState: (s) => window.dispatchEvent(new CustomEvent("madar:live", { detail: s })),
+      onState: pulseState.set,
     });
     return stop;
   }, [client, enabled]);

@@ -1,8 +1,9 @@
 import { createHashHistory, createRootRoute, createRoute, createRouter, redirect, RouterProvider } from "@tanstack/react-router";
 import { lazy } from "react";
 import { Shell } from "./Shell";
-import { Stage, Topbar } from "./Stage";
+import { Topbar } from "./regions";
 import { Today } from "../features/today/Today";
+import { SearchScreen, type SearchParams } from "../features/search/SearchScreen";
 
 import { useT } from "../i18n/i18n";
 import { queryClient } from "../api/link";
@@ -28,7 +29,7 @@ const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", bef
 
 function TodayRoute() {
   const t = useT();
-  return <Stage topbar={<Topbar crumbs={<span aria-current="page" className="px-1.5 font-semibold text-text">{t("today")}</span>} />}><Today /></Stage>;
+  return <><Topbar title={t("today")} crumbs={<span aria-current="page" className="px-1.5 font-semibold text-text">{t("today")}</span>} /><Today /></>;
 }
 const todayRoute = createRoute({
   getParentRoute: () => rootRoute, path: "today", component: TodayRoute,
@@ -39,18 +40,30 @@ const todayRoute = createRoute({
 function PagesIndex() {
   const t = useT();
   return (
-    <Stage topbar={<Topbar crumbs={<span aria-current="page" className="px-1.5 font-semibold text-text">{t("pages")}</span>} />}>
+    <>
+      <Topbar title={t("pages")} crumbs={<span aria-current="page" className="px-1.5 font-semibold text-text">{t("pages")}</span>} />
       <div className="mx-auto mt-[8vh] grid max-w-md place-items-center gap-1 text-center text-muted"><b className="text-text">{t("pickPage")}</b><span>{t("pickPageHint")}</span></div>
-    </Stage>
+    </>
   );
 }
 const pagesRoute = createRoute({ getParentRoute: () => rootRoute, path: "pages", component: PagesIndex, loader: () => ready(reads.pages(spaceState.get())) });
 const pageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "pages/$pageId",
+  staticData: { flush: true },
   loader: ({ params }) => ready(params.pageId === "new" ? reads.pages(spaceState.get()) : reads.page(spaceState.get(), params.pageId), loadPageScreen),
   validateSearch: (s: Record<string, unknown>): { parent?: string } => ({ parent: typeof s.parent === "string" ? s.parent : undefined }),
   component: function PageRouteView() { const { pageId } = pageRoute.useParams(); const { parent } = pageRoute.useSearch(); return <PageScreen id={pageId} parent={parent} />; },
+});
+
+const searchRoute = createRoute({
+  getParentRoute: () => rootRoute, path: "search",
+  validateSearch: (s: Record<string, unknown>): SearchParams => ({
+    q: typeof s.q === "string" && s.q ? s.q : undefined,
+    kind: ["page", "knowledge", "task"].includes(String(s.kind)) ? (s.kind as SearchParams["kind"]) : undefined,
+    all: String(s.all) === "1" ? "1" : undefined,
+  }),
+  component: function SearchRouteView() { const p = searchRoute.useSearch(); return <SearchScreen q={p.q} kind={p.kind} all={p.all} />; },
 });
 
 export interface ProjectSearch { tab?: "board" | "list" | "overview" | "knowledge"; task?: string; page?: string; parent?: string }
@@ -67,7 +80,7 @@ const projectRoute = createRoute({
   component: function ProjectRouteView() { const { projectId } = projectRoute.useParams(); return <ProjectScreen projectId={projectId} search={projectRoute.useSearch()} />; },
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, todayRoute, pagesRoute, pageRoute, projectRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, todayRoute, searchRoute, pagesRoute, pageRoute, projectRoute]);
 
 export const router = createRouter({ routeTree, history: createHashHistory(), defaultPreload: "intent", defaultPendingMs: 120, defaultPendingMinMs: 0, defaultPendingComponent: StageSkeleton });
 

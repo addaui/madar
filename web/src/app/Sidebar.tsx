@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { lazy, Suspense } from "react";
 import { link } from "../api/link";
@@ -8,7 +8,9 @@ import { useDescribe, useHasOp } from "../api/session";
 import { useT } from "../i18n/i18n";
 import { cn } from "../lib/cn";
 import { Avatar } from "../ui/Avatar";
-import { IconButton } from "../ui/Button";
+import { BaseButton, IconButton } from "../ui/Button";
+import { Tabs } from "../ui/Tabs";
+import { TextLink } from "../ui/Link";
 import { askText, openContextMenu, type MenuItems } from "../ui/overlays";
 import { copyText } from "../ui/CopyCode";
 import { Icon } from "../ui/Icon";
@@ -49,35 +51,35 @@ export function Sidebar() {
         "w-[var(--side)] data-[rail=true]:w-[var(--rail)] data-[peek=true]:w-[272px] data-[peek=true]:rounded-lg data-[peek=true]:bg-surface data-[peek=true]:shadow-2",
       )}
     >
-      <div className="flex items-center gap-2.5 px-4 pb-2 pt-4 group-data-[rail=true]/side:flex-col group-data-[rail=true]/side:px-2">
+      <div className="flex items-center gap-2.5 px-3 pb-1.5 pt-2.5 group-data-[rail=true]/side:flex-col group-data-[rail=true]/side:px-2">
         <div className="flex items-center gap-[9px] text-[17px] font-bold tracking-tight">
           <Icon name="logo" className="size-[26px] text-accent" />
           <span className="group-data-[rail=true]/side:hidden">Madar</span>
         </div>
         <span className="grow group-data-[rail=true]/side:hidden" />
-        <Suspense fallback={<span className="size-[34px]" />}><BellMenu /></Suspense>
+        <Suspense fallback={<span className="size-[var(--hit)]" />}><BellMenu /></Suspense>
       </div>
-      <Suspense fallback={<span className="mx-3 mb-1 mt-0.5 block h-[38px]" />}><SpacesMenu /></Suspense>
+      <Suspense fallback={<span className="mx-2.5 mb-1 block h-[var(--row)]" />}><SpacesMenu /></Suspense>
       <SearchPill />
-      <nav aria-label={t("today")} className="px-2.5 pb-1">
-        <NavLink to="/today" icon="today" label={t("today")} />
+      <nav aria-label={t("today")} className="px-2.5 pb-0.5">
+        <NavLink href="#/today" icon="today" label={t("today")} />
       </nav>
       <SideTabs />
-      <div role="tabpanel" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto px-2.5 pb-2.5 group-data-[rail=true]/side:hidden">
-        <SideList />
-      </div>
       <Foot />
     </aside>
   );
 }
 
-function NavLink({ to, icon, label, params, items }: { to: string; icon: string; label: string; params?: Record<string, string>; items?: () => MenuItems }) {
+function NavLink({ href, icon, label, items }: { href: string; icon: string; label: string; items?: () => MenuItems }) {
+  const active = useRouterState({ select: (r) => "#" + r.location.pathname === href || r.location.pathname === href.slice(1) });
   return (
-    <Link to={to} params={params} title={label} onContextMenu={items ? (e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, items()); } : undefined}
-      className="flex min-h-[38px] w-full items-center gap-2.5 rounded-[12px] px-3 text-text hoverable aria-[current=page]:bg-surface aria-[current=page]:font-semibold aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,.08)] group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
+    <div className="contents" onContextMenu={items ? (e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, items()); } : undefined}>
+    <TextLink href={href} aria-current={active ? "page" : undefined} aria-label={label}
+      className="flex min-h-[var(--row)] w-full items-center gap-2.5 rounded-sm px-2.5 text-text hoverable aria-[current=page]:bg-surface aria-[current=page]:font-semibold aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,.08)] group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
       <Icon name={icon} className="text-muted" />
       <span className="min-w-0 flex-1 truncate group-data-[rail=true]/side:hidden" dir="auto">{label}</span>
-    </Link>
+    </TextLink>
+    </div>
   );
 }
 
@@ -85,30 +87,26 @@ function SearchPill() {
   const t = useT();
   if (!useDescribe().operations["search.query"]) return null;
   return (
-    <button type="button" onClick={() => openDialog("search")}
-      className="mx-3 mb-2.5 mt-1.5 flex min-h-[38px] items-center gap-[9px] rounded-btn border border-line-strong bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] px-3 text-muted hoverable group-data-[rail=true]/side:mx-2 group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
+    <BaseButton onPress={() => openDialog("search")}
+      className="mx-2.5 mb-1.5 mt-1 flex min-h-[var(--row)] items-center gap-2.5 rounded-btn border border-line-strong bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] px-3 text-muted hoverable group-data-[rail=true]/side:mx-2 group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
       <Icon name="search" />
       <span className="group-data-[rail=true]/side:hidden">{t("search").replace("…", "")}</span>
       <kbd dir="ltr" className="ms-auto rounded border border-line px-1.5 text-xs group-data-[rail=true]/side:hidden">/</kbd>
-    </button>
+    </BaseButton>
   );
 }
 
+/** The navigation sidebar's two lists as tabs: your pages, and your projects. The list under the selected tab follows the route (see `Sidebar`). */
 function SideTabs() {
   const t = useT();
   const tab = usePersistedValue(sideTabState);
   const pages = !!useDescribe().operations["pages.list"];
-  const item = (key: "tasks" | "pages", label: string, icon: string) => (
-    <button type="button" role="tab" aria-selected={tab === key} onClick={() => sideTabState.set(key)}
-      className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[8px] px-2 py-1.5 text-[13px] text-muted hover:text-text aria-selected:bg-surface aria-selected:font-semibold aria-selected:text-text aria-selected:shadow-1">
-      <Icon name={icon} className="size-[15px]" /><span>{label}</span>
-    </button>
-  );
+  const items = [...(pages ? [{ id: "pages", label: t("pages"), icon: "pages" }] : []), { id: "tasks", label: t("tasksTab"), icon: "task" }];
   return (
-    <div role="tablist" className="mx-3 mb-1 mt-1.5 flex gap-0.5 rounded-[11px] bg-sunken p-[3px] group-data-[rail=true]/side:hidden">
-      {item("tasks", t("tasksTab"), "task")}
-      {pages && item("pages", t("pages"), "pages")}
-    </div>
+    <Tabs variant="segmented" label={t("sidebarLists")} items={items} selected={tab} onSelect={(k) => sideTabState.set(k as "tasks" | "pages")}
+      className="flex min-h-0 flex-1 flex-col" listClassName="mx-2.5 my-1 group-data-[rail=true]/side:hidden" panelClassName="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto px-2.5 pb-2.5 group-data-[rail=true]/side:hidden">
+      <SideList />
+    </Tabs>
   );
 }
 
@@ -147,9 +145,9 @@ function ProjectsList() {
   const mine = projects.filter((p) => (place.get(p.id) ?? "default") === (ws.workspaces.some((w) => w.id === space) ? space : "default"));
   return (
     <>
-      <div className="mt-1.5 flex items-center px-3 text-[11px] font-semibold uppercase tracking-wider text-muted"><span className="grow">{t("projects")}</span>{canCreate && <IconButton icon="plus" size="sm" label={t("newProject")} onClick={() => void create()} />}</div>
+      <div className="mt-1 flex min-h-[var(--row)] items-center px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted"><span className="grow">{t("projects")}</span>{canCreate && <IconButton icon="plus" size="sm" label={t("newProject")} onPress={() => void create()} />}</div>
       {mine.length === 0 && <p className="px-2.5 py-2 text-[13px] text-muted">{t("noProjectsHere")}</p>}
-      {mine.map((p) => <NavLink key={p.id} to="/p/$projectId" params={{ projectId: p.id }} icon="board" label={p.name} items={menu(p)} />)}
+      {mine.map((p) => <NavLink key={p.id} href={`#/p/${p.id}`} icon="board" label={p.name} items={menu(p)} />)}
     </>
   );
 }
@@ -175,17 +173,17 @@ function Foot() {
   // the session is the cookie; the generated input names a token, which only bearer use needs
   const signOut = async () => { await link.call("auth.sign_out", {} as never); await qc.invalidateQueries(); };
   return (
-    <div className="flex items-center gap-2.5 p-2.5 group-data-[rail=true]/side:flex-col group-data-[rail=true]/side:px-2">
+    <div className="flex items-center gap-2 px-2.5 py-1.5 group-data-[rail=true]/side:flex-col group-data-[rail=true]/side:px-2">
       <div className="flex min-w-0 flex-1 items-center gap-[9px] group-data-[rail=true]/side:flex-none">
-        <Avatar subject={who.subject} name={who.display} mine />
+        <Avatar subject={who.subject} name={who.display} mine size="sm" />
         <div className="min-w-0 leading-tight group-data-[rail=true]/side:hidden">
           <b className="block truncate font-semibold" dir="auto">{who.display}</b>
           <small className="flex items-center gap-1.5 text-muted"><LiveDot /></small>
         </div>
       </div>
-      <IconButton icon="help" label={t("kHelp") + " (?)"} className="group-data-[rail=true]/side:hidden" onClick={() => openDialog("shortcuts")} />
-      <IconButton icon="gear" label={t("settings")} onClick={() => openDialog("settings")} />
-      <IconButton icon="logout" label={t("signOut")} className="group-data-[rail=true]/side:hidden" onClick={signOut} />
+      <IconButton size="sm" icon="help" label={t("kHelp") + " (?)"} className="group-data-[rail=true]/side:hidden" onPress={() => openDialog("shortcuts")} />
+      <IconButton size="sm" icon="gear" label={t("settings")} onPress={() => openDialog("settings")} />
+      <IconButton size="sm" icon="logout" label={t("signOut")} className="group-data-[rail=true]/side:hidden" onPress={signOut} />
     </div>
   );
 }

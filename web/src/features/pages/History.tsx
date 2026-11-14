@@ -6,7 +6,7 @@ import { useDescribe } from "../../api/session";
 import { useI18n } from "../../i18n/i18n";
 import { useDateFormat } from "../../lib/format";
 import { cn } from "../../lib/cn";
-import { Button } from "../../ui/Button";
+import { BaseButton, Button } from "../../ui/Button";
 import { askConfirm, toast } from "../../ui/overlays";
 import { Window } from "../dialogs/Dialog";
 import { inputOf, keyOf, opOf, type PageScope } from "./scope";
@@ -40,8 +40,8 @@ export default function History({ page, scope, writer, onClose }: { page: Page; 
         <ul className="m-0 grid max-h-[55vh] list-none content-start gap-0.5 overflow-auto p-0">
           {versions.length === 0 && <li className="p-2.5 text-muted">{t("noVersions")}</li>}
           {versions.map((v) => (
-            <li key={v.id}><button type="button" aria-current={v.id === current} onClick={() => setPicked(v.id)} className={cn("block w-full rounded-md px-2.5 py-2 text-start hoverable", v.id === current && "bg-hover")}>
-              <strong className="block">{f.time(v.at)}</strong><small className="block truncate text-muted" dir="auto">{name(v.by) + " · " + (v.text || "…")}</small></button></li>
+            <li key={v.id}><BaseButton aria-current={v.id === current} onPress={() => setPicked(v.id)} className={cn("block w-full rounded-md px-2.5 py-2 text-start hoverable", v.id === current && "bg-hover")}>
+              <strong className="block">{f.time(v.at)}</strong><small className="block truncate text-muted" dir="auto">{name(v.by) + " · " + (v.text || "…")}</small></BaseButton></li>
           ))}
         </ul>
         <div className="min-w-0">
@@ -49,7 +49,7 @@ export default function History({ page, scope, writer, onClose }: { page: Page; 
             <>
               <h3 className="m-0 mb-2" dir="auto">{one.data.title}</h3>
               <pre className="max-h-[45vh] overflow-auto whitespace-pre-wrap rounded-md bg-sunken p-3 text-[13px]" dir="auto">{window.MadarEditor ? window.MadarEditor.text(one.data.body) : ""}</pre>
-              {writer && <div className="mt-3"><Button kind="primary" icon="history" onClick={() => void restore()}>{t("restoreVersion")}</Button></div>}
+              {writer && <div className="mt-3"><Button kind="primary" icon="history" onPress={() => void restore()}>{t("restoreVersion")}</Button></div>}
             </>
           )}
         </div>

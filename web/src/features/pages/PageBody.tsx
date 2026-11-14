@@ -5,9 +5,11 @@ import { useHasOp } from "../../api/session";
 import type { Page } from "../../api/types";
 import { useI18n } from "../../i18n/i18n";
 import { IconPicker } from "./IconPicker";
+import { TextField } from "../../ui/Field";
 import { link } from "../../api/link";
 import { askRef, toast } from "../../ui/overlays";
-import { LegacyEditor, type EditorJson } from "./LegacyEditor";
+import { LegacyEditor, type EditorHandle, type EditorJson } from "./LegacyEditor";
+import { useStickers } from "./stickers/useStickers";
 import { saverFor, useSaveState } from "./pageSaver";
 import { useBlockComments } from "./useBlockComments";
 import { inputOf, keyOf, opOf, type PageScope } from "./scope";
@@ -16,14 +18,13 @@ import type { PageSettings } from "./style/settings";
 import { useAppScheme } from "./style/useAppScheme";
 import "./page-style.css";
 
-const DEFAULT_ICON = "📄";
 
 /** The sheet of one saved page: icon, title and editor. Keyed by page id, so another page starts clean. */
 export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: PageScope; onWords: (n: number) => void; onSave: (s: string) => void }) {
   const { t, lang } = useI18n();
   const qc = useQueryClient();
   const blocks = useRead("editor.blocks").data as { blocks: unknown[] };
-  const hasPreviews = useHasOp("previews.get");
+  const hasAnalyzer = useHasOp("links.analyze"), hasOldPreviews = useHasOp("previews.get"), hasPreviews = hasAnalyzer || hasOldPreviews;
   const saver = saverFor(qc, page, scope);
   const state = useSaveState(saver);
   const [title, setTitle] = useState(page.title);
@@ -36,6 +37,8 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
   const root = useRef<HTMLDivElement>(null), sheet = useRef<HTMLDivElement>(null), titlebar = useRef<HTMLDivElement>(null);
   const scheme = useAppScheme();
   const comments = useBlockComments(scope, page.id);
+  const handle = useRef<EditorHandle | null>(null);
+  const stickers = useStickers({ project: scope.project, editable: true, handle: () => handle.current });
 
   // a changed copy from outside (another device or tab; a conflict) replaces what is here, unless something here is waiting to be saved
   const seen = useRef(page.rev);
@@ -63,6 +66,12 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
     clearTimeout(timer.current);
     timer.current = setTimeout(() => { void saver.save({ body: d }).then(() => { dirty.current = false; }); countWords(d); }, 800);
   };
+  /** A new page under this one (a text line made into one, or the Page block): the editor puts a link to it where the cursor was. */
+  const subpage = async (title: string) => {
+    const out = (await link.call(opOf(scope, "create") as never, inputOf(scope, { title: Array.from(title).slice(0, 200).join(""), parent: page.id, ...(scope.project ? {} : { space: scope.space }) }) as never)) as Page;
+    void qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\.list/.test(String(q.queryKey[0])) });
+    return { id: out.id, title: out.title, icon: out.icon };
+  };
   const saveTitle = () => { const v = title.trim(); if (v && v !== page.title) void saver.save({ title: v }); };
 
   return (
@@ -70,24 +79,21 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
       <div className="page-scroll h-full overflow-auto px-[clamp(20px,5vw,72px)] pb-9 pt-0">
         <div ref={sheet} className="page-col mx-auto flex min-h-full max-w-[var(--page-w,820px)] flex-col pt-7">
           <div ref={titlebar} className="page-titlebar mb-2 flex items-center gap-2.5 pt-1.5">
-            <IconPicker icon={page.icon ?? null} fallback={DEFAULT_ICON} onPick={(e) => { qc.setQueryData(keyOf(scope, "get", { id: page.id }), { ...page, icon: e }); void saver.save({ icon: e }); }} />
-            <input value={title} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} dir="auto" aria-label={t("title")} maxLength={200}
-              className="page-title min-w-0 flex-1 border-0 bg-transparent py-1 text-[32px] font-bold leading-tight tracking-tight text-[var(--page-fg,var(--text))] outline-none" />
+            <IconPicker icon={page.icon ?? null} onPick={(e) => { qc.setQueryData(keyOf(scope, "get", { id: page.id }), { ...page, icon: e }); void saver.save({ icon: e }); }} />
+            <TextField bare value={title} onChange={setTitle} onBlur={saveTitle} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} dir="auto" label={t("title")} maxLength={200}
+              className="min-w-0 flex-1" inputClassName="page-title py-1 text-[32px] font-bold leading-tight tracking-tight text-[var(--page-fg,var(--text))]" />
           </div>
           <LegacyEditor doc={doc} version={version} editable lang={lang} {...comments.editor} blocks={blocks.blocks} placeholder={t("writeHere")} onChange={onChange}
-            onReady={() => { countWords(latest.current); setReady((r) => r + 1); }}
+            onReady={(h) => { handle.current = h; countWords(latest.current); setReady((r) => r + 1); }} stickers={stickers.options}
             onOpenRef={(kind, rid) => { location.hash = kind === "pages.page" ? (scope.project ? `#/p/${scope.project}?tab=knowledge&page=${rid}` : `#/pages/${rid}`) : `#/today`; }}
             pickRef={askRef}
-            preview={hasPreviews ? (url) => link.call("previews.get" as never, { url } as never).catch(() => null) : undefined}
-            turnIntoPage={async (title) => {
-              // a text line becomes the title of a new page under this one; the editor puts a card to it where the line was
-              const out = (await link.call(opOf(scope, "create") as never, inputOf(scope, { title: Array.from(title).slice(0, 200).join(""), parent: page.id, ...(scope.project ? {} : { space: scope.space }) }) as never)) as Page;
-              void qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\.list/.test(String(q.queryKey[0])) });
-              return { id: out.id, title: out.title, icon: out.icon };
-            }} />
+            preview={hasPreviews ? (url) => link.call((hasAnalyzer ? "links.analyze" : "previews.get") as never, { url } as never).catch(() => null) : undefined}
+            project={scope.project}
+            turnIntoPage={subpage} newPage={() => subpage(t("untitled"))} />
         </div>
       </div>
       {comments.dialog}
+      {stickers.view}
     </div>
   );
 }

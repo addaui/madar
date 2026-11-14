@@ -28,11 +28,11 @@ export function usePersistedValue<T extends string>(store: { get: () => T; subsc
 /** The sidebar: pinned open, or minimized to a rail that opens over the page while the pointer rests on it. */
 export const sideState = createPersistedState<"open" | "closed">("madar.side", "open", ["open", "closed"]);
 /** Which list the sidebar shows. */
-export const sideTabState = createPersistedState<"tasks" | "pages">("madar.sidetab", "tasks", ["tasks", "pages"]);
+export const sideTabState = createPersistedState<"tasks" | "pages">("madar.sidetab", "pages", ["pages", "tasks"]);
 /** Focus mode hides everything but the page. */
 export const focusState = createPersistedState<"0" | "1">("madar.focus", "0", ["0", "1"]);
-/** The page's side panel (Info and Page). */
-export const pageSideState = createPersistedState<"0" | "1">("madar.pageside", "1", ["0", "1"]);
+/** The context sidebar: pinned open, or a rail (ADR 0067). */
+export const contextState = createPersistedState<"open" | "closed">("madar.context", "open", ["open", "closed"]);
 /** The Space you are in; it decides which projects and pages the sidebar lists. */
 export const spaceState = createPersistedState<string>("madar.space", "default");
 

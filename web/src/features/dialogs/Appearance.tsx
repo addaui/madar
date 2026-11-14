@@ -7,7 +7,14 @@ import { themesOf, useDescribe, useOverrides, usePrefs } from "../../api/session
 import { DEFAULT_THEME } from "../../app/appearance";
 import { useI18n, type Key } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
-import { Button } from "../../ui/Button";
+import { Button, IconButton } from "../../ui/Button";
+import { Checkbox } from "../../ui/Check";
+import { ColorField } from "../../ui/ColorField";
+import { TextArea } from "../../ui/Field";
+import { Segmented } from "../../ui/Segmented";
+import { Select } from "../../ui/Select";
+import { Slider } from "../../ui/Slider";
+import { ToggleChip } from "../../ui/Toggle";
 import { toast } from "../../ui/overlays";
 import { Window } from "./Dialog";
 
@@ -72,22 +79,22 @@ export function Appearance({ onClose }: { onClose: () => void }) {
       setImporting(null);
     } catch { toast(t("lookBad")); }
   };
-  const chip = (on: boolean, text: string, pick: () => void) => <button type="button" aria-pressed={on} onClick={pick} className="rounded-chip border border-line px-3 py-1 text-[13px] aria-pressed:border-accent aria-pressed:bg-soft aria-pressed:font-semibold">{text}</button>;
 
   const p = T.pal;
   const rows: [string, string, string, number][] = [[t("cBody"), p.text, p.surface, 75], [t("cMuted"), p.muted, p.surface, 60], [t("cButton"), T.on(p.primary), p.primary, 60], [t("cAccent"), p.accent, p.surface, 45]];
 
   const control = (it: Item) => {
-    const k = it.per_scheme ? sc + ":" + it.key : it.key, id = "ap-" + k.replace(/\W/g, "-"), v = val(k);
-    if (it.type === "color") return <span className="inline-flex items-center gap-1.5"><input id={id} type="color" value={String(v)} onChange={(e) => set(k, e.target.value)} className="h-7 w-14" />{draft[k] !== undefined && <button type="button" aria-label={t("clear")} onClick={() => clear(k)} className="text-muted">✕</button>}</span>;
-    if (it.type === "bool") return <input id={id} type="checkbox" checked={!!v} onChange={(e) => set(k, e.target.checked)} />;
-    if (it.type === "choice") return <select id={id} value={String(v)} onChange={(e) => set(k, e.target.value)} className="field">{(it.choices ?? []).map((c) => <option key={c} value={c}>{t(("tok_" + c) as Key) === "tok_" + c ? c : t(("tok_" + c) as Key)}</option>)}</select>;
+    const k = it.per_scheme ? sc + ":" + it.key : it.key, v = val(k);
+    const name = (lang === "ar" && it.label.ar) || it.label.en;
+    if (it.type === "color") return <span className="inline-flex items-center gap-1.5"><ColorField live label={name} value={String(v)} onChange={(x) => set(k, x)} />{draft[k] !== undefined && <IconButton icon="close" size="sm" label={t("clear")} onPress={() => clear(k)} />}</span>;
+    if (it.type === "bool") return <Checkbox aria-label={name} isSelected={!!v} onChange={(x) => set(k, x)} />;
+    if (it.type === "choice") return <Select label={name} value={String(v)} onChange={(x) => set(k, x)} options={(it.choices ?? []).map((c) => ({ value: c, label: t(("tok_" + c) as Key) === "tok_" + c ? c : t(("tok_" + c) as Key) }))} />;
     const auto = it.type === "number_or_auto" && v === "auto";
     return (
       <span className="inline-flex items-center gap-2">
-        {it.type === "number_or_auto" && <label className="inline-flex items-center gap-1 text-xs text-muted"><input type="checkbox" checked={auto} onChange={(e) => set(k, e.target.checked ? "auto" : Number(it.min ?? 0))} />auto</label>}
-        <input id={id} type="range" min={it.min} max={it.max} step={k === "bw" ? 0.5 : 1} value={auto ? Number(it.min ?? 0) : Number(v)} disabled={auto} onChange={(e) => set(k, Number(e.target.value))} className="w-36" />
-        <output dir="ltr" className="w-9 text-end text-muted">{auto ? t("auto") : (k === "rbtn" || k === "rchip") && Number(v) >= 40 ? t("pill") : String(v)}</output>
+        {it.type === "number_or_auto" && <Checkbox className="text-xs text-muted" isSelected={auto} onChange={(x) => set(k, x ? "auto" : Number(it.min ?? 0))}>auto</Checkbox>}
+        <Slider label={name} className="w-36" minValue={Number(it.min ?? 0)} maxValue={Number(it.max ?? 100)} step={k === "bw" ? 0.5 : 1} value={auto ? Number(it.min ?? 0) : Number(v)} isDisabled={auto} onChange={(x) => set(k, x)}
+          format={(x) => (auto ? t("auto") : (k === "rbtn" || k === "rchip") && x >= 40 ? t("pill") : String(x))} />
       </span>
     );
   };
@@ -99,10 +106,10 @@ export function Appearance({ onClose }: { onClose: () => void }) {
         {rows.map(([n, a, b, goal]) => { const lc = Math.round(apca(a, b)); return <div key={n} className="flex justify-between"><span>{n}</span><span dir="ltr" className={lc >= goal ? "text-ok" : "text-danger"}>Lc {lc} / {t("target")} {goal}</span></div>; })}
       </div>
       <div className="mb-3 grid gap-1.5"><b className="text-[13px]">{t("preset")}</b>
-        <div className="flex flex-wrap gap-1.5">{themes.map((th) => { const val = th.id.replace(/^@nuah\/theme-/, ""); return <span key={th.id}>{chip(theme === val, (th.tokens as unknown as { name?: string }).name ?? val, () => { setTheme(val); setDraft({}); })}</span>; })}</div></div>
+        <div className="flex flex-wrap gap-1.5">{themes.map((th) => { const val = th.id.replace(/^@nuah\/theme-/, ""); return <span key={th.id}><ToggleChip isSelected={theme === val} onChange={() => { setTheme(val); setDraft({}); }}>{th.name ?? val}</ToggleChip></span>; })}</div></div>
       <div className="mb-3 grid gap-1.5"><b className="text-[13px]">{t("mode")}</b>
-        <div className="flex flex-wrap gap-1.5">{chip(scheme === "auto", t("modeAuto"), () => setScheme("auto"))}{chip(scheme === "light", t("modeLight"), () => setScheme("light"))}{chip(scheme === "dark", t("modeDark"), () => setScheme("dark"))}</div></div>
-      <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={advanced} onChange={(e) => setAdvanced(e.target.checked)} />{t("advanced")}</label>
+        <Segmented label={t("mode")} value={scheme} onChange={setScheme} options={[{ value: "auto", label: t("modeAuto") }, { value: "light", label: t("modeLight") }, { value: "dark", label: t("modeDark") }]} className="justify-self-start" /></div>
+      <Checkbox className="mb-3 text-[13px]" isSelected={advanced} onChange={setAdvanced}>{t("advanced")}</Checkbox>
       <div className="max-h-[52vh] overflow-auto">
         {schema.groups.map((g) => {
           const items = schema.items.filter((i) => i.group === g.id && (advanced || i.basic));
@@ -110,18 +117,18 @@ export function Appearance({ onClose }: { onClose: () => void }) {
           return (
             <section key={g.id} className="mb-3">
               <h3 className="m-0 mb-1 text-[13px] font-semibold uppercase tracking-wide text-muted">{(lang === "ar" && g.label.ar) || g.label.en}</h3>
-              {items.map((it) => { const k = it.per_scheme ? sc + ":" + it.key : it.key; return <div key={it.key} className={cn("flex items-center justify-between gap-3 py-1.5", draft[k] !== undefined && "font-semibold")}><label htmlFor={"ap-" + k.replace(/\W/g, "-")}>{(lang === "ar" && it.label.ar) || it.label.en}</label>{control(it)}</div>; })}
+              {items.map((it) => { const k = it.per_scheme ? sc + ":" + it.key : it.key; return <div key={it.key} className={cn("flex items-center justify-between gap-3 py-1.5", draft[k] !== undefined && "font-semibold")}><span>{(lang === "ar" && it.label.ar) || it.label.en}</span>{control(it)}</div>; })}
             </section>
           );
         })}
       </div>
       {importing !== null && (
         <div className="mt-3 grid gap-2">
-          <textarea rows={6} dir="ltr" value={importing} onChange={(e) => setImporting(e.target.value)} placeholder={t("importPh")} aria-label={t("importLook")} className="field w-full" />
-          <div><Button size="sm" onClick={applyImport}>{t("applyImport")}</Button></div>
+          <TextArea rows={6} dir="ltr" value={importing} onChange={setImporting} placeholder={t("importPh")} label={t("importLook")} />
+          <div><Button size="sm" onPress={applyImport}>{t("applyImport")}</Button></div>
         </div>
       )}
-      <div className="mt-4 flex flex-wrap justify-end gap-2"><Button kind="ghost" onClick={() => { setDraft({}); }}>{t("resetLook")}</Button><Button kind="ghost" onClick={() => void exportLook()}>{t("exportLook")}</Button><Button kind="ghost" onClick={() => setImporting(importing === null ? "" : null)}>{t("importLook")}</Button><span className="grow" /><Button onClick={onClose}>{t("cancel")}</Button><Button kind="primary" onClick={() => void save()}>{t("saveLook")}</Button></div>
+      <div className="mt-4 flex flex-wrap justify-end gap-2"><Button kind="ghost" onPress={() => { setDraft({}); }}>{t("resetLook")}</Button><Button kind="ghost" onPress={() => void exportLook()}>{t("exportLook")}</Button><Button kind="ghost" onPress={() => setImporting(importing === null ? "" : null)}>{t("importLook")}</Button><span className="grow" /><Button onPress={onClose}>{t("cancel")}</Button><Button kind="primary" onPress={() => void save()}>{t("saveLook")}</Button></div>
     </Window>
   );
 }

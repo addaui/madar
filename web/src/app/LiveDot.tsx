@@ -1,21 +1,14 @@
-import { useEffect, useState } from "react";
+import { usePulseState } from "../api/session";
 import { useT } from "../i18n/i18n";
-import type { PulseState } from "@nuah/link-client";
 
-/** Whether live updates are flowing. */
+/** Whether live updates are flowing: live, connecting, or offline (and retrying by itself). */
 export function LiveDot() {
   const t = useT();
-  const [state, setState] = useState<PulseState>("connecting");
-  useEffect(() => {
-    const on = (e: Event) => setState((e as CustomEvent<PulseState>).detail);
-    window.addEventListener("madar:live", on);
-    return () => window.removeEventListener("madar:live", on);
-  }, []);
-  const live = state === "live";
+  const state = usePulseState();
   return (
     <>
-      <span aria-hidden="true" className={live ? "size-2 rounded-full bg-ok" : "size-2 rounded-full bg-warn"} />
-      <span>{live ? t("live") : t("offline")}</span>
+      <span aria-hidden="true" className={state === "live" ? "size-2 shrink-0 rounded-full bg-ok" : "size-2 shrink-0 rounded-full bg-warn"} />
+      <span className="truncate">{state === "live" ? t("live") : state === "connecting" ? t("connecting") : t("offline")}</span>
     </>
   );
 }

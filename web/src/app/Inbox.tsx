@@ -13,7 +13,7 @@ export function Inbox() {
   return (
     <div>
       <div className="flex items-center gap-2 px-1.5 pb-2"><b className="grow">{t("inbox")}</b>
-        {unread > 0 && <Button kind="ghost" size="sm" icon="check" onClick={async () => { await link.call("inbox.read", {}); await qc.invalidateQueries({ queryKey: ["inbox.list"] }); }}>{t("markRead")}</Button>}
+        {unread > 0 && <Button kind="ghost" size="sm" icon="check" onPress={async () => { await link.call("inbox.read", {}); await qc.invalidateQueries({ queryKey: ["inbox.list"] }); }}>{t("markRead")}</Button>}
       </div>
       {messages.length === 0 ? (
         <div className="grid place-items-center gap-1 py-6 text-center text-muted"><Icon name="inbox" className="size-6" /><b>{t("nothingNew")}</b><span>{t("nothingNewHint")}</span></div>

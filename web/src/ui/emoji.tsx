@@ -41,6 +41,23 @@ export function EmojiProvider({ children }: { children: ReactNode }) {
   return <ImageUrlContext value={url}>{children}</ImageUrlContext>;
 }
 
+/** The ids of the sets whose font this device does not have: choosing one would change nothing, so the preferences say so instead of failing silently. */
+export function useUnavailableEmojiSets(): ReadonlySet<string> {
+  const sets = useQuery({ queryKey: ["emoji.sets", {}], queryFn: () => link.call("emoji.sets" as never, {} as never) as Promise<{ sets: EmojiSet[] }>, staleTime: Infinity });
+  const gone = useQuery({
+    queryKey: ["emoji.unavailable", sets.data?.sets.map((x) => x.id)], enabled: !!sets.data, staleTime: Infinity,
+    queryFn: async () => {
+      const missing: string[] = [];
+      for (const x of sets.data?.sets ?? []) {
+        if (x.kind !== "font" || x.asset || !x.family) continue;   // the device's own, or shipped with the app
+        try { await new FontFace("MadarEmojiProbe", `local("${x.family.replace(/"/g, "")}")`).load(); } catch { missing.push(x.id); }
+      }
+      return missing;
+    },
+  });
+  return new Set(gone.data ?? []);
+}
+
 /** One emoji, in the chosen set. */
 export function Emo({ ch, className }: { ch: string; className?: string }) {
   const url = use(ImageUrlContext);

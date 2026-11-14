@@ -8,7 +8,7 @@ import { inputOf, keyOf, opOf, type PageScope } from "./scope";
 import type { PageSettings } from "./style/settings";
 
 export type SaveState = "idle" | "saving" | "saved" | "offline";
-export type PagePatch = { title?: string; body?: EditorJson; icon?: string | null; settings?: PageSettings };
+export type PagePatch = { title?: string; body?: EditorJson; icon?: string | null; settings?: PageSettings; tags?: string[] };
 
 /**
  * The one place a page's changes are sent from, whoever makes them (the editor, the title, the side panel). Changes go one after another,
@@ -42,7 +42,7 @@ export class PageSaver {
       const out = (await link.call(opOf(this.scope, "update") as never, inputOf(this.scope, { id: this.id, expected_rev: this.rev, ...patch }) as never)) as Page;
       this.rev = out.rev;
       this.qc.setQueryData(keyOf(this.scope, "get", { id: this.id }), out);
-      if (patch.title !== undefined || patch.icon !== undefined) void this.qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\.list/.test(String(q.queryKey[0])) });
+      if (patch.title !== undefined || patch.icon !== undefined || patch.tags !== undefined) void this.qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\.list/.test(String(q.queryKey[0])) });
       this.#set("saved");
     } catch (e) {
       if (e instanceof NuahError && e.category === "conflict") {

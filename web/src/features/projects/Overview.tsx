@@ -16,12 +16,12 @@ export function Overview({ project }: { project: Project }) {
     <div className="mx-auto grid max-w-[900px] gap-4">
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
         {([["total", s.total], ["openN", s.open], ["doneN", s.done], ["overdueN", s.overdue]] as const).map(([k, n]) => (
-          <div key={k} className={cn("rounded-md border border-line bg-surface p-3", k === "overdueN" && n > 0 && "border-danger text-danger")}><b className="block text-2xl">{n}</b><span className="text-[13px] text-muted">{t(k === "total" ? "total" : k)}</span></div>
+          <div key={k} className={cn("panel p-3", k === "overdueN" && n > 0 && "border-danger text-danger")}><b className="block text-2xl">{n}</b><span className="text-[13px] text-muted">{t(k === "total" ? "total" : k)}</span></div>
         ))}
       </div>
       <Bars title={t("byColumn")} rows={project.statuses.map((x) => [x.name, s.by_status[x.id] ?? 0, "var(--accent)"])} max={max(s.by_status)} />
       <Bars title={t("byPriority")} rows={(["urgent", "high", "medium", "low"] as const).map((b) => [t(b), s.by_band[b] ?? 0, BAND_COLORS[b]!])} max={max(s.by_band)} />
-      <section className="rounded-md border border-line bg-surface p-3">
+      <section className="panel p-3">
         <h2 className="m-0 mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">{t("completions")}</h2>
         <svg viewBox={`0 0 ${Math.max(1, days.length) * 12} 60`} role="img" aria-label={t("completions")} className="h-16 w-full">
           {days.map((d, i) => <rect key={d.date} x={i * 12 + 1} y={60 - (d.n / peak) * 56} width={9} height={(d.n / peak) * 56} rx={2} fill="var(--accent)"><title>{d.date}: {d.n}</title></rect>)}
@@ -33,7 +33,7 @@ export function Overview({ project }: { project: Project }) {
 
 function Bars({ title, rows, max }: { title: string; rows: (string | number)[][]; max: number }) {
   return (
-    <section className="rounded-md border border-line bg-surface p-3">
+    <section className="panel p-3">
       <h2 className="m-0 mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">{title}</h2>
       <div className="grid gap-1.5">
         {rows.map(([label, n, color]) => (

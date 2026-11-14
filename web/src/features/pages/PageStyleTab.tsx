@@ -5,7 +5,13 @@ import { useDescribe } from "../../api/session";
 import type { Page } from "../../api/types";
 import { useI18n, type Key } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
-import { Button, IconButton } from "../../ui/Button";
+import { BaseButton, Button, IconButton } from "../../ui/Button";
+import { Checkbox } from "../../ui/Check";
+import { ColorField } from "../../ui/ColorField";
+import { Segmented } from "../../ui/Segmented";
+import { Select } from "../../ui/Select";
+import { Slider } from "../../ui/Slider";
+import { Window } from "../dialogs/Dialog";
 import { Icon } from "../../ui/Icon";
 import { askConfirm, askImage, askText, toast } from "../../ui/overlays";
 import { saverFor } from "./pageSaver";
@@ -49,17 +55,14 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
 
   const has = (k: keyof PageSettings) => st[k] !== undefined && st[k] !== false;
   const select = (k: keyof PageSettings, opts: [string, Key][], label: string) => (
-    <select aria-label={label} disabled={!writer} value={String(eff[k] ?? "")} onChange={(e) => put(k, e.target.value || undefined)} className="max-w-[130px] cursor-pointer rounded-md border-0 bg-transparent px-1.5 py-1 text-end text-[13px]">
-      {opts.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-    </select>
+    <Select plain label={label} isDisabled={!writer} value={String(eff[k] ?? "")} onChange={(v) => put(k, v || undefined)} className="max-w-[140px]" options={opts.map(([v, l]) => ({ value: v, label: t(l) }))} />
   );
-  const slider = (k: keyof PageSettings, lo: number, hi: number, step: number, dflt: number, unit: string) => {
-    const v = (eff[k] as number | undefined) ?? dflt;
-    return <span className="inline-flex items-center gap-2"><input type="range" min={lo} max={hi} step={step} value={v} disabled={!writer} aria-label={t((k + "Lbl") as Key)} onChange={(e) => put(k, Number(e.target.value), false)} className="w-[68px]" /><output dir="ltr" className="min-w-[3.4ch] text-end text-[12.5px] text-muted">{v}{unit}</output></span>;
-  };
+  const slider = (k: keyof PageSettings, lo: number, hi: number, step: number, dflt: number, unit: string) => (
+    <Slider label={t((k + "Lbl") as Key)} className="w-[96px]" minValue={lo} maxValue={hi} step={step} value={(eff[k] as number | undefined) ?? dflt} isDisabled={!writer}
+      onChange={(x) => put(k, x, false)} onChangeEnd={(x) => put(k, x)} format={(x) => x + unit} />
+  );
   const colour = (k: keyof PageSettings, fallback: string) => (
-    <input type="color" aria-label={t((k + "Lbl") as Key)} disabled={!writer} value={(eff[k] as string | undefined) ?? fallback} onChange={(e) => put(k, e.target.value, false)} onBlur={(e) => put(k, e.target.value)}
-      className="h-[26px] w-[76px] cursor-pointer appearance-none rounded-[9px] border-0 bg-transparent p-0 shadow-[0_0_0_1px_color-mix(in_srgb,var(--text)_22%,transparent),0_2px_4px_rgb(0_0_0/.14)] [&::-webkit-color-swatch]:rounded-[9px] [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0" />
+    <ColorField label={t((k + "Lbl") as Key)} isDisabled={!writer} value={(eff[k] as string | undefined) ?? fallback} onChange={(hex) => put(k, hex)} />
   );
   const srcNow = eff.sheet_image ? "image" : eff.sheet_art ? "autumn" : "none";
   const art = !!(eff.sheet_image || eff.sheet_art);
@@ -68,15 +71,13 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
   return (
     <div>
       <Section title={t("secPresets") + (own ? " · " + t("presetCustom") : "")}>
-        <div role="group" aria-label={t("presetMode")} className="flex rounded-[10px] border border-line bg-sunken p-0.5">
-          {(["auto", "light", "dark"] as const).map((m) => <button key={m} type="button" disabled={!writer} aria-pressed={mode === m} title={m === "auto" ? t("modeAutoHint") : undefined} onClick={() => put("preset_mode", m === "auto" ? undefined : m)}
-            className="flex-1 rounded-[8px] px-2 py-1 text-[13px] text-muted aria-pressed:bg-hover aria-pressed:font-semibold aria-pressed:text-text">{t(("mode_" + m) as Key)}</button>)}
-        </div>
+        <Segmented label={t("presetMode")} value={mode} isDisabled={!writer} onChange={(m) => put("preset_mode", m === "auto" ? undefined : m)} className="w-full" itemClassName="flex-1 text-center"
+          options={(["auto", "light", "dark"] as const).map((m) => ({ value: m, label: t(("mode_" + m) as Key), hint: m === "auto" ? t("modeAutoHint") : undefined }))} />
         <div className="grid grid-cols-3 gap-2">
           {PAGE_PRESETS.map((p) => <PresetTile key={p.id} label={t(("pre_" + p.id) as Key)} settings={p[shown]} on={(st.preset ?? "default") === p.id && !own} disabled={!writer} onClick={() => applyBuiltin(p, mode)} />)}
-          <button type="button" onClick={() => setMore(true)} aria-label={t("moreStyles")} className="grid gap-1 rounded-[10px] border border-line p-1.5 text-center text-xs hoverable"><span className="grid h-[34px] place-items-center rounded-md bg-sunken text-xl tracking-[2px] text-muted">···</span>{t("moreStyles")}</button>
+          <BaseButton onPress={() => setMore(true)} aria-label={t("moreStyles")} className="grid gap-1 rounded-sm border border-line p-1.5 text-center text-xs hoverable"><span className="grid h-[34px] place-items-center rounded-md bg-sunken text-xl tracking-[2px] text-muted">···</span>{t("moreStyles")}</BaseButton>
         </div>
-        {own && writer && hasStyles && <div><Button kind="ghost" size="sm" icon="plus" onClick={() => void saveAs()}>{t("saveStyle")}</Button></div>}
+        {own && writer && hasStyles && <div><Button kind="ghost" size="sm" icon="plus" onPress={() => void saveAs()}>{t("saveStyle")}</Button></div>}
       </Section>
 
       <Section title={t("secText")}>
@@ -93,7 +94,7 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
         <Opt icon="fill" label={t("page_colorLbl")} set={has("page_color")} onRevert={() => put("page_color", undefined)} writer={writer} revert={t("revert")}>{colour("page_color", "#ffffff")}</Opt>
         {eff.page_color && <Opt icon="opacity" label={t("page_opacityLbl")} set={has("page_opacity")} onRevert={() => put("page_opacity", undefined)} writer={writer} revert={t("revert")}>{slider("page_opacity", 0, 100, 5, 100, "%")}</Opt>}
         <Opt icon="backdrop" label={t("bg_colorLbl")} set={has("bg_color")} onRevert={() => put("bg_color", undefined)} writer={writer} revert={t("revert")}>{colour("bg_color", "#ffffff")}</Opt>
-        <Opt icon="shadow" label={t("band_shadowLbl")} set={has("band_shadow")} onRevert={() => put("band_shadow", undefined)} writer={writer} revert={t("revert")}><input type="checkbox" disabled={!writer} checked={!!eff.band_shadow} aria-label={t("band_shadowLbl")} onChange={(e) => put("band_shadow", e.target.checked ? true : undefined)} /></Opt>
+        <Opt icon="shadow" label={t("band_shadowLbl")} set={has("band_shadow")} onRevert={() => put("band_shadow", undefined)} writer={writer} revert={t("revert")}><Checkbox isDisabled={!writer} isSelected={!!eff.band_shadow} aria-label={t("band_shadowLbl")} onChange={(x) => put("band_shadow", x ? true : undefined)} /></Opt>
       </Section>
       <Section title={t("secPaper")}>
         <Opt icon="grid" label={t("patternLbl")} set={has("pattern")} onRevert={() => put("pattern", undefined)} writer={writer} revert={t("revert")}>{select("pattern", [["", "patNone"], ["ruled", "patRuled"], ["grid", "patGrid"], ["dots", "patDots"]], t("patternLbl"))}</Opt>
@@ -103,21 +104,19 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
       </Section>
       <Section title={t("secSheetArt")}>
         <Opt icon="image" label={t("sheet_srcLbl")} set={has(eff.sheet_image ? "sheet_image" : "sheet_art")} onRevert={() => put(eff.sheet_image ? "sheet_image" : "sheet_art", undefined)} writer={writer} revert={t("revert")}>
-          <select aria-label={t("sheet_srcLbl")} disabled={!writer} value={srcNow} className="max-w-[130px] cursor-pointer rounded-md border-0 bg-transparent px-1.5 py-1 text-end text-[13px]"
-            onChange={async (e) => { const v = e.target.value; if (v === "none") putMany({ sheet_art: undefined, sheet_image: undefined }); else if (v === "autumn") putMany({ sheet_art: "autumn", sheet_image: undefined }); else { const u = await askImage(t("sheetPicture")); if (u) putMany({ sheet_art: undefined, sheet_image: u }); } }}>
-            {([["none", "srcNone"], ["autumn", "srcAutumn"], ["image", "srcImage"]] as [string, Key][]).map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
-          </select>
+          <Select plain label={t("sheet_srcLbl")} isDisabled={!writer} value={srcNow} className="max-w-[140px]" options={([["none", "srcNone"], ["autumn", "srcAutumn"], ["image", "srcImage"]] as [string, Key][]).map(([v, l]) => ({ value: v, label: t(l) }))}
+            onChange={async (v) => { if (v === "none") putMany({ sheet_art: undefined, sheet_image: undefined }); else if (v === "autumn") putMany({ sheet_art: "autumn", sheet_image: undefined }); else { const u = await askImage(t("sheetPicture")); if (u) putMany({ sheet_art: undefined, sheet_image: u }); } }} />
         </Opt>
-        {eff.sheet_image && <Opt icon="upload" label={t("sheetPicture")} set={has("sheet_image")} onRevert={() => put("sheet_image", undefined)} writer={writer} revert={t("revert")}>{writer && <Button kind="ghost" size="sm" onClick={() => void pickImage("sheet_image")}>{t("changeImage")}</Button>}</Opt>}
+        {eff.sheet_image && <Opt icon="upload" label={t("sheetPicture")} set={has("sheet_image")} onRevert={() => put("sheet_image", undefined)} writer={writer} revert={t("revert")}>{writer && <Button kind="ghost" size="sm" onPress={() => void pickImage("sheet_image")}>{t("changeImage")}</Button>}</Opt>}
         {art && <Opt icon="fit" label={t("sheet_cornerLbl")} set={has("sheet_corner")} onRevert={() => put("sheet_corner", undefined)} writer={writer} revert={t("revert")}>{select("sheet_corner", [["top-right", "cTR"], ["top-left", "cTL"], ["bottom-right", "cBR"], ["bottom-left", "cBL"]], t("sheet_cornerLbl"))}</Opt>}
         {art && <Opt icon="scale" label={t("sheet_sizeLbl")} set={has("sheet_size")} onRevert={() => put("sheet_size", undefined)} writer={writer} revert={t("revert")}>{slider("sheet_size", 60, 500, 10, 260, "px")}</Opt>}
-        {art && <Opt icon="copy" label={t("sheet_mirrorLbl")} set={has("sheet_mirror")} onRevert={() => put("sheet_mirror", undefined)} writer={writer} revert={t("revert")}><input type="checkbox" disabled={!writer} checked={!!eff.sheet_mirror} aria-label={t("sheet_mirrorLbl")} onChange={(e) => put("sheet_mirror", e.target.checked ? true : undefined)} /></Opt>}
+        {art && <Opt icon="copy" label={t("sheet_mirrorLbl")} set={has("sheet_mirror")} onRevert={() => put("sheet_mirror", undefined)} writer={writer} revert={t("revert")}><Checkbox isDisabled={!writer} isSelected={!!eff.sheet_mirror} aria-label={t("sheet_mirrorLbl")} onChange={(x) => put("sheet_mirror", x ? true : undefined)} /></Opt>}
       </Section>
       <Section title={t("secImage")}>
         <div className="flex items-center gap-2.5">
           <div className="grid size-[72px] place-items-center rounded-md border border-line bg-sunken text-xs text-muted" ref={(el) => { if (el) { el.style.backgroundImage = eff.bg_image ? `url("${eff.bg_image}")` : ""; el.style.backgroundSize = "cover"; } }}>{!eff.bg_image && t("noImage")}</div>
-          {writer && <Button icon="image" onClick={() => void pickImage("bg_image")}>{eff.bg_image ? t("changeImage") : t("chooseImage")}</Button>}
-          {writer && eff.bg_image && <Button kind="ghost" icon="trash" onClick={() => put("bg_image", undefined)}>{t("removeImage")}</Button>}
+          {writer && <Button icon="image" onPress={() => void pickImage("bg_image")}>{eff.bg_image ? t("changeImage") : t("chooseImage")}</Button>}
+          {writer && eff.bg_image && <Button kind="ghost" icon="trash" onPress={() => put("bg_image", undefined)}>{t("removeImage")}</Button>}
         </div>
         {eff.bg_image && (
           <>
@@ -137,7 +136,7 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
 function PresetTile({ label, settings, on, disabled, onClick }: { label: string; settings: PageSettings; on: boolean; disabled?: boolean; onClick: () => void }) {
   const s = settings;
   return (
-    <button type="button" disabled={disabled} aria-pressed={on} onClick={onClick} className={cn("grid gap-1 rounded-[10px] border border-line p-1.5 text-center text-xs hoverable", on && "border-accent shadow-[0_0_0_1px_var(--accent)]")}>
+    <BaseButton isDisabled={disabled} aria-pressed={on} onPress={onClick} className={cn("grid gap-1 rounded-sm border border-line p-1.5 text-center text-xs hoverable", on && "border-accent shadow-[0_0_0_1px_var(--accent)]")}>
       <div className="grid h-[42px] place-items-center rounded-md border border-line" ref={(el) => {
         if (!el) return;
         el.style.backgroundColor = s.bg_color ?? "var(--sunken)";
@@ -155,7 +154,7 @@ function PresetTile({ label, settings, on, disabled, onClick }: { label: string;
         }}>Aa</div>
       </div>
       <span>{label}</span>
-    </button>
+    </BaseButton>
   );
 }
 
@@ -168,30 +167,27 @@ function MoreStyles({ shown, onClose, writer, hasStyles, onBuiltin, onSaved, onS
   if (styles === null) void load();
   const remove = async (s: Saved) => { if (!(await askConfirm(t("sure")))) return; await link.call("pages.style_delete", { id: s.id } as never); await qc.invalidateQueries({ queryKey: ["pages.styles"] }); await load(); };
   return (
-    <div role="dialog" aria-label={t("pageStyles")} className="fixed inset-0 z-[60] grid place-items-start justify-center bg-scrim pt-[8vh] backdrop-blur-[3px]" onClick={onClose}>
-      <div className="w-[min(720px,94vw)] rounded-lg bg-surface p-5 shadow-2" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center"><h2 className="m-0 grow text-lg font-semibold">{t("pageStyles")}</h2><IconButton icon="close" label={t("close")} onClick={onClose} /></div>
+    <Window title={t("pageStyles")} onClose={onClose} wide>
         <h3 className="mb-2 text-[13px] font-semibold text-muted">{t("builtInStyles")}</h3>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2">{PAGE_PRESETS.map((p) => <PresetTile key={p.id} label={t(("pre_" + p.id) as Key)} settings={p[shown]} on={false} disabled={!writer} onClick={() => onBuiltin(p)} />)}</div>
         <h3 className="mb-2 mt-4 text-[13px] font-semibold text-muted">{t("myStyles")}</h3>
         {styles && styles.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2">{styles.map((s) => (
             <div key={s.id} className="group/tile relative"><PresetTile label={s.name} settings={s.settings} on={same(s.settings, {})} disabled={!writer} onClick={() => onSaved(s.settings)} />
-              {writer && <IconButton icon="close" label={t("delete")} size="sm" className="absolute end-1.5 top-1.5 size-[22px] bg-surface opacity-0 group-hover/tile:opacity-100 focus:opacity-100" onClick={() => void remove(s)} />}</div>
+              {writer && <IconButton icon="close" label={t("delete")} size="sm" className="absolute end-1.5 top-1.5 size-[22px] bg-surface opacity-0 group-hover/tile:opacity-100 focus:opacity-100" onPress={() => void remove(s)} />}</div>
           ))}</div>
         ) : <p className="m-0 text-muted">{t("noStyles")}</p>}
-        {writer && hasStyles && <div className="mt-4 flex justify-end"><Button icon="plus" onClick={async () => { await onSave(); await load(); }}>{t("saveStyle")}</Button></div>}
-      </div>
-    </div>
+        {writer && hasStyles && <div className="mt-4 flex justify-end"><Button icon="plus" onPress={async () => { await onSave(); await load(); }}>{t("saveStyle")}</Button></div>}
+    </Window>
   );
 }
 
 function Opt({ icon, label, set, onRevert, writer, revert, children }: { icon: string; label: string; set: boolean; onRevert: () => void; writer: boolean; revert: string; children: ReactNode }) {
   return (
-    <div className="grid min-h-[38px] grid-cols-[minmax(0,1fr)_auto_26px] items-center gap-2 rounded-[11px] bg-sunken ps-[11px] pe-1">
+    <div className="grid min-h-[38px] grid-cols-[minmax(0,1fr)_auto_26px] items-center gap-2 rounded-sm bg-sunken ps-[11px] pe-1">
       <div className="flex min-w-0 items-center gap-2 text-[13px] text-muted"><Icon name={icon} className="size-[15px] shrink-0" /><span className="truncate">{label}</span></div>
       <div className="flex items-center justify-end gap-2">{children}</div>
-      <span className="grid place-items-center">{writer && set && <IconButton icon="undo" label={revert} size="sm" className="size-6" onClick={onRevert} />}</span>
+      <span className="grid place-items-center">{writer && set && <IconButton icon="undo" label={revert} size="sm" className="size-6" onPress={onRevert} />}</span>
     </div>
   );
 }

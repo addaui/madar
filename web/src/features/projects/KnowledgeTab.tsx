@@ -5,7 +5,9 @@ import type { Page, Project } from "../../api/types";
 import type { ProjectSearch } from "../../app/router";
 import { useT } from "../../i18n/i18n";
 import { Explorer } from "../pages/Explorer";
+import { ContextSidebar } from "../../app/regions";
 import { PageBody } from "../pages/PageBody";
+import { PageSide } from "../pages/PageSide";
 import { DraftPage } from "../pages/PageScreen";
 import { inputOf, keyOf, opOf, projectScope } from "../pages/scope";
 
@@ -22,7 +24,7 @@ export function KnowledgeTab({ project, search, go }: { project: Project; search
             open: (pid) => go({ tab: "knowledge", page: pid }), newPage: (parent) => go({ tab: "knowledge", page: "new", ...(parent ? { parent } : {}) }), closed: () => go({ tab: "knowledge" }) }} />
         </Suspense>
       </div>
-      <div className="min-h-0 overflow-hidden rounded-lg border border-line">
+      <div className="panel min-h-0 overflow-hidden">
         <Suspense fallback={<div aria-busy="true" />}>
           {!id ? <div className="mx-auto mt-[8vh] grid max-w-md place-items-center gap-1 text-center text-muted"><b className="text-text">{t("pickPage")}</b><span>{t("pickPageHint")}</span></div>
             : id === "new" ? <DraftPage parent={search.parent} scope={scope} chrome={false} onCreated={(pid) => go({ tab: "knowledge", page: pid })} />
@@ -36,5 +38,11 @@ export function KnowledgeTab({ project, search, go }: { project: Project; search
 function KnowledgePage({ project, id }: { project: Project; id: string }) {
   const scope = projectScope(project.id);
   const page = useSuspending({ queryKey: keyOf(scope, "get", { id }), queryFn: () => link.call(opOf(scope, "get") as never, inputOf(scope, { id }) as never) as Promise<Page> });
-  return <div className="h-full min-h-0"><PageBody page={page} scope={scope} onWords={() => undefined} onSave={() => undefined} /></div>;
+  const t = useT();
+  return (
+    <div className="h-full min-h-0">
+      <ContextSidebar label={t("toggleInfo")}><PageSide page={page} scope={scope} /></ContextSidebar>
+      <PageBody page={page} scope={scope} onWords={() => undefined} onSave={() => undefined} />
+    </div>
+  );
 }

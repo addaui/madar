@@ -6,16 +6,15 @@ import { useHasOp } from "../../api/session";
 import type { PageItem } from "../../api/types";
 import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
-import { askConfirm, openContextMenu, toast, type MenuItems } from "../../ui/overlays";
-import { Button, IconButton } from "../../ui/Button";
-import { Emo } from "../../ui/emoji";
+import { askConfirm, openContextMenu, openMenuFrom, toast, type MenuItems } from "../../ui/overlays";
+import { BaseButton, Button, IconButton } from "../../ui/Button";
+import { TextField } from "../../ui/Field";
+import { PageGlyph } from "../../ui/PageGlyph";
 import { Icon } from "../../ui/Icon";
 import { collapsed, useCollapsed } from "./collapsed";
 import { inputOf, keyOf, opOf, type PageScope } from "./scope";
 import { childrenOf, descendants } from "./tree";
 
-const PAGE_EMOJI = "📄";
-const FOLDER_EMOJI = "📁";
 
 type Edit = { mode: "rename"; id: string } | { mode: "folder"; parent: string | null } | null;
 
@@ -73,9 +72,9 @@ export function Explorer({ scope, nav }: { scope: PageScope; nav: ExplorerNav })
 
   return (
     <div role="tree" className="flex flex-col gap-px">
-      <div className="mb-1 flex items-center gap-1.5 px-1">
-        <Button kind="primary" icon="filePlus" className="flex-1 justify-center" onClick={() => newPage(null)}>{t("newPage")}</Button>
-        <IconButton icon="folderPlus" label={t("newFolder")} onClick={() => setEdit({ mode: "folder", parent: null })} />
+      <div className="mb-1 flex items-center gap-1.5">
+        <Button kind="primary" size="sm" icon="filePlus" className="min-h-[var(--row)] flex-1 justify-center" onPress={() => newPage(null)}>{t("newPage")}</Button>
+        <IconButton icon="folderPlus" label={t("newFolder")} onPress={() => setEdit({ mode: "folder", parent: null })} />
       </div>
       {childrenOf(list, null).map((p) => <Row key={p.id} pg={p} depth={0} ctx={ctx} />)}
       {edit?.mode === "folder" && edit.parent === null && <FolderRow depth={0} onDone={(v) => { setEdit(null); if (v) void createFolder(null, v); }} />}
@@ -90,10 +89,10 @@ export function Explorer({ scope, nav }: { scope: PageScope; nav: ExplorerNav })
 function TreeInput({ initial, onDone }: { initial: string; onDone: (v: string | null) => void }) {
   const t = useT();
   return (
-    <input autoFocus defaultValue={initial} dir="auto" aria-label={t("rename")} className="field min-h-6 flex-1 py-0.5"
-      onClick={(e) => e.stopPropagation()} onFocus={(e) => e.currentTarget.select()}
-      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onDone(e.currentTarget.value.trim() || null); } else if (e.key === "Escape") onDone(null); }}
-      onBlur={(e) => onDone(e.currentTarget.value.trim() || null)} />
+    <TextField autoFocus defaultValue={initial} dir="auto" label={t("rename")} className="min-w-0 flex-1" inputClassName="min-h-6 py-0.5"
+      onFocus={(e) => (e.target as HTMLInputElement).select()}
+      onKeyDown={(e) => { const v = (e.target as HTMLInputElement).value.trim() || null; if (e.key === "Enter") { e.preventDefault(); onDone(v); } else if (e.key === "Escape") onDone(null); }}
+      onBlur={(e) => onDone((e.target as HTMLInputElement).value.trim() || null)} />
   );
 }
 
@@ -115,17 +114,17 @@ function Row({ pg, depth, ctx }: { pg: PageItem; depth: number; ctx: Ctx }) {
         onContextMenu={(e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, items(pg)); }}
         onClick={() => { if (editing) return; if (pg.folder) collapsed.toggle(pg.id); else open(pg.id); }}
         style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }}
-        className={cn("group/row flex min-h-[30px] cursor-pointer items-center gap-1 rounded-sm pe-1 hoverable", cur && "bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]")}>
+        className={cn("group/row flex min-h-[var(--row)] cursor-pointer items-center gap-1 rounded-sm pe-1 hoverable", cur && "bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]")}>
         {kids.length || pg.folder ? (
-          <button type="button" tabIndex={-1} aria-label={isOpen ? t("collapse") : t("expand")} onClick={(e) => { e.stopPropagation(); collapsed.toggle(pg.id); }} className="grid size-5 place-items-center text-muted">
+          <BaseButton excludeFromTabOrder aria-label={isOpen ? t("collapse") : t("expand")} onPress={() => collapsed.toggle(pg.id)} className="grid size-5 place-items-center text-muted">
             <Icon name="chevron" className={cn("size-3.5 transition-transform", isOpen && "rotate-90 rtl:-rotate-90")} />
-          </button>
+          </BaseButton>
         ) : <span className="size-5" />}
-        <span aria-hidden="true" className="grid w-5 place-items-center"><Emo ch={pg.folder ? pg.icon || FOLDER_EMOJI : pg.icon || PAGE_EMOJI} /></span>
+        <span aria-hidden="true" className="grid w-5 place-items-center"><PageGlyph icon={pg.icon} folder={pg.folder} /></span>
         {editing ? <TreeInput initial={pg.title} onDone={(v) => { setEdit(null); if (v !== null && v !== pg.title) void rename(pg.id, v); }} /> : <span className="min-w-0 flex-1 truncate" dir="auto">{pg.title || t("untitled")}</span>}
         {!editing && (
           <span className="opacity-0 focus-within:opacity-100 group-hover/row:opacity-100">
-            <IconButton icon="more" label={t("more")} size="sm" onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); openContextMenu(r.left, r.bottom, items(pg)); }} />
+            <IconButton icon="more" label={t("more")} size="sm" onPress={(e) => openMenuFrom(e.target, items(pg))} />
           </span>
         )}
       </div>
@@ -143,16 +142,16 @@ function Row({ pg, depth, ctx }: { pg: PageItem; depth: number; ctx: Ctx }) {
 function DraftRow({ depth, label }: { depth: number; label: string }) {
   const t = useT();
   return (
-    <div role="treeitem" aria-selected aria-current="page" title={t("notSavedYet")} style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }} className="flex min-h-[30px] items-center gap-1 rounded-sm bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]">
-      <span className="size-5" /><span aria-hidden="true" className="w-5 text-center">{PAGE_EMOJI}</span><span className="truncate text-muted">{label}</span>
+    <div role="treeitem" aria-selected aria-current="page" title={t("notSavedYet")} style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }} className="flex min-h-[var(--row)] items-center gap-1 rounded-sm bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]">
+      <span className="size-5" /><span aria-hidden="true" className="grid w-5 place-items-center"><PageGlyph /></span><span className="truncate text-muted">{label}</span>
     </div>
   );
 }
 
 function FolderRow({ depth, onDone }: { depth: number; onDone: (v: string | null) => void }) {
   return (
-    <div style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }} className="flex min-h-[30px] items-center gap-1 rounded-sm">
-      <span className="size-5" /><span aria-hidden="true" className="w-5 text-center">{FOLDER_EMOJI}</span><TreeInput initial="" onDone={onDone} />
+    <div style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }} className="flex min-h-[var(--row)] items-center gap-1 rounded-sm">
+      <span className="size-5" /><span aria-hidden="true" className="grid w-5 place-items-center"><PageGlyph folder /></span><TreeInput initial="" onDone={onDone} />
     </div>
   );
 }

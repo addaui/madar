@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { link } from "../../api/link";
 import { useT } from "../../i18n/i18n";
 import { Button } from "../../ui/Button";
+import { TextField } from "../../ui/Field";
 import { Icon } from "../../ui/Icon";
 
 /** The sign-in form: a React 19 Action. The session goes into an HttpOnly cookie (`X-Nuah-Session: cookie`). */
@@ -25,10 +26,10 @@ export function SignIn() {
       <form action={submit} className="grid w-[min(400px,100%)] gap-3.5 rounded-lg bg-surface p-8 shadow-2">
         <div className="flex items-center gap-2.5 text-[17px] font-bold"><Icon name="logo" className="size-[26px] text-accent" />Madar</div>
         <p className="m-0 text-muted">{t("signInHint")}</p>
-        <input name="name" type="text" required autoComplete="username" placeholder={t("name")} aria-label={t("name")} dir="auto" className="field" />
-        <input name="password" type="password" required autoComplete="current-password" placeholder={t("password")} aria-label={t("password")} className="field" />
+        <TextField name="name" label={t("name")} placeholder={t("name")} isRequired autoComplete="username" dir="auto" />
+        <TextField name="password" type="password" label={t("password")} placeholder={t("password")} isRequired autoComplete="current-password" />
         <p role="alert" className="m-0 min-h-[1.2em] text-danger">{error}</p>
-        <Button kind="primary" type="submit" disabled={pending} className="justify-center">{t("signIn")}</Button>
+        <Button kind="primary" type="submit" isDisabled={pending} className="justify-center">{t("signIn")}</Button>
       </form>
     </div>
   );

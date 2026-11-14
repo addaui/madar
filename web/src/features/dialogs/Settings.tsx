@@ -4,6 +4,11 @@ import { useRead } from "../../api/hooks";
 import { themesOf, useDescribe, usePrefs } from "../../api/session";
 import { useI18n } from "../../i18n/i18n";
 import { Button } from "../../ui/Button";
+import { useUnavailableEmojiSets } from "../../ui/emoji";
+import { Checkbox } from "../../ui/Check";
+import { ColorField } from "../../ui/ColorField";
+import { NumberField, TextField } from "../../ui/Field";
+import { Select } from "../../ui/Select";
 import { Window } from "./Dialog";
 
 interface Item { key: string; group?: string; type: string; label: { en: string; ar?: string }; default?: unknown; choices?: { value: string; label: { en: string; ar?: string } }[]; min?: number; max?: number }
@@ -16,6 +21,7 @@ export function Settings({ onClose, onAppearance }: { onClose: () => void; onApp
   const describe = useDescribe();
   const items = (useRead("prefs.schema").data as { items: Item[] }).items;
   const themes = themesOf(describe);
+  const noFont = useUnavailableEmojiSets();
   const save = async (key: string, value: unknown) => {
     const out = await link.call("prefs.set", { [key]: value } as never);
     qc.setQueryData(["prefs.get", {}], out);
@@ -28,17 +34,18 @@ export function Settings({ onClose, onAppearance }: { onClose: () => void; onApp
         <section key={g} className="mb-4 rounded-md border border-line p-3">
           <h2 className="m-0 mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">{t(("g_" + g) as "g_other")}</h2>
           {items.filter((i) => (i.group ?? "other") === g).map((it) => {
-            const v = prefs[it.key] ?? it.default, id = "pref-" + it.key.replace(/\W/g, "-");
+            const v = prefs[it.key] ?? it.default;
             let ctl;
-            if (it.key === "theme") ctl = <select id={id} value={String(v)} onChange={(e) => void save(it.key, e.target.value)} className="field">{themes.map((th) => { const val = th.id.replace(/^@nuah\/theme-/, ""); return <option key={th.id} value={val}>{(th.tokens as unknown as { name?: string }).name ?? val}</option>; })}</select>;
-            else if (it.type === "boolean") ctl = <input id={id} type="checkbox" checked={!!v} onChange={(e) => void save(it.key, e.target.checked)} />;
-            else if (it.type === "integer") ctl = <input id={id} type="number" min={it.min} max={it.max} defaultValue={Number(v)} onBlur={(e) => void save(it.key, Number(e.target.value))} className="field w-24" />;
-            else if (it.type === "choice") ctl = <select id={id} value={String(v)} onChange={(e) => void save(it.key, e.target.value)} className="field">{(it.choices ?? []).map((c) => <option key={c.value} value={c.value}>{(lang === "ar" && c.label.ar) || c.label.en}</option>)}</select>;
-            else if (it.type === "color") ctl = <input id={id} type="color" defaultValue={String(v || "#0b7a70")} onBlur={(e) => void save(it.key, e.target.value)} className="h-7 w-16" />;
-            else ctl = <input id={id} type="text" defaultValue={String(v ?? "")} onBlur={(e) => void save(it.key, e.target.value)} className="field" />;
-            return <div key={it.key} className="flex items-center justify-between gap-3 py-1.5"><label htmlFor={id}>{label(it)}</label>{ctl}</div>;
+            const opts = (it.choices ?? []).map((c) => ({ value: c.value, label: ((lang === "ar" && c.label.ar) || c.label.en) + (it.key === "emoji.set" && noFont.has(c.value) ? " · " + t("notOnDevice") : ""), disabled: it.key === "emoji.set" && noFont.has(c.value) }));
+            if (it.key === "theme") ctl = <Select label={label(it)} value={String(v)} onChange={(x) => void save(it.key, x)} options={themes.map((th) => { const val = th.id.replace(/^@nuah\/theme-/, ""); return { value: val, label: th.name ?? val }; })} />;
+            else if (it.type === "boolean") ctl = <Checkbox aria-label={label(it)} isSelected={!!v} onChange={(x) => void save(it.key, x)} />;
+            else if (it.type === "integer") ctl = <NumberField label={label(it)} minValue={it.min} maxValue={it.max} defaultValue={Number(v)} onChange={(x) => { if (Number.isFinite(x)) void save(it.key, x); }} className="w-24" />;
+            else if (it.type === "choice") ctl = <Select label={label(it)} value={String(v)} onChange={(x) => void save(it.key, x)} options={opts} />;
+            else if (it.type === "color") ctl = <ColorField label={label(it)} value={String(v || "#0b7a70")} onChange={(x) => void save(it.key, x)} />;
+            else ctl = <TextField label={label(it)} defaultValue={String(v ?? "")} onBlur={(e) => void save(it.key, (e.target as HTMLInputElement).value)} />;
+            return <div key={it.key} className="flex items-center justify-between gap-3 py-1.5"><span>{label(it)}</span>{ctl}</div>;
           })}
-          {g === "appearance" && describe.operations["appearance.schema"] && <div className="flex items-center justify-between gap-3 py-1.5"><label>{t("customize")}</label><Button onClick={onAppearance}>{t("customizeBtn")}</Button></div>}
+          {g === "appearance" && describe.operations["appearance.schema"] && <div className="flex items-center justify-between gap-3 py-1.5"><label>{t("customize")}</label><Button onPress={onAppearance}>{t("customizeBtn")}</Button></div>}
         </section>
       ))}
     </Window>

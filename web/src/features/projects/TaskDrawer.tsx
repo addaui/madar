@@ -10,8 +10,14 @@ import { cn } from "../../lib/cn";
 import { codeOf } from "../../lib/codes";
 import { CopyCode } from "../../ui/CopyCode";
 import { Button, IconButton } from "../../ui/Button";
+import { Checkbox } from "../../ui/Check";
+import { DateField } from "../../ui/DateField";
+import { NumberField, TextField } from "../../ui/Field";
+import { Segmented } from "../../ui/Segmented";
+import { Select } from "../../ui/Select";
+import { Tabs } from "../../ui/Tabs";
 import { Icon } from "../../ui/Icon";
-import { askConfirm, openContextMenu } from "../../ui/overlays";
+import { askConfirm, openMenuFrom } from "../../ui/overlays";
 import { LegacyEditor, type EditorJson } from "../pages/LegacyEditor";
 import { Activity } from "./Activity";
 
@@ -31,6 +37,7 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
   const [tab, setTab] = useState<"d" | "a">("d");
   const [dirty, setDirty] = useState(false);
   const [priority, setPriority] = useState(task.priority);
+  const [due, setDue] = useState(task.due ?? "");
   const description = useRef<EditorJson | null>(null);
   const blocks = qc.getQueryData<{ blocks: unknown[] }>(["editor.blocks", {}])?.blocks ?? [];
   const custom0 = (task.custom ?? {}) as Record<string, unknown>;
@@ -76,66 +83,64 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
   const code = codeOf(project.key, task.number);
 
   return (
-    <aside role="dialog" aria-label={task.title} className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface workspace:rounded-none workspace:border-0 workspace:bg-transparent">
+    <aside aria-label={task.title} className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface workspace:rounded-none workspace:border-0 workspace:bg-transparent">
       <form action={save} onInput={() => setDirty(true)} onChange={() => setDirty(true)} className="flex min-h-0 flex-1 flex-col" key={task.rev}>
         <div className="flex items-center gap-1.5 border-b border-line px-3 py-2.5">
-          <input name="title" defaultValue={task.title} disabled={!writer} maxLength={200} aria-label={t("title")} dir="auto" className="min-w-0 flex-1 border-0 bg-transparent text-lg font-semibold outline-none" />
-          {writer && <IconButton icon="more" label={t("more")} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openContextMenu(r.left, r.bottom, [{ label: task.archived ? t("restore") : t("archive"), icon: "archive", onclick: archive }, "-", { label: t("delete"), icon: "trash", danger: true, onclick: () => void remove() }]); }} />}
-          <IconButton icon="close" label={t("close") + " (Esc)"} onClick={onClose} />
+          <TextField bare name="title" defaultValue={task.title} isDisabled={!writer} maxLength={200} label={t("title")} dir="auto" className="min-w-0 flex-1" inputClassName="text-lg font-semibold" onChange={() => setDirty(true)} />
+          {writer && <IconButton icon="more" label={t("more")} onPress={(e) => { openMenuFrom(e.target, [{ label: task.archived ? t("restore") : t("archive"), icon: "archive", onclick: archive }, "-", { label: t("delete"), icon: "trash", danger: true, onclick: () => void remove() }]); }} />}
+          <IconButton icon="close" label={t("close") + " (Esc)"} onPress={onClose} />
         </div>
-        <div role="tablist" className="flex gap-0.5 border-b border-line px-3">
-          {(["d", "a"] as const).map((k) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={cn("border-b-2 border-transparent px-2.5 py-2 text-[13px] text-muted", tab === k && "border-accent font-semibold text-text")}>{t(k === "d" ? "tabDetails" : "activityTab")}</button>)}
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto p-4">
-          <div hidden={tab !== "d"}>
+        <Tabs variant="compact" label={t("taskDetails")} selected={tab} onSelect={(k) => setTab(k as "d" | "a")} items={[{ id: "d", label: t("tabDetails") }, { id: "a", label: t("activityTab") }]}
+          className="flex min-h-0 flex-1 flex-col" panelClassName="min-h-0 flex-1 overflow-auto p-4 data-[inert]:hidden"
+          panels={{
+            d: (
+              <>
             {code && <div className="mb-2"><CopyCode code={code} /></div>}
             <div className="grid gap-2.5">
-              <Prop icon="task" label={t("status")}><select name="status" defaultValue={task.status} disabled={!writer} aria-label={t("status")} className="field">{project.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Prop>
+              <Prop icon="task" label={t("status")}><Select name="status" label={t("status")} defaultValue={task.status} isDisabled={!writer} onChange={() => setDirty(true)} options={project.statuses.map((x) => ({ value: x.id, label: x.name }))} /></Prop>
               <Prop icon="flag" label={t("priority")}>
-                <div role="radiogroup" aria-label={t("priority")} className="inline-flex gap-0.5 rounded-[10px] bg-sunken p-0.5">
-                  {BANDS.map(([band, v]) => <button key={band} type="button" role="radio" aria-checked={bandOf(priority) === band} disabled={!writer} onClick={() => { if (bandOf(priority) !== band) { setPriority(v); setDirty(true); } }}
-                    className="rounded-[8px] px-2.5 py-1 text-[13px] text-muted aria-checked:bg-surface aria-checked:font-semibold aria-checked:text-text aria-checked:shadow-1">{t(band as "low")}</button>)}
-                </div>
+                <Segmented label={t("priority")} value={bandOf(priority)} isDisabled={!writer} onChange={(band) => { const v = BANDS.find(([b2]) => b2 === band)?.[1]; if (v !== undefined && bandOf(priority) !== band) { setPriority(v); setDirty(true); } }} options={BANDS.map(([band]) => ({ value: band, label: t(band as "low") }))} />
               </Prop>
-              <Prop icon="calendar" label={t("due")}><input name="due" type="date" defaultValue={task.due ?? ""} disabled={!writer} aria-label={t("due")} className="field" /></Prop>
+              <Prop icon="calendar" label={t("due")}><DateField name="due" label={t("due")} value={due} onChange={(v) => { setDue(v); setDirty(true); }} isDisabled={!writer} /></Prop>
               <Prop icon="repeat" label={t("repeat")}>
                 <div className="flex items-center gap-1.5">
                   <span className="text-muted">{t("every")}</span>
-                  <input name="repeat_every" type="number" min={1} max={365} defaultValue={task.repeat?.every ?? 1} disabled={!writer} aria-label={t("every")} className="field w-[70px]" />
-                  <select name="repeat_unit" defaultValue={task.repeat?.unit ?? ""} disabled={!writer} aria-label={t("repeat")} className="field">
-                    <option value="">{t("noRepeat")}</option><option value="day">{t("days")}</option><option value="week">{t("weeks")}</option><option value="month">{t("months")}</option>
-                  </select>
+                  <NumberField name="repeat_every" label={t("every")} minValue={1} maxValue={365} defaultValue={task.repeat?.every ?? 1} isDisabled={!writer} onChange={() => setDirty(true)} className="w-[84px]" />
+                  <Select name="repeat_unit" label={t("repeat")} defaultValue={task.repeat?.unit ?? ""} isDisabled={!writer} onChange={() => setDirty(true)} options={[{ value: "", label: t("noRepeat") }, { value: "day", label: t("days") }, { value: "week", label: t("weeks") }, { value: "month", label: t("months") }]} />
                 </div>
               </Prop>
-              <Prop icon="user" label={t("assignee")}><select name="assignee" defaultValue={task.assignee ?? ""} disabled={!writer} aria-label={t("assignee")} className="field"><option value="">{t("nobody")}</option>{members.map((m) => <option key={m.subject} value={m.subject}>{m.display ?? m.subject}</option>)}</select></Prop>
-              {labels.length > 0 && <Prop icon="tag" label={t("labels")}><div className="flex flex-wrap gap-1.5">{labels.map((l) => <label key={l.id} className="inline-flex items-center gap-1 rounded-chip border border-line px-2 py-0.5 text-xs"><input type="checkbox" name="label" value={l.id} defaultChecked={task.labels.includes(l.id)} disabled={!writer} /><span dir="auto">{l.name}</span></label>)}</div></Prop>}
+              <Prop icon="user" label={t("assignee")}><Select name="assignee" label={t("assignee")} defaultValue={task.assignee ?? ""} isDisabled={!writer} onChange={() => setDirty(true)} options={[{ value: "", label: t("nobody") }, ...members.map((m) => ({ value: m.subject, label: m.display ?? m.subject }))]} /></Prop>
+              {labels.length > 0 && <Prop icon="tag" label={t("labels")}><div className="flex flex-wrap gap-1.5">{labels.map((l) => <Checkbox key={l.id} name="label" value={l.id} defaultSelected={task.labels.includes(l.id)} isDisabled={!writer} onChange={() => setDirty(true)} className="rounded-chip border border-line px-2 py-0.5 text-xs"><span dir="auto">{l.name}</span></Checkbox>)}</div></Prop>}
               {(project.attributes ?? []).map((a) => (
                 <Prop key={a.key} icon="page" label={a.label}>
-                  {a.type === "boolean" ? <input type="checkbox" name={"custom." + a.key} defaultChecked={!!custom0[a.key]} disabled={!writer} />
-                    : a.type === "choice" ? <select name={"custom." + a.key} defaultValue={String(custom0[a.key] ?? "")} disabled={!writer} className="field"><option value="" />{(a.choices ?? []).map((c) => <option key={c}>{c}</option>)}</select>
-                    : <input name={"custom." + a.key} type={a.type === "number" ? "number" : a.type === "date" ? "date" : "text"} defaultValue={String(custom0[a.key] ?? "")} disabled={!writer} className="field" />}
+                  {a.type === "boolean" ? <Checkbox name={"custom." + a.key} aria-label={a.label} defaultSelected={!!custom0[a.key]} isDisabled={!writer} onChange={() => setDirty(true)} />
+                    : a.type === "choice" ? <Select name={"custom." + a.key} label={a.label} defaultValue={String(custom0[a.key] ?? "")} isDisabled={!writer} onChange={() => setDirty(true)} options={[{ value: "", label: "—" }, ...(a.choices ?? []).map((c) => ({ value: c, label: c }))]} />
+                    : a.type === "date" ? <AttrDate name={"custom." + a.key} label={a.label} initial={String(custom0[a.key] ?? "")} disabled={!writer} onChange={() => setDirty(true)} />
+                    : a.type === "number" ? <NumberField name={"custom." + a.key} label={a.label} defaultValue={custom0[a.key] === undefined || custom0[a.key] === null ? undefined : Number(custom0[a.key])} isDisabled={!writer} onChange={() => setDirty(true)} />
+                    : <TextField name={"custom." + a.key} label={a.label} defaultValue={String(custom0[a.key] ?? "")} isDisabled={!writer} onChange={() => setDirty(true)} />}
                 </Prop>
               ))}
             </div>
             <h3 className="mb-1.5 mt-5 text-[13px] font-semibold text-muted">{t("description")}</h3>
-            <LegacyEditor doc={(task.description as EditorJson | null) ?? null} version={task.rev} editable={writer} lang={lang} blocks={blocks} placeholder={t("writeHere")} onChange={(d) => { description.current = d; setDirty(true); }} />
+            <LegacyEditor doc={(task.description as EditorJson | null) ?? null} version={task.rev} editable={writer} lang={lang} blocks={blocks} project={project.id} placeholder={t("writeHere")} onChange={(d) => { description.current = d; setDirty(true); }} />
             {!task.parent && (
               <>
                 <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted"><Icon name="subtask" className="size-3.5" />{t("subtasks")}{subtasks.length > 0 && <span className="rounded-chip border border-line px-1.5 text-xs">{done}/{subtasks.length}</span>}</h3>
                 {subtasks.map((s) => (
-                  <label key={s.id} className="flex items-center gap-2 py-1"><input type="checkbox" checked={!!s.completed_at} disabled={!writer} onChange={() => toggleSub(s)} aria-label={s.title} /><span className={cn(!!s.completed_at && "text-muted line-through")} dir="auto">{s.title}</span></label>
+                  <Checkbox key={s.id} className="py-1" isSelected={!!s.completed_at} isDisabled={!writer} onChange={() => toggleSub(s)}><span className={cn(!!s.completed_at && "text-muted line-through")} dir="auto">{s.title}</span></Checkbox>
                 ))}
                 {writer && <SubAdd onAdd={addSub} label={t("subtasks")} placeholder={t("addPh")} />}
               </>
             )}
-          </div>
-          <div hidden={tab !== "a"}><Suspense fallback={<SkeletonLines rows={4} />}><Activity project={project.id} target={{ type: "tasks.task", id: task.id }} writer={writer} /></Suspense></div>
-        </div>
+              </>
+            ),
+            a: <Suspense fallback={<SkeletonLines rows={4} />}><Activity project={project.id} target={{ type: "tasks.task", id: task.id }} writer={writer} /></Suspense>,
+          }} />
         {writer && dirty && (
           <div className="flex items-center gap-2 border-t border-line bg-surface px-3 py-2.5">
             <span className="grow text-[13px] text-muted">{error ?? t("unsaved")}</span>
-            <Button kind="ghost" onClick={() => { setDirty(false); description.current = null; void refresh(); }}>{t("discard")}</Button>
-            <Button kind="primary" icon="check" type="submit" disabled={pending}>{t("save")}</Button>
+            <Button kind="ghost" onPress={() => { setDirty(false); description.current = null; void refresh(); }}>{t("discard")}</Button>
+            <Button kind="primary" icon="check" type="submit" isDisabled={pending}>{t("save")}</Button>
           </div>
         )}
       </form>
@@ -147,10 +152,16 @@ function Prop({ icon, label, children }: { icon: string; label: string; children
   return <div className="grid grid-cols-[104px_1fr] items-center gap-2.5"><div className="flex items-center gap-2 text-[13px] text-muted"><Icon name={icon} className="size-3.5" />{label}</div><div>{children}</div></div>;
 }
 
+/** A date attribute of the project, kept as the form's value ("YYYY-MM-DD" or empty). */
+function AttrDate({ name, label, initial, disabled, onChange }: { name: string; label: string; initial: string; disabled: boolean; onChange: () => void }) {
+  const [v, setV] = useState(initial);
+  return <DateField name={name} label={label} value={v} isDisabled={disabled} onChange={(x) => { setV(x); onChange(); }} />;
+}
+
 function SubAdd({ onAdd, label, placeholder }: { onAdd: (title: string) => void; label: string; placeholder: string }) {
   return (
-    <form onSubmit={(e) => { e.preventDefault(); const i = e.currentTarget.elements.namedItem("sub") as HTMLInputElement; const v = i.value.trim(); if (v) { onAdd(v); i.value = ""; } }} className="mt-1.5">
-      <input name="sub" type="text" dir="auto" aria-label={label} placeholder={placeholder} className="field w-full" />
+    <form onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget, v = String(new FormData(form).get("sub") ?? "").trim(); if (v) { onAdd(v); form.reset(); } }} className="mt-1.5">
+      <TextField name="sub" dir="auto" label={label} placeholder={placeholder} />
     </form>
   );
 }

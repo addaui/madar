@@ -1,6 +1,14 @@
 // Icon shapes (24 by 24, stroke only), drawn from the first web Face; some follow the Lucide icons (ISC licence, see THIRD_PARTY_NOTICES.md).
 // The strings are static markup of this file, never user input.
 export const icons: Record<string, string> = {
+  "sticker": "<path d=\"M5 5.5A2.5 2.5 0 0 1 7.5 3h9A2.5 2.5 0 0 1 19 5.5V13l-6 6H7.5A2.5 2.5 0 0 1 5 16.5z\"/><path d=\"M19 13h-3.5A2.5 2.5 0 0 0 13 15.5V19\"/><path d=\"M9 8.5v.5M14 8.5v.5M9 12.2c.7.8 1.7 1.2 2.5 1.2\"/>",
+  "layers": "<path d=\"M12 4l8.5 4.5L12 13 3.5 8.5z\"/><path d=\"M3.5 12.5L12 17l8.5-4.5M3.5 16L12 20.5 20.5 16\"/>",
+  "eye": "<path d=\"M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>",
+  "eyeOff": "<path d=\"M4 4l16 16M9.9 5.8A9 9 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 0 1-2.6 3.3M6.3 7.6A16 16 0 0 0 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4-.9M10 10a3 3 0 0 0 4 4\"/>",
+  "lock": "<rect x=\"5\" y=\"10.5\" width=\"14\" height=\"9.5\" rx=\"2.5\"/><path d=\"M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5\"/>",
+  "unlock": "<rect x=\"5\" y=\"10.5\" width=\"14\" height=\"9.5\" rx=\"2.5\"/><path d=\"M8.5 10.5V8a3.5 3.5 0 0 1 6.8-1.2\"/>",
+  "rotate": "<path d=\"M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4v4h-4\"/>",
+  "flip": "<path d=\"M12 3v18M8.5 7L4 18h4.5zM15.5 7L20 18h-4.5z\"/>",
   "copy": "<rect x=\"8\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\"/><path d=\"M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2\"/>",
   "undo": "<path d=\"M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5\"/>",
   "type": "<path d=\"M4 7V5h16v2M12 5v14M9 19h6\"/>",

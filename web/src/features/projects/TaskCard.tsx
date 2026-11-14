@@ -6,6 +6,7 @@ import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
 import { codeOf } from "../../lib/codes";
 import { CopyCode } from "../../ui/CopyCode";
+import { Checkbox } from "../../ui/Check";
 import { DueChip, PriorityChip } from "../tasks/TaskRow";
 import { Icon } from "../../ui/Icon";
 
@@ -35,10 +36,9 @@ export function TaskCard({ task, projectKey, subtasks, today, draggableOn, selec
     <div ref={ref} data-task={task.id} role="button" tabIndex={0} aria-current={selected ? "true" : undefined}
       onClick={onOpen} onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}
       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }}
-      className={cn("mb-2 cursor-pointer rounded-md border border-line bg-surface p-2.5 shadow-1 hover-lift", done && "opacity-60", dragging && "opacity-40", selected && "border-accent")}>
+      className={cn("mb-2 cursor-pointer rounded-md border border-line bg-surface p-2.5 shadow-1 hover-lift", done && "opacity-60", dragging && "opacity-40", selected && "border-accent outline outline-1 outline-accent")}>
       <div className="flex items-start gap-2">
-        <button type="button" aria-label={done ? t("reopen") : t("markDone")} onClick={(e) => { e.stopPropagation(); onDone(); }}
-          className={cn("mt-0.5 grid size-[18px] shrink-0 place-items-center rounded-full border", done ? "border-ok bg-ok text-white" : "border-line-strong")}>{done && <Icon name="check" className="size-3" />}</button>
+        <Checkbox round aria-label={done ? t("reopen") : t("markDone")} isSelected={done} onChange={() => onDone()} className="hit mt-0.5" />
         <span className={cn("min-w-0 grow break-words", done && "line-through")} dir="auto">{task.title}</span>
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 ps-[26px]">

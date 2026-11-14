@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { startTransition, useEffect, useEffectEvent } from "react";
 import { link } from "../../api/link";
 import { useRead } from "../../api/hooks";
@@ -7,11 +7,12 @@ import { CopyCode } from "../../ui/CopyCode";
 import { useDescribe } from "../../api/session";
 import type { Task } from "../../api/types";
 import { useI18n } from "../../i18n/i18n";
-import { Stage, Topbar } from "../../app/Stage";
+import { ContextSidebar, Topbar } from "../../app/regions";
 import { cn } from "../../lib/cn";
-import { Button, IconButton } from "../../ui/Button";
-import { Icon } from "../../ui/Icon";
-import { askConfirm, askText, openContextMenu, type MenuItems } from "../../ui/overlays";
+import { Button, IconButton, type PressEvent } from "../../ui/Button";
+import { Tabs } from "../../ui/Tabs";
+import { TextLink } from "../../ui/Link";
+import { askConfirm, askText, openMenuFrom, type MenuItems } from "../../ui/overlays";
 import type { ProjectSearch } from "../../app/router";
 import { Board } from "./Board";
 import { ListTab } from "./ListTab";
@@ -69,9 +70,8 @@ export function ProjectScreen({ projectId, search }: { projectId: string; search
   const changeKey = async () => { const k = await askText(t("keyLabel"), project.key ?? ""); if (k) { await link.call("projects.update", { project: projectId, key: k.toUpperCase(), expected_rev: project.rev }); await refresh(); } };
   const remove = async () => { if (await askConfirm(t("sure"))) { await link.call("projects.delete", { project: projectId }); await refresh(); void navigate({ to: "/today" }); } };
   const leave = async () => { if (await askConfirm(t("leave") + "?")) { await link.call("projects.leave", { project: projectId }); await refresh(); void navigate({ to: "/today" }); } };
-  const more = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    openContextMenu(r.left, r.bottom, [
+  const more = (e: PressEvent) => {
+    openMenuFrom(e.target, [
       { label: t("archived"), icon: "archive", onclick: () => setDialog("archived") },
       manager ? { label: t("audit"), icon: "history", onclick: () => setDialog("history") } : null,
       manager ? { label: t("projectSettings"), icon: "gear", onclick: () => setDialog("settings") } : null,
@@ -84,31 +84,25 @@ export function ProjectScreen({ projectId, search }: { projectId: string; search
 
   const actions = (
     <>
-      <Button kind="ghost" size="sm" icon="user" aria-label={t("members") + ` (${members.length})`} onClick={() => setDialog("members")}>{String(members.length)}</Button>
-      {writer && tab !== "knowledge" && <Button kind="primary" size="sm" icon="plus" onClick={() => { go({ ...search, tab: "board" }); setTimeout(() => document.querySelector<HTMLInputElement>("section[data-status] input")?.focus(), 50); }}>{t("newTask")}</Button>}
-      <IconButton icon="more" label={t("more")} onClick={more} />
+      <Button kind="ghost" size="sm" icon="user" aria-label={t("members") + ` (${members.length})`} onPress={() => setDialog("members")}>{String(members.length)}</Button>
+      {writer && tab !== "knowledge" && <Button kind="primary" size="sm" icon="plus" onPress={() => { go({ ...search, tab: "board" }); setTimeout(() => document.querySelector<HTMLInputElement>("section[data-status] input")?.focus(), 50); }}>{t("newTask")}</Button>}
+      <IconButton icon="more" label={t("more")} onPress={more} />
     </>
   );
 
   return (
-    <Stage
-      topbar={<Topbar crumbs={<><Link to="/today" className="rounded-sm px-1.5 py-1 hoverable">{t("projects")}</Link><span aria-hidden="true">›</span><span aria-current="page" className="px-1.5 font-semibold text-text" dir="auto">{project.name}</span>{project.key && <CopyCode code={project.key} className="ms-1 text-xs" />}</>} actions={actions} />}
-      pane={open && tab !== "knowledge" ? <TaskDrawer key={open.id} project={project} task={open} members={members} labels={labels} subtasks={tasks.filter((x) => x.parent === open.id)} writer={writer} onClose={() => go({ ...search, task: undefined })} /> : undefined}
-      paneWidth={440} paneLabel={t("taskDetails")} paneIcon="task" paneTransient
-    >
-      <div role="tablist" className="mb-3 flex gap-1 border-b border-line">
-        {tabs.map((x) => (
-          <button key={x} type="button" role="tab" aria-selected={x === tab} onClick={() => go({ tab: x })}
-            className={cn("inline-flex items-center gap-1.5 border-b-2 border-transparent px-3 py-2 text-muted", x === tab && "border-accent font-semibold text-text")}>
-            <Icon name={x === "board" ? "board" : x === "list" ? "list" : x === "overview" ? "chart" : "book"} className="size-4" />{t(x)}
-          </button>
-        ))}
-      </div>
-      {tab === "board" && <Board project={project} tasks={tasks} today={today} writer={writer} selected={search.task} onOpen={(id) => go({ ...search, task: id })} itemsFor={itemsFor} />}
-      {tab === "list" && <ListTab project={project} members={members} today={today} onOpen={(id) => go({ ...search, task: id })} />}
-      {tab === "overview" && <Overview project={project} />}
-      {tab === "knowledge" && <KnowledgeTab project={project} search={search} go={go} />}
+    <>
+      <Topbar title={project.name} crumbs={<><TextLink href="#/today" className="px-1.5 py-1">{t("projects")}</TextLink><span aria-hidden="true">›</span><span aria-current="page" className="px-1.5 font-semibold text-text" dir="auto">{project.name}</span>{project.key && <CopyCode code={project.key} className="ms-1 text-xs" />}</>} actions={actions} />
+      {open && (tab === "board" || tab === "list") && <ContextSidebar label={t("taskDetails")} icon="task" width={440} transient><TaskDrawer key={open.id} project={project} task={open} members={members} labels={labels} subtasks={tasks.filter((x) => x.parent === open.id)} writer={writer} onClose={() => go({ ...search, task: undefined })} /></ContextSidebar>}
+      <Tabs label={t("projects")} selected={tab} onSelect={(x) => go({ tab: x as typeof tab })} className="flex h-full min-h-0 flex-col" listClassName="mb-3"
+        items={tabs.map((x) => ({ id: x, label: t(x), icon: x === "board" ? "board" : x === "list" ? "list" : x === "overview" ? "chart" : "book" }))}
+        panelClassName={cn("min-h-0 flex-1", tab === "knowledge" || tab === "board" ? "overflow-hidden" : "overflow-auto")}>
+        {tab === "board" && <Board project={project} tasks={tasks} today={today} writer={writer} selected={search.task} onOpen={(id) => go({ ...search, task: id })} itemsFor={itemsFor} />}
+        {tab === "list" && <ListTab project={project} members={members} today={today} onOpen={(id) => go({ ...search, task: id })} />}
+        {tab === "overview" && <Overview project={project} />}
+        {tab === "knowledge" && <KnowledgeTab project={project} search={search} go={go} />}
+      </Tabs>
       {dialog && <Suspense fallback={null}><Dialogs which={dialog} project={project} manager={manager} writer={writer} onClose={() => setDialog(null)} /></Suspense>}
-    </Stage>
+    </>
   );
 }
