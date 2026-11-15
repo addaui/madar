@@ -54,6 +54,7 @@ export function SpacesMenu() {
     } } : null,
     !cur.builtin ? "-" : null,
     !cur.builtin ? { label: t("spaceMembers"), icon: "mention", onclick: () => openDialog("spaceMembers") } : null,
+    !cur.builtin && cur.role === "admin" ? { label: t("spaceFeatures"), icon: "layers", onclick: () => openDialog("spaceFeatures") } : null,
     !cur.builtin && canLeave ? { label: t("leaveSpace"), icon: "close", onclick: async () => {
       if (!(await askConfirm(t("sure")))) return;
       try { await link.call("spaces.leave", { space: cur.id }); spaceState.set("default"); await refresh(); } catch (e) {

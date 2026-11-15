@@ -117,6 +117,10 @@ pub fn spaces() -> Value {
     obj(&["spaces"], json!({"spaces": list(space())}))
 }
 
+pub fn space_features() -> Value {
+    obj(&["features"], json!({"features": list(obj(&["id", "name", "allowed", "enabled"], json!({"id": s(), "name": s(), "allowed": boolean(), "enabled": boolean()})))}))
+}
+
 pub fn space_members() -> Value {
     obj(&["members"], json!({"members": list(obj(&["subject", "role"], json!({"subject": s(), "display": nullable(STR), "role": s()})))}))
 }

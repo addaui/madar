@@ -1364,6 +1364,59 @@ fn the_number_of_spaces_a_person_may_start_is_a_setting_the_owner_can_change() {
 }
 
 #[test]
+fn a_space_admin_chooses_which_features_the_space_uses_and_the_core_refuses_the_rest() {
+    let a = app();
+    let (al, bo, da) = (who("alice"), who("bob"), who("dave"));
+    let team = space_of(&a, &al, "Team");
+    a.ok(&al, "spaces.share", json!({"space": team, "subject": "bob", "role": "member"}));
+    let p = a.ok(&al, "projects.create", json!({"name": "Launch", "space": team}))["id"].as_str().unwrap().to_string();
+    let t = a.task(&al, &p, "seed")["id"].as_str().unwrap().to_string();
+    // never chosen: everything the instance allows is on
+    let l = a.ok(&bo, "spaces.features", json!({"space": team}));
+    assert!(l["features"].as_array().unwrap().iter().all(|f| f["enabled"] == true && f["allowed"] == true), "{l}");
+    a.ok(&bo, "discussion.list", json!({"project": p, "task": t}));
+    // only an admin may choose
+    assert_eq!(a.err(&bo, "spaces.set_features", json!({"space": team, "features": ["@madar/tasks"]})).category, Category::Denied);
+    let out = a.ok(&al, "spaces.set_features", json!({"space": team, "features": ["@madar/tasks"]}));
+    let on: Vec<&str> = out["features"].as_array().unwrap().iter().filter(|f| f["enabled"] == true).map(|f| f["id"].as_str().unwrap()).collect();
+    assert_eq!(on, ["@madar/tasks"]);
+    // tasks still work for every member; comments and the project's pages are refused with the reason
+    a.task(&bo, &p, "still here");
+    for (op, input) in [("discussion.list", json!({"project": p, "task": t})), ("knowledge.list", json!({"project": p})), ("timeline.feed", json!({"project": p, "target": {"type": "tasks.task", "id": t}}))] {
+        let e = a.err(&bo, op, input);
+        assert_eq!(e.reason.as_deref(), Some("spaces.feature_off"), "{op}: {e}");
+    }
+    // someone outside the Space learns nothing from the switch: they get what they always got
+    assert_eq!(a.err(&da, "knowledge.list", json!({"project": p})).category, Category::NotFound);
+    // switching it back on restores it, and nothing was lost
+    a.ok(&al, "spaces.set_features", json!({"space": team, "features": ["@madar/tasks", "@madar/pages"]}));
+    a.ok(&bo, "knowledge.list", json!({"project": p}));
+    assert_eq!(a.titles(&bo, &p, "todo").len(), 2);
+    // the personal Space is not switchable: its projects keep everything
+    let mine = a.project(&al, "Mine");
+    a.ok(&al, "knowledge.list", json!({"project": mine}));
+    // a made-up feature is refused
+    assert_eq!(a.err(&al, "spaces.set_features", json!({"space": team, "features": ["@madar/nothing"]})).category, Category::Invalid);
+}
+
+#[test]
+fn the_owner_decides_which_features_spaces_may_use_at_all() {
+    let clock = FixedClock::at(1_700_000_000_000);
+    let p = profile_test(&[("@madar/spaces", json!({"allowed_features": ["@madar/tasks", "@madar/pages"]}))]);
+    let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|e| panic!("{e:#?}"));
+    let a = App { core, clock: FixedClock::at(0) };
+    let al = who("alice");
+    let team = space_of(&a, &al, "Team");
+    let p = a.ok(&al, "projects.create", json!({"name": "Launch", "space": team}))["id"].as_str().unwrap().to_string();
+    let l = a.ok(&al, "spaces.features", json!({"space": team}));
+    let state = |id: &str| l["features"].as_array().unwrap().iter().find(|f| f["id"] == id).map(|f| (f["allowed"].clone(), f["enabled"].clone())).unwrap();
+    assert_eq!(state("@madar/tasks"), (json!(true), json!(true)));
+    assert_eq!(state("@madar/discussion"), (json!(false), json!(false)), "not allowed, so not on, whatever the Space says");
+    assert_eq!(a.err(&al, "discussion.list", json!({"project": p, "task": "x"})).reason.as_deref(), Some("spaces.feature_off"));
+    assert_eq!(a.err(&al, "spaces.set_features", json!({"space": team, "features": ["@madar/discussion"]})).category, Category::Invalid);
+}
+
+#[test]
 fn a_person_may_start_twenty_spaces_and_a_viewer_may_not_manage_one() {
     let a = app();
     let (al, ca) = (who("alice"), who("carol"));

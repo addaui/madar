@@ -20,6 +20,34 @@ pub const PERSONAL: &str = "default";
 /// How many Spaces one person may create when the setting `max_per_person` is not set.
 pub const MAX_SPACES: u64 = 20;
 
+/// The features a Space can switch ([ADR 0082]): the plugin, the prefix of its operations that name a project, and what people call it. Only features that
+/// work through project operations are listed, because those are what the Core can refuse in a Space; block-level features come later.
+///
+/// [ADR 0082]: https://docs.addaui.com/nuah/adr/0082-a-space-uses-only-the-feature-plugins-its-admin-switches-on-from-those-the-instance-allows-people-keep-only-preferences/
+pub const SCOPED: &[(&str, &str, &str)] = &[
+    ("@madar/tasks", "tasks", "Tasks"),
+    ("@madar/discussion", "discussion", "Comments"),
+    ("@madar/pages", "knowledge", "Pages of a project"),
+    ("@madar/audit", "audit", "History"),
+    ("@madar/export", "export", "Export"),
+    ("@madar/timeline", "timeline", "Timeline"),
+];
+
+/// The features the instance lets Spaces use: the setting `allowed_features`, or all of them when it is empty.
+fn allowed(settings: &Value) -> Vec<&'static str> {
+    let list: Vec<&str> = settings.get("allowed_features").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str()).collect()).unwrap_or_default();
+    SCOPED.iter().map(|(id, _, _)| *id).filter(|id| list.is_empty() || list.contains(id)).collect()
+}
+
+/// Which features a stored Space uses: its own list, or every allowed one when the admin never chose.
+fn enabled(space: &Doc, settings: &Value) -> Vec<String> {
+    let allowed = allowed(settings);
+    match space.body.get("features").and_then(|f| f.as_array()) {
+        Some(list) => list.iter().filter_map(|x| x.as_str()).filter(|x| allowed.contains(x)).map(String::from).collect(),
+        None => allowed.iter().map(|s| s.to_string()).collect(),
+    }
+}
+
 pub fn member_id(space: &str, subject: &str) -> String {
     format!("{space}:{subject}")
 }
@@ -93,7 +121,10 @@ impl Plugin for Spaces {
             "requires": {"capabilities": ["emit", "call"]},
             "settings_schema": {"type": "object", "additionalProperties": false, "properties": {
                 "max_per_person": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 20, "title": "Spaces one person may create", "x-tier": "owner", "x-apply": "live",
-                    "description": "How many Spaces each person may start. Spaces others invited them to do not count."}}},
+                    "description": "How many Spaces each person may start. Spaces others invited them to do not count."},
+                "allowed_features": {"type": "array", "uniqueItems": true, "items": {"enum": ["@madar/tasks", "@madar/discussion", "@madar/pages", "@madar/audit", "@madar/export", "@madar/timeline"]},
+                    "title": "Features a Space may use", "x-tier": "owner", "x-apply": "live",
+                    "description": "A Space admin can switch these on or off for the Space. Leave empty to allow all of them."}}},
             "data": {"collections": [SPACES, SPACE_MEMBERS], "reads": ["projects.projects"], "version": 1,
                      "indexes": [{"collection": SPACES, "field": "created_by"}, {"collection": SPACE_MEMBERS, "field": "subject"}, {"collection": SPACE_MEMBERS, "field": "space"}]},
             "permissions": {
@@ -102,6 +133,12 @@ impl Plugin for Spaces {
                 "spaces.write": {"description": "Create and edit projects in a Space", "default": ["admin", "member"]},
                 "spaces.manage": {"description": "Rename, share and delete a Space", "default": ["admin", "member"]}
             },
+            "hooks": [{"stage": "before", "on": "tasks.*", "handler": "spaces.guard", "reasons": {"spaces.feature_off": "This feature is switched off in the Space"}},
+                {"stage": "before", "on": "discussion.*", "handler": "spaces.guard", "reasons": {"spaces.feature_off": "This feature is switched off in the Space"}},
+                {"stage": "before", "on": "knowledge.*", "handler": "spaces.guard", "reasons": {"spaces.feature_off": "This feature is switched off in the Space"}},
+                {"stage": "before", "on": "audit.*", "handler": "spaces.guard", "reasons": {"spaces.feature_off": "This feature is switched off in the Space"}},
+                {"stage": "before", "on": "export.*", "handler": "spaces.guard", "reasons": {"spaces.feature_off": "This feature is switched off in the Space"}},
+                {"stage": "before", "on": "timeline.*", "handler": "spaces.guard", "reasons": {"spaces.feature_off": "This feature is switched off in the Space"}}],
             "resources": ["spaces.space"], "scopes": ["spaces.members"],
             "events": {"spaces.created": {}, "spaces.updated": {}, "spaces.deleted": {}, "spaces.shared": {}, "spaces.unshared": {}},
             "operations": {
@@ -119,6 +156,10 @@ impl Plugin for Spaces {
                     "output": crate::schemas::done()},
                 "spaces.unshare": {"kind": "command", "permission": "spaces.manage", "resource": {"type":"spaces.space","id":"space"}, "description": "Take someone out of a Space", "reasons": reasons,
                     "input": {"type":"object","required":["space","subject"],"properties":{"space":{"type":"string"},"subject":{"type":"string"}},"additionalProperties":false}, "output": crate::schemas::done()},
+                "spaces.features": {"kind": "query", "permission": "spaces.read", "resource": {"type":"spaces.space","id":"space"}, "description": "The features a Space can switch, with whether the instance allows each and whether the Space uses it",
+                    "input": space, "output": crate::schemas::space_features()},
+                "spaces.set_features": {"kind": "command", "permission": "spaces.manage", "resource": {"type":"spaces.space","id":"space"}, "description": "Choose which of the allowed features the Space uses (an admin's call; it applies to every member)", "reasons": reasons,
+                    "input": {"type":"object","required":["space","features"],"properties":{"space":{"type":"string"},"features":{"type":"array","items":{"type":"string"},"uniqueItems":true}},"additionalProperties":false}, "output": crate::schemas::space_features()},
                 "spaces.leave": {"kind": "command", "permission": "spaces.read", "resource": {"type":"spaces.space","id":"space"}, "description": "Leave a Space", "reasons": reasons,
                     "input": space, "output": crate::schemas::done()}
             }
@@ -223,11 +264,54 @@ impl Plugin for Spaces {
             require_role(tx, id, &["admin"])?;
             remove(tx, id, text(&i, "subject"))
         });
+        b.op("spaces.features", |tx, i| features_of(tx, text(&i, "space")));
+        b.op("spaces.set_features", |tx, i| {
+            let id = text(&i, "space");
+            require_role(tx, id, &["admin"])?;
+            let s = tx.get(SPACES, id)?.ok_or_else(|| Error::not_found("space"))?;
+            let ok = allowed(&tx.settings());
+            let chosen: Vec<String> = i["features"].as_array().cloned().unwrap_or_default().iter().filter_map(|x| x.as_str().map(String::from)).collect();
+            if let Some(bad) = chosen.iter().find(|c| !ok.contains(&c.as_str())) {
+                return Err(Error::invalid("features", &format!("{bad} is not a feature this instance lets Spaces use")));
+            }
+            let mut body = s.body.clone();
+            body["features"] = json!(chosen);
+            tx.put(SPACES, id, body, Expect::Rev(s.rev))?;
+            tx.emit("spaces.updated", Audience::scope("spaces.members", id), json!({"space": id, "features": chosen}))?;
+            features_of(tx, id)
+        });
+        // A project operation of a feature the project's Space does not use is refused (ADR 0082). Only a member of the Space is told: anyone else gets
+        // what they would have got anyway, so the refusal cannot show them that a project or a Space exists.
+        b.before("spaces.guard", |tx, op, input| {
+            let Some(project) = input.get("project").and_then(|p| p.as_str()) else { return Ok(()) };
+            let Some((plugin, _, label)) = SCOPED.iter().find(|(_, prefix, _)| op.strip_prefix(prefix).is_some_and(|r| r.starts_with('.'))) else { return Ok(()) };
+            let Some(p) = tx.get("projects.projects", project)? else { return Ok(()) };
+            let space = p.body.get("space").and_then(|s| s.as_str()).unwrap_or(PERSONAL);
+            if space == PERSONAL {
+                return Ok(());
+            }
+            let me = tx.who().subject.clone();
+            if role_in_tx(tx, space, &me)?.is_none() {
+                return Ok(());
+            }
+            let Some(s) = tx.get(SPACES, space)? else { return Ok(()) };
+            if enabled(&s, &tx.settings()).iter().any(|e| e == plugin) {
+                return Ok(());
+            }
+            Err(Error::reason(Category::Denied, "spaces.feature_off", &format!("{label} is switched off in this Space")))
+        });
         b.op("spaces.leave", |tx, i| {
             let me = tx.who().subject.clone();
             remove(tx, text(&i, "space"), &me)
         });
     }
+}
+
+fn features_of(tx: &mut Tx, id: &str) -> Result<Value> {
+    let s = tx.get(SPACES, id)?.ok_or_else(|| Error::not_found("space"))?;
+    let settings = tx.settings();
+    let (ok, on) = (allowed(&settings), enabled(&s, &settings));
+    Ok(json!({"features": SCOPED.iter().map(|(plugin, _, label)| json!({"id": plugin, "name": label, "allowed": ok.contains(plugin), "enabled": on.iter().any(|e| e == plugin)})).collect::<Vec<_>>()}))
 }
 
 fn remove(tx: &mut Tx, space: &str, subject: &str) -> Result<Value> {

@@ -1,5 +1,5 @@
 {
-  "contract": "6a2360e761e50206",
+  "contract": "12836b9ac3aeb688",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -156,7 +156,9 @@
       "permission": "projects.manage",
       "plugin": "@madar/audit",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -475,7 +477,8 @@
       "plugin": "@madar/discussion",
       "public": false,
       "reasons": {
-        "discussion.bad_parent": "Replies go to a top-level comment of the same task"
+        "discussion.bad_parent": "Replies go to a top-level comment of the same task",
+        "spaces.feature_off": "This feature is switched off in the Space"
       },
       "resource": {
         "id": "project",
@@ -511,7 +514,9 @@
       "permission": "projects.read",
       "plugin": "@madar/discussion",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -567,7 +572,9 @@
       "permission": "projects.read",
       "plugin": "@madar/discussion",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -600,7 +607,8 @@
       "plugin": "@madar/discussion",
       "public": false,
       "reasons": {
-        "discussion.not_yours": "Only the author or the project owner can remove a comment"
+        "discussion.not_yours": "Only the author or the project owner can remove a comment",
+        "spaces.feature_off": "This feature is switched off in the Space"
       },
       "resource": {
         "id": "project",
@@ -732,7 +740,9 @@
       "permission": "projects.read",
       "plugin": "@madar/export",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -1516,7 +1526,9 @@
       "permission": "projects.write",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -1556,7 +1568,9 @@
       "permission": "projects.write",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -1663,7 +1677,9 @@
       "permission": "projects.read",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -1773,7 +1789,9 @@
       "permission": "projects.read",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -1888,7 +1906,9 @@
       "permission": "projects.write",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -1999,7 +2019,9 @@
       "permission": "projects.write",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -2115,7 +2137,9 @@
       "permission": "projects.read",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -2232,7 +2256,9 @@
       "permission": "projects.write",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -2283,7 +2309,9 @@
       "permission": "projects.read",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -2420,7 +2448,9 @@
       "permission": "projects.write",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -2484,7 +2514,9 @@
       "permission": "projects.read",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -2560,7 +2592,9 @@
       "permission": "projects.read",
       "plugin": "@madar/pages",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -5429,6 +5463,65 @@
         "type": "spaces.space"
       }
     },
+    "spaces.features": {
+      "allowed": true,
+      "description": "The features a Space can switch, with whether the instance allows each and whether the Space uses it",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "space": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "space"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "features": {
+            "items": {
+              "properties": {
+                "allowed": {
+                  "type": "boolean"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "allowed",
+                "enabled"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "features"
+        ],
+        "type": "object"
+      },
+      "permission": "spaces.read",
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {},
+      "resource": {
+        "id": "space",
+        "type": "spaces.space"
+      }
+    },
     "spaces.leave": {
       "allowed": true,
       "description": "Leave a Space",
@@ -5616,6 +5709,78 @@
       "plugin": "@madar/spaces",
       "public": false,
       "reasons": {},
+      "resource": {
+        "id": "space",
+        "type": "spaces.space"
+      }
+    },
+    "spaces.set_features": {
+      "allowed": true,
+      "description": "Choose which of the allowed features the Space uses (an admin's call; it applies to every member)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "space": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "space",
+          "features"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "features": {
+            "items": {
+              "properties": {
+                "allowed": {
+                  "type": "boolean"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "allowed",
+                "enabled"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "features"
+        ],
+        "type": "object"
+      },
+      "permission": "spaces.manage",
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {
+        "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
+        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
+        "spaces.too_many": "You have reached the number of Spaces one person may create"
+      },
       "resource": {
         "id": "space",
         "type": "spaces.space"
@@ -5918,6 +6083,7 @@
       "public": false,
       "reasons": {
         "quota.exceeded": "The project is full",
+        "spaces.feature_off": "This feature is switched off in the Space",
         "tasks.assignee_not_member": "Only members can be assigned",
         "tasks.bad_parent": "A subtask needs a top-level task of the same project as its parent",
         "tasks.bad_status": "That column does not exist",
@@ -6204,7 +6370,9 @@
       "permission": null,
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": null
     },
     "tasks.get": {
@@ -6343,7 +6511,9 @@
       "permission": "projects.read",
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -6396,7 +6566,9 @@
       "permission": "projects.write",
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -6450,7 +6622,9 @@
       "permission": "projects.read",
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -6482,7 +6656,9 @@
       "permission": "projects.write",
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -6664,7 +6840,9 @@
       "permission": "projects.read",
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -6816,6 +6994,7 @@
       "plugin": "@madar/tasks",
       "public": false,
       "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space",
         "tasks.archived": "An archived task can only be restored",
         "tasks.bad_status": "That column does not exist",
         "tasks.unknown_attribute": "That attribute is not defined in this project"
@@ -6975,7 +7154,9 @@
       "permission": null,
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": null
     },
     "tasks.query": {
@@ -7185,7 +7366,9 @@
       "permission": "projects.read",
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -7217,7 +7400,9 @@
       "permission": "projects.write",
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -7306,7 +7491,9 @@
       "permission": "projects.read",
       "plugin": "@madar/tasks",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -7522,6 +7709,7 @@
       "plugin": "@madar/tasks",
       "public": false,
       "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space",
         "tasks.archived": "An archived task can only be restored",
         "tasks.assignee_not_member": "Only members can be assigned",
         "tasks.bad_status": "That column does not exist",
@@ -7586,7 +7774,9 @@
       "permission": "projects.read",
       "plugin": "@madar/timeline",
       "public": false,
-      "reasons": {},
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"

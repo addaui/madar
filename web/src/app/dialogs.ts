@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-export type DialogName = "search" | "settings" | "appearance" | "shortcuts" | "features" | "spaceMembers";
+export type DialogName = "search" | "settings" | "appearance" | "shortcuts" | "features" | "spaceMembers" | "spaceFeatures";
 
 let current: DialogName | null = null;
 const listeners = new Set<() => void>();

@@ -12,7 +12,7 @@ import { notify } from "../../ui/Toast";
 import { Window } from "./Dialog";
 
 type Feature = FeaturesListOutput["features"][number];
-interface Prop { type?: string | string[]; enum?: string[]; title?: string; description?: string; minimum?: number; maximum?: number; default?: unknown; "x-secret"?: boolean }
+interface Prop { type?: string | string[]; enum?: string[]; items?: { enum?: string[] }; title?: string; description?: string; minimum?: number; maximum?: number; default?: unknown; "x-secret"?: boolean }
 interface Schema { properties?: Record<string, Prop> }
 const isMarker = (v: unknown) => !!v && typeof v === "object" && (v as { $secret?: boolean }).$secret === true;
 const errorOf = (e: unknown) => e as { reason?: string | null; message?: string };
@@ -126,6 +126,16 @@ function FeatureCard({ f, busy, onToggle, onSave }: { f: Feature; busy: boolean;
             const label = p.title ?? k;
             const v = values[k];
             const types = Array.isArray(p.type) ? p.type : p.type ? [p.type] : [];
+            if (types.includes("array") && p.items?.enum) {
+              const chosen = Array.isArray(v) ? (v as string[]) : [];
+              return (
+                <fieldset key={k} className="m-0 grid gap-1 border-0 p-0">
+                  <legend className="mb-1 font-medium">{label}</legend>
+                  {p.description && <span className="text-[12px] text-muted">{p.description}</span>}
+                  {p.items.enum.map((e) => <Checkbox key={e} isSelected={chosen.includes(e)} onChange={(on) => set(k, on ? [...chosen, e] : chosen.filter((x) => x !== e))}>{e}</Checkbox>)}
+                </fieldset>
+              );
+            }
             if (p.enum) return <Select key={k} label={label} value={String(v ?? p.default ?? p.enum[0])} onChange={(x) => set(k, x)} options={p.enum.map((e) => ({ value: e, label: e }))} />;
             if (types.includes("boolean")) return <Checkbox key={k} isSelected={!!(v ?? p.default)} onChange={(x) => set(k, x)}>{label}</Checkbox>;
             if (types.includes("integer") || types.includes("number")) return <NumberField key={k} label={label} minValue={p.minimum} maxValue={p.maximum} defaultValue={Number(v ?? p.default ?? 0)} onChange={(x) => { if (Number.isFinite(x)) set(k, x); }} className="w-32" />;

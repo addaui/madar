@@ -4,6 +4,7 @@ import { Features } from "./Features";
 import { SearchPalette } from "./SearchPalette";
 import { Settings } from "./Settings";
 import { Shortcuts } from "./Shortcuts";
+import { SpaceFeatures } from "./SpaceFeatures";
 import { SpaceMembers } from "./SpaceMembers";
 
 /** The windows the sidebar and the keyboard open. One host, loaded on demand: it carries the accessible-dialog library. */
@@ -12,6 +13,7 @@ export default function DialogsHost() {
   const close = () => openDialog(null);
   if (which === "search") return <SearchPalette onClose={close} />;
   if (which === "settings") return <Settings onClose={close} onAppearance={() => openDialog("appearance")} onFeatures={() => openDialog("features")} />;
+  if (which === "spaceFeatures") return <SpaceFeatures onClose={close} />;
   if (which === "spaceMembers") return <SpaceMembers onClose={close} />;
   if (which === "features") return <Features onClose={close} />;
   if (which === "appearance") return <Appearance onClose={close} />;
