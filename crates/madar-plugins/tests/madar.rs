@@ -1837,3 +1837,40 @@ fn an_owner_instance_has_no_sign_in_for_the_app_and_keeps_the_console_behind_a_p
     assert_eq!((admin["subject"].as_str(), admin["roles"].clone()), (Some("owner"), json!(["member", "admin"])));
     assert_eq!(call(Some(&tok), "projects.list", json!({})).unwrap()["projects"].as_array().unwrap().len(), 1, "and sees the same Owner's data");
 }
+
+// ---- shared with the editor's tests (ADR 0078) ----
+
+fn fixture_path(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures").join(name)
+}
+
+#[test]
+fn the_server_check_gives_the_verdicts_the_shared_fixtures_record() {
+    let file: Value = serde_json::from_str(&std::fs::read_to_string(fixture_path("richtext.json")).unwrap()).unwrap();
+    let docs = file["documents"].as_array().unwrap();
+    assert!(docs.len() >= 15);
+    for d in docs {
+        let got = madar_plugins::content::richtext::check("content", &d["doc"]).is_ok();
+        assert_eq!(got, d["server"].as_bool().unwrap(), "{}: richtext::check said {got}", d["name"]);
+    }
+}
+
+/// The blocks the Core declares, with their options, are written to `fixtures/editor-blocks.json`; the editor's compliance tests declare the same blocks from it.
+/// Change a block's options and this fails until the file is regenerated with `UPDATE_FIXTURES=1 cargo test`.
+#[test]
+fn the_declared_blocks_match_the_golden_file_the_editor_tests_read() {
+    let a = app();
+    let blocks = a.ok(&who("alice"), "editor.blocks", json!({}));
+    let mut seen = std::collections::BTreeMap::new();
+    for b in blocks["blocks"].as_array().unwrap() {
+        let node = b["node"].as_str().unwrap().to_string();
+        let options = if b["options"].is_null() { json!([]) } else { b["options"].clone() };
+        seen.entry(node).or_insert(options);
+    }
+    let got = serde_json::to_string_pretty(&json!({"about": "Written by the Rust test `the_declared_blocks_match_the_golden_file_the_editor_tests_read`; do not edit by hand.", "blocks": seen})).unwrap() + "\n";
+    let path = fixture_path("editor-blocks.json");
+    if std::env::var("UPDATE_FIXTURES").is_ok() {
+        std::fs::write(&path, &got).unwrap();
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), got, "run `UPDATE_FIXTURES=1 cargo test` to regenerate fixtures/editor-blocks.json");
+}

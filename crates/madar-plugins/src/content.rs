@@ -354,7 +354,7 @@ impl Plugin for EditorBasic {
                     choice("ratio", "Shape", "الشكل", json!("16-9"), vec![(json!("16-9"), "16:9", "16:9"), (json!("4-3"), "4:3", "4:3"), (json!("1-1"), "Square", "مربع")], true),
                     number_opt("start", "Starts at", "يبدأ من", json!(0), 0, 86400, "s")]),
                 with_options(block("linkPreview", "linkPreview", json!({}), "Link preview", "معاينة رابط", "embed", "url bookmark", "bookmark"), vec![
-                    choice("mode", "Shown as", "العرض", json!("card"), vec![(json!("card"), "Card", "بطاقة"), (json!("compact"), "Compact card", "بطاقة مضغوطة")], false)]),
+                    choice("mode", "Shown as", "العرض", json!("card"), vec![(json!("card"), "Wide card", "بطاقة عريضة"), (json!("compact"), "Compact", "مضغوطة"), (json!("stack"), "Picture on top", "الصورة في الأعلى"), (json!("side"), "Picture at the side", "الصورة على الجانب")], true)]),
                 block("subpage", "entityRef", json!({}), "Page", "صفحة", "reference", "page subpage new child nested", "page"),
                 block("entityRef", "entityRef", json!({}), "Link to a page or task", "رابط إلى صفحة أو مهمة", "reference", "mention reference link", "mention")
             ]}))

@@ -88,6 +88,8 @@ const StickerData = Extension.create({
         // A sticker pinned to a word (`at`: a character of its block) follows that character through edits: it is found in the old document, carried through
         // the steps, and read again in the new one, so a split or a joined line keeps it beside the same word. The sticker itself and each layout for a narrower
         // page (which may have its own anchor) are followed alike.
+        const fresh = new Map<number, string>()
+        const firstWith = (id: string): number => { let at = -1; state.doc.descendants((n: any, pos: number) => { if (at < 0 && n.attrs && n.attrs.blockId === id) at = pos; return at < 0 }); return at }
         const follow = (anchor: string, at: number): { anchor: string; at: number } | null => {
           let oldPos = -1
           oldState.doc.descendants((n: any, pos: number) => { if (oldPos < 0 && n.isTextblock && n.attrs.blockId === anchor) oldPos = pos + 1 + Math.min(at, n.content.size) })
@@ -97,8 +99,11 @@ const StickerData = Extension.create({
           if (p < 0 || p > state.doc.content.size) return null
           const $p = state.doc.resolve(p)
           if (!$p.parent.isTextblock) return null
-          let id = $p.parent.attrs.blockId
-          if (!id) { id = newBlockId(); tr.setNodeMarkup($p.before(), undefined, { ...$p.parent.attrs, blockId: id }); changed = true; now.add(id) }
+          // A block with no id, or whose id a block before it already has (a split copies the id to the new half: the first half keeps it, ADR 0043),
+          // gets a fresh one here, once however many stickers land in it, so the sticker is anchored to the half it is really in.
+          const here = $p.before()
+          let id = fresh.get(here) ?? $p.parent.attrs.blockId
+          if (!fresh.has(here) && (!id || firstWith(id) !== here)) { id = newBlockId(); fresh.set(here, id); tr.setNodeMarkup(here, undefined, { ...$p.parent.attrs, blockId: id }); changed = true; now.add(id) }
           return { anchor: id, at: p - $p.start() }
         }
         // When an anchor block is gone, the nearest block before it that remains (else after, else the first).
@@ -192,29 +197,40 @@ const YouTube = Node.create({
   },
 })
 
+// A picture is drawn only from this server's files (ADR 0077): a saved page is not trusted, and a viewer's browser must not contact another site because the page said so.
+// One at another address stays in the data (the Face imports it when the page opens) and is drawn as an empty frame until then.
+const ownPicture = (u: any): u is string => typeof u === 'string' && /^\/files\/[\w.-]+$/.test(u)
+const shortUrl = (u: string) => { const t = String(u).replace(/^https?:\/\//i, '').replace(/\/$/, ''); return t.length > 64 ? t.slice(0, 40) + '…' + t.slice(-20) : t }
 const ImageBlock = Node.create({
   name: 'image', group: 'block', atom: true, selectable: true, draggable: true,
   addAttributes() { return { src: { default: '' }, alt: { default: '' }, width: { default: null }, size: { default: null } } },
   parseHTML() { return [{ tag: 'img[src]' }] },
   renderHTML({ node }) {
     const size = ['small', 'medium', 'large', 'full'].includes(node.attrs.size) ? node.attrs.size : undefined
-    return ['img', { src: safeUrl(node.attrs.src) ? node.attrs.src : '', alt: node.attrs.alt, width: node.attrs.width ? String(Number(node.attrs.width)) : undefined, 'data-size': size, loading: 'lazy' }]
+    return ['img', { src: ownPicture(node.attrs.src) ? node.attrs.src : undefined, alt: node.attrs.alt, width: node.attrs.width ? String(Number(node.attrs.width)) : undefined, 'data-size': size, 'data-remote': node.attrs.src && !ownPicture(node.attrs.src) ? 'true' : undefined, loading: 'lazy' }]
   },
 })
 
+const CARD_MODES = ['card', 'compact', 'stack', 'side']
 const LinkPreview = Node.create({
   name: 'linkPreview', group: 'block', atom: true, selectable: true, draggable: true,
-  addAttributes() { return { url: { default: '' }, title: { default: '' }, description: { default: '' }, site: { default: '' }, image: { default: '' }, mode: { default: 'card' } } },
+  addAttributes() { return { url: { default: '' }, title: { default: '' }, description: { default: '' }, site: { default: '' }, image: { default: '' }, icon: { default: '' }, mode: { default: 'card' } } },
   parseHTML() { return [{ tag: 'a.link-card' }] },
-  // Everything shown is checked here: a saved document is not trusted. The picture only from https, and without telling its site where we are.
+  // One preview for every address (ADR 0079): a picture (or the site's icon when there is none), the title and summary, and a footer with the icon and the address.
+  // Everything shown is checked here: a saved document is not trusted. Pictures only from this server's files, never from the site the card is about (ADR 0077).
   renderHTML({ node }) {
     const a = node.attrs, u = safeUrl(a.url) ? a.url : '#'
+    const pic: any[] | null = ownPicture(a.image) ? ['span', { class: 'lc-pic' }, ['img', { class: 'lc-img', src: a.image, alt: '', loading: 'lazy' }]]
+      : ownPicture(a.icon) ? ['span', { class: 'lc-pic', 'data-icon': 'true' }, ['img', { class: 'lc-icon', src: a.icon, alt: '', loading: 'lazy' }]] : null
     const body: any[] = ['span', { class: 'lc-body' }, ['strong', { class: 'lc-title' }, String(a.title || a.url).slice(0, 200)]]
     if (a.description) body.push(['span', { class: 'lc-desc' }, String(a.description).slice(0, 300)])
-    body.push(['span', { class: 'lc-site' }, String(a.site || a.url).slice(0, 100)])
-    const kids: any[] = [body]
-    if (typeof a.image === 'string' && /^https:\/\//i.test(a.image)) kids.push(['img', { class: 'lc-img', src: a.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }])
-    return ['a', { class: 'link-card', 'data-mode': a.mode === 'compact' ? 'compact' : 'card', href: u, target: '_blank', rel: 'noopener noreferrer' }, ...kids]
+    const foot: any[] = ['span', { class: 'lc-foot', title: String(a.url).slice(0, 500) }]
+    if (ownPicture(a.icon)) foot.push(['img', { class: 'lc-fav', src: a.icon, alt: '', loading: 'lazy' }])
+    foot.push(['span', { class: 'lc-site' }, shortUrl(a.url || a.site)])
+    const kids: any[] = []
+    if (pic) kids.push(pic)
+    kids.push(['span', { class: 'lc-main' }, body, foot])
+    return ['a', { class: 'link-card', 'data-mode': CARD_MODES.includes(a.mode) ? a.mode : 'card', 'data-pic': pic ? 'true' : 'false', href: u, target: '_blank', rel: 'noopener noreferrer' }, ...kids]
   },
 })
 
@@ -334,7 +350,7 @@ const COMMANDS: Record<string, Cmd> = {
     if (!p) return
     let at = -1
     e.state.doc.descendants((n: any, pos: number) => { if (at < 0 && n.type.name === 'linkPreview' && n.attrs.url === u && n.attrs.title === u && !n.attrs.site) at = pos; return at < 0 })
-    if (at >= 0) e.view.dispatch(e.state.tr.setNodeMarkup(at, undefined, { url: u, title: p.title || u, description: p.description || '', site: p.site || '', image: p.image || '' }))
+    if (at >= 0) e.view.dispatch(e.state.tr.setNodeMarkup(at, undefined, { url: u, title: p.title || u, description: p.description || '', site: p.site || '', image: p.image || '', icon: p.icon || '' }))
   },
   subpage: async (e, o) => { const r = await o.newPage?.(); if (r) e.chain().focus().insertContent([{ type: 'entityRef', attrs: { kind: 'pages.page', id: r.id, title: r.title, icon: r.icon || '' } }, { type: 'text', text: ' ' }]).run() },
   entityRef: async (e, o) => { const r = await o.pickRef?.(); if (r) e.chain().focus().insertContent([{ type: 'entityRef', attrs: r }, { type: 'text', text: ' ' }]).run() },
@@ -407,14 +423,14 @@ const LBL: Record<string, Record<string, string>> = {
     lineAbove: 'Add a line above', lineBelow: 'Add a line below', moveUp: 'Move up', moveDown: 'Move down', duplicate: 'Duplicate', delete: 'Delete',
     calloutTitle: 'Title', turnPage: 'Page', calloutType: 'Callout type', info: 'Info', tip: 'Tip', warning: 'Warning', danger: 'Danger', unwrap: 'Turn into text', exitBlock: 'Add a line after the callout',
     openVideo: 'Open on YouTube', play: 'Play or interact', changeAddress: 'Change address…', youtubeAddress: 'YouTube address', size: 'Size', small: 'Small', medium: 'Medium', large: 'Large', wide: 'Wide', full: 'Full width', original: 'Original',
-    shape: 'Shape', r169: '16:9', r43: '4:3', r11: 'Square', startAt: 'Start at…', startAsk: 'Start at (seconds, or 1:30)', showAs: 'Show as', asCard: 'Link card', asCompact: 'Compact link card', asLink: 'Plain link', embedVideo: 'Embed the video', refresh: 'Refresh preview',
+    shape: 'Shape', r169: '16:9', r43: '4:3', r11: 'Square', startAt: 'Start at…', startAsk: 'Start at (seconds, or 1:30)', showAs: 'Show as', asCard: 'Link card', asCompact: 'Compact link card', asStack: 'Card with the picture on top', asSide: 'Card with the picture at the side', asLink: 'Plain link', embedVideo: 'Embed the video', refresh: 'Refresh preview',
     altText: 'Alt text…', altAsk: 'Describe the image', openImage: 'Open image', linkAddress: 'Link address', imageAddress: 'Image address' },
   ar: { turnInto: 'تحويل إلى', text: 'نص', h1: 'عنوان 1', h2: 'عنوان 2', h3: 'عنوان 3', bullets: 'قائمة نقطية', numbers: 'قائمة مرقمة', checklist: 'قائمة مهام', quote: 'اقتباس', code: 'كتلة كود', callout: 'تنبيه', toggle: 'قسم قابل للطي',
     format: 'تنسيق', bold: 'غامق', italic: 'مائل', underline: 'تسطير', strike: 'يتوسطه خط', inlineCode: 'كود', highlight: 'تمييز', link: 'رابط…', openLink: 'فتح الرابط', editLink: 'تعديل الرابط…', removeLink: 'إزالة الرابط', showAsCard: 'عرض كبطاقة',
     lineAbove: 'إضافة سطر أعلاه', lineBelow: 'إضافة سطر أسفله', moveUp: 'نقل للأعلى', moveDown: 'نقل للأسفل', duplicate: 'تكرار', delete: 'حذف',
     calloutTitle: 'العنوان', turnPage: 'صفحة', calloutType: 'نوع التنبيه', info: 'معلومة', tip: 'نصيحة', warning: 'تحذير', danger: 'خطر', unwrap: 'تحويل إلى نص', exitBlock: 'إضافة سطر بعد التنبيه',
     openVideo: 'فتح على يوتيوب', play: 'تشغيل أو تفاعل', changeAddress: 'تغيير العنوان…', youtubeAddress: 'عنوان يوتيوب', size: 'الحجم', small: 'صغير', medium: 'متوسط', large: 'كبير', wide: 'عريض', full: 'عرض كامل', original: 'الأصلي',
-    shape: 'الشكل', r169: '16:9', r43: '4:3', r11: 'مربع', startAt: 'البدء من…', startAsk: 'البدء من (ثوانٍ أو 1:30)', showAs: 'العرض كـ', asCard: 'بطاقة رابط', asCompact: 'بطاقة رابط مضغوطة', asLink: 'رابط عادي', embedVideo: 'تضمين الفيديو', refresh: 'تحديث المعاينة',
+    shape: 'الشكل', r169: '16:9', r43: '4:3', r11: 'مربع', startAt: 'البدء من…', startAsk: 'البدء من (ثوانٍ أو 1:30)', showAs: 'العرض كـ', asCard: 'بطاقة رابط', asCompact: 'بطاقة رابط مضغوطة', asStack: 'بطاقة والصورة في الأعلى', asSide: 'بطاقة والصورة على الجانب', asLink: 'رابط عادي', embedVideo: 'تضمين الفيديو', refresh: 'تحديث المعاينة',
     altText: 'النص البديل…', altAsk: 'صف الصورة', openImage: 'فتح الصورة', linkAddress: 'عنوان الرابط', imageAddress: 'عنوان الصورة' },
 }
 const GROUPS: Record<string, Record<string, string>> = {
@@ -738,7 +754,7 @@ function create(host: HTMLElement, o: Opts) {
     const p = o.preview && /^https?:\/\//i.test(url) ? await o.preview(url).catch(() => null) : null
     if (!p) return
     const n = editor.state.doc.nodeAt(pos)
-    if (n && n.type.name === 'linkPreview' && n.attrs.url === url) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...n.attrs, title: p.title || url, description: p.description || '', site: p.site || '', image: p.image || '' }))
+    if (n && n.type.name === 'linkPreview' && n.attrs.url === url) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...n.attrs, title: p.title || url, description: p.description || '', site: p.site || '', image: p.image || '', icon: p.icon || '' }))
   }
   const seconds = (v: string) => { const m = String(v).trim().match(/^(?:(\d+):)?(\d+)$/); return m ? (m[1] ? Number(m[1]) * 60 : 0) + Number(m[2]) : 0 }
   const open = (u: string) => { if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener,noreferrer') }
@@ -792,11 +808,10 @@ function create(host: HTMLElement, o: Opts) {
     } else if (tg.kind === 'linkPreview') {
       const { pos, node } = tg as any, a = node.attrs
       items.push({ label: T('openLink'), icon: 'link', onclick: () => open(a.url) },
-        { label: T('changeAddress'), icon: 'edit', onclick: async () => { const u = await ask(T('linkAddress'), a.url); if (u && safeUrl(u)) { setAttrs(pos, { url: u, title: u, description: '', site: '', image: '' }); fillPreview(pos, u) } } },
+        { label: T('changeAddress'), icon: 'edit', onclick: async () => { const u = await ask(T('linkAddress'), a.url); if (u && safeUrl(u)) { setAttrs(pos, { url: u, title: u, description: '', site: '', image: '', icon: '' }); fillPreview(pos, u) } } },
         { label: T('refresh'), icon: 'repeat', disabled: !o.preview, onclick: () => fillPreview(pos, a.url) }, '-',
         { label: T('showAs'), icon: 'link', sub: () => [
-          { label: T('asCard'), checked: a.mode !== 'compact', onclick: () => setAttrs(pos, { mode: 'card' }) },
-          { label: T('asCompact'), checked: a.mode === 'compact', onclick: () => setAttrs(pos, { mode: 'compact' }) },
+          ...CARD_MODES.map((m) => ({ label: T(m === 'card' ? 'asCard' : m === 'compact' ? 'asCompact' : m === 'stack' ? 'asStack' : 'asSide'), checked: (CARD_MODES.includes(a.mode) ? a.mode : 'card') === m, onclick: () => setAttrs(pos, { mode: m }) })),
           { label: T('asLink'), onclick: () => replaceNode(pos, node, linkPara(a.url, a.title && a.title !== a.url ? a.title : a.url)) },
           embedUrl(a.url) ? { label: T('embedVideo'), onclick: () => replaceNode(pos, node, { type: 'youtube', attrs: { src: a.url } }) } : null].filter(Boolean) })
     } else if (tg.kind === 'image') {
@@ -1153,6 +1168,10 @@ function create(host: HTMLElement, o: Opts) {
     setDefaults,
     refreshComments: () => { editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false).setMeta(cmtKey, 1)) },
     json: () => unwrapUnknown(editor.getJSON()),
+    // the schema the engine built from the extensions (tests read what each block really holds)
+    schema: () => editor.schema,
+    // the TipTap editor itself, for tests and diagnostics only (the Face does not use it)
+    tiptap: () => editor,
     set: (doc: Json) => { silent = true; editor.commands.setContent(wrapUnknown(doc && doc.type === 'doc' ? doc : EMPTY), { emitUpdate: false }); silent = false },
     setEditable: (b: boolean) => { editable = b; editor.setEditable(b); host.classList.toggle('ed-editable', b); paintBar() },
     isEmpty: () => editor.isEmpty,

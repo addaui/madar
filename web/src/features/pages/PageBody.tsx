@@ -10,6 +10,7 @@ import { link } from "../../api/link";
 import { askRef, toast } from "../../ui/overlays";
 import { LegacyEditor, type EditorHandle, type EditorJson } from "./LegacyEditor";
 import { useStickers } from "./stickers/useStickers";
+import { importerFor, localPreview, useImportPictures } from "./useImportPictures";
 import { elementStore, type ElementContext } from "./element/store";
 import { saverFor, useSaveState } from "./pageSaver";
 import { useBlockComments } from "./useBlockComments";
@@ -43,6 +44,13 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
   const comments = useBlockComments(scope, page.id);
   const handle = useRef<EditorHandle | null>(null);
   const stickers = useStickers({ project: scope.project, editable: true, handle: () => handle.current });
+  // pictures at other sites are copied into this Space's files (ADR 0077), and a link card's picture is copied when the card is made
+  useImportPictures({
+    body: page.body as EditorJson, project: scope.project,
+    apply: (d) => { setDoc(d); latest.current = d; setVersion((v) => v + 1); void saver.save({ body: d }); },
+    done: (r) => { if (r.imported) toast(t("picturesImported", { n: r.imported })); if (r.failed) toast(t("picturesNotImported", { n: r.failed })); },
+  });
+  const preview = hasPreviews ? async (url: string) => localPreview(await link.call((hasAnalyzer ? "links.analyze" : "previews.get") as never, { url } as never).catch(() => null) as { image?: string | null; icon?: string | null } | null, importerFor(scope.project)) : undefined;
 
   // a changed copy from outside (another device or tab; a conflict) replaces what is here, unless something here is waiting to be saved
   const seen = useRef(page.rev);
@@ -98,7 +106,7 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
             onContext={(c) => elementStore.set({ ctx: c as ElementContext | null, pick: 0 })}
             onOpenRef={(kind, rid) => { location.hash = kind === "pages.page" ? (scope.project ? `#/p/${scope.project}?tab=knowledge&page=${rid}` : `#/pages/${rid}`) : `#/today`; }}
             pickRef={askRef}
-            preview={hasPreviews ? (url) => link.call((hasAnalyzer ? "links.analyze" : "previews.get") as never, { url } as never).catch(() => null) : undefined}
+            preview={preview}
             project={scope.project}
             turnIntoPage={subpage} newPage={() => subpage(t("untitled"))} />
         </div>

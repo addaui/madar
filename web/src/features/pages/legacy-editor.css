@@ -41,14 +41,42 @@
 .entity-ref { background:var(--soft); color:color-mix(in srgb, var(--accent) 80%, var(--text)); border-radius:7px; padding:1px 7px; cursor:pointer; white-space:nowrap; font-weight:550; }
 .entity-ref:hover { background:var(--soft-2); }
 .embed iframe { inline-size:100%; aspect-ratio:16/9; border:0; border-radius:12px; }
-.link-card { display:flex; gap:14px; align-items:stretch; justify-content:space-between; border:var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius:14px; padding:12px 14px; text-decoration:none; color:inherit; transition:border-color .16s var(--ease), box-shadow .16s var(--ease); }
+/* The link card (ADR 0079): one preview for every address, in four layouts chosen by `data-mode`. A picture (or the site's icon) , the title and summary, and a footer with the icon and the address. */
+.link-card { display:flex; gap:14px; align-items:stretch; border:var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius:14px; padding:12px 14px; text-decoration:none; color:inherit; transition:border-color .16s var(--ease), box-shadow .16s var(--ease); }
 .link-card:hover { border-color:var(--accent); box-shadow:var(--shadow-1); }
+.lc-main { display:flex; flex-direction:column; gap:6px; min-inline-size:0; flex:1; justify-content:space-between; }
 .lc-body { display:flex; flex-direction:column; gap:3px; min-inline-size:0; overflow-wrap:anywhere; }
 .lc-title { font-weight:640; }
-.lc-desc { color:var(--muted); font-size:.9em; }
-.lc-site { color:var(--muted); font-size:.8em; }
-.lc-img { inline-size:104px; block-size:76px; object-fit:cover; border-radius:10px; flex:none; align-self:center; }
-@media (max-width:560px) { .lc-img { inline-size:64px; block-size:64px; } }
+.lc-desc { color:var(--muted); font-size:.9em; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.lc-foot { display:flex; align-items:center; gap:6px; min-inline-size:0; color:var(--muted); font-size:.8em; }
+.lc-site { min-inline-size:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:ltr; unicode-bidi:plaintext; }
+.lc-fav { inline-size:14px; block-size:14px; object-fit:contain; flex:none; border-radius:3px; }
+.lc-pic { flex:none; display:grid; place-items:center; overflow:hidden; border-radius:10px; inline-size:104px; align-self:center; block-size:76px; background:color-mix(in srgb, var(--text) 6%, transparent); }
+.lc-img { inline-size:100%; block-size:100%; object-fit:cover; }
+.lc-icon { inline-size:40px; block-size:40px; object-fit:contain; }
+.lc-pic[data-icon="true"] { inline-size:64px; block-size:64px; background:none; }
+/* compact: one line */
+.link-card[data-mode="compact"] { align-items:center; padding-block:8px; }
+.link-card[data-mode="compact"] .lc-pic { inline-size:24px; block-size:24px; background:none; }
+.link-card[data-mode="compact"] .lc-icon { inline-size:20px; block-size:20px; }
+.link-card[data-mode="compact"] .lc-img { display:none; }
+.link-card[data-mode="compact"] .lc-pic:has(.lc-img) { display:none; }
+.link-card[data-mode="compact"] .lc-main { flex-direction:row; align-items:baseline; gap:10px; }
+.link-card[data-mode="compact"] .lc-body { flex-direction:row; align-items:baseline; gap:10px; min-inline-size:0; }
+.link-card[data-mode="compact"] .lc-title { flex:none; max-inline-size:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.link-card[data-mode="compact"] .lc-desc { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; -webkit-line-clamp:unset; }
+.link-card[data-mode="compact"] .lc-foot { display:none; }
+/* stack: the picture on top, full width */
+.link-card[data-mode="stack"], .ed-content > a.link-card[data-mode="stack"] { flex-direction:column; max-inline-size:min(100%, 320px); padding:0; gap:0; }
+.link-card[data-mode="stack"] .lc-pic { inline-size:100%; block-size:160px; border-radius:0; border-start-start-radius:13px; border-start-end-radius:13px; }
+.link-card[data-mode="stack"] .lc-main { padding:10px 14px 12px; gap:8px; }
+.link-card[data-mode="stack"] .lc-pic[data-icon="true"] { inline-size:100%; block-size:160px; background:color-mix(in srgb, var(--text) 6%, transparent); }
+.link-card[data-mode="stack"] .lc-pic[data-icon="true"] .lc-icon { inline-size:56px; block-size:56px; }
+/* side: a tall thumbnail at the start, edge to edge */
+.link-card[data-mode="side"], .ed-content > a.link-card[data-mode="side"] { padding:0; gap:0; }
+.link-card[data-mode="side"] .lc-pic { inline-size:120px; block-size:auto; align-self:stretch; border-radius:0; border-start-start-radius:13px; border-end-start-radius:13px; min-block-size:84px; }
+.link-card[data-mode="side"] .lc-main { padding:12px 14px; }
+@media (max-width:560px) { .lc-pic { inline-size:64px; block-size:64px; } .link-card[data-mode="stack"] .lc-pic { block-size:120px; } .link-card[data-mode="side"] .lc-pic { inline-size:84px; block-size:auto; } }
 .unknown-block { border:1px dashed var(--muted); border-radius:10px; padding:8px 12px; color:var(--muted); font-size:13px; }
 .ed-slash { position:absolute; z-index:30; background:var(--surface); border:var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius:14px; box-shadow:var(--shadow-2); min-inline-size:220px; max-block-size:280px; overflow:auto; padding:6px; }
 .ed-item { padding:8px 10px; border-radius:9px; cursor:pointer; }
@@ -67,7 +95,6 @@
 .ed-content img[data-size="medium"] { max-inline-size:480px; }
 .ed-content img[data-size="large"] { max-inline-size:720px; }
 .ed-content img[data-size="full"] { inline-size:100%; }
-.link-card[data-mode="compact"] .lc-img, .link-card[data-mode="compact"] .lc-desc { display:none; }
 .ProseMirror-selectednode { outline:2px solid var(--accent); outline-offset:2px; border-radius:var(--r-md); }
 .page .ed-content { font-family:var(--emoji-first, "MadarEmojiOff"), var(--page-font, var(--font, ui-sans-serif, system-ui, sans-serif)); font-size:var(--page-size, 16px); }
 .page-col .ed-host { flex:1; display:flex; flex-direction:column; }
@@ -257,3 +284,6 @@
 .ed-content p:has(> .entity-ref[data-kind="pages.page"]:first-child + img.ProseMirror-separator) > br.ProseMirror-trailingBreak { display:none; }
 .ed-content p:has(> .entity-ref[data-kind="pages.page"]:first-child + img.ProseMirror-separator) > img.ProseMirror-separator { position:absolute; inline-size:0; block-size:0; }
 .ed-content p:has(> .entity-ref[data-kind="pages.page"]:first-child + img.ProseMirror-separator) { margin-block:calc(max(var(--block-gap, .85em), .6em) + 10px) max(var(--block-gap, .85em), .6em); }
+
+/* a picture at another site is not drawn (ADR 0077); until the Face has copied it into the files it is an empty frame */
+.ed-content img[data-remote="true"] { min-inline-size:160px; min-block-size:90px; outline:1px dashed var(--line-strong); outline-offset:-1px; border-radius:8px; background:color-mix(in srgb, var(--text) 5%, transparent); }

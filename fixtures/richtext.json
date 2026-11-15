@@ -1,0 +1,649 @@
+{
+ "about": "Shared by the Rust richtext check and the editor tests (ADR 0078). `model`: the editor's schema accepts it; `server`: richtext::check accepts it. The two answers are asserted on both sides, so they cannot drift.",
+ "documents": [
+  {
+   "name": "plain text with marks",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "Hello "
+       },
+       {
+        "type": "text",
+        "text": "bold",
+        "marks": [
+         {
+          "type": "bold"
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": " and "
+       },
+       {
+        "type": "text",
+        "text": "link",
+        "marks": [
+         {
+          "type": "link",
+          "attrs": {
+           "href": "https://example.com"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "paragraph"
+  },
+  {
+   "name": "aligned paragraph",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "attrs": {
+       "align": "center"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "centred"
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "paragraph"
+  },
+  {
+   "name": "heading",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "heading",
+      "attrs": {
+       "level": 2
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Title"
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "heading"
+  },
+  {
+   "name": "bullet list",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "bulletList",
+      "content": [
+       {
+        "type": "listItem",
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "one"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "listItem",
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "two"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "bulletList"
+  },
+  {
+   "name": "numbered list from 3",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "orderedList",
+      "attrs": {
+       "start": 3
+      },
+      "content": [
+       {
+        "type": "listItem",
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "c"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "orderedList"
+  },
+  {
+   "name": "checklist",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "taskList",
+      "content": [
+       {
+        "type": "taskItem",
+        "attrs": {
+         "checked": true
+        },
+        "content": [
+         {
+          "type": "paragraph",
+          "content": [
+           {
+            "type": "text",
+            "text": "done"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "taskList"
+  },
+  {
+   "name": "quote",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "blockquote",
+      "content": [
+       {
+        "type": "paragraph",
+        "content": [
+         {
+          "type": "text",
+          "text": "said"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "blockquote"
+  },
+  {
+   "name": "divider",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "above"
+       }
+      ]
+     },
+     {
+      "type": "horizontalRule"
+     },
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "below"
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "horizontalRule"
+  },
+  {
+   "name": "code",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "codeBlock",
+      "attrs": {
+       "language": "rust"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "fn main() {}"
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "codeBlock"
+  },
+  {
+   "name": "callout",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "callout",
+      "attrs": {
+       "tone": "tip"
+      },
+      "content": [
+       {
+        "type": "paragraph",
+        "content": [
+         {
+          "type": "text",
+          "text": "careful"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "callout"
+  },
+  {
+   "name": "toggle",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "toggle",
+      "attrs": {
+       "open": false
+      },
+      "content": [
+       {
+        "type": "paragraph",
+        "content": [
+         {
+          "type": "text",
+          "text": "summary"
+         }
+        ]
+       },
+       {
+        "type": "paragraph",
+        "content": [
+         {
+          "type": "text",
+          "text": "hidden"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "toggle"
+  },
+  {
+   "name": "image from the space",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "image",
+      "attrs": {
+       "src": "/files/abc123",
+       "alt": "a cat",
+       "size": "large"
+      }
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "image"
+  },
+  {
+   "name": "youtube",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "youtube",
+      "attrs": {
+       "src": "https://youtu.be/dQw4w9WgXcQ",
+       "size": "small",
+       "ratio": "4-3",
+       "start": 30
+      }
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "youtube"
+  },
+  {
+   "name": "link card with a stored picture",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "linkPreview",
+      "attrs": {
+       "url": "https://example.com/a",
+       "title": "Example",
+       "description": "A page",
+       "site": "example.com",
+       "image": "/files/img1",
+       "mode": "compact"
+      }
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "linkPreview"
+  },
+  {
+   "name": "task block",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "taskBlock",
+      "attrs": {
+       "due": "2026-12-01",
+       "priority": "high",
+       "details": "bring the form"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Renew the permit"
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "taskBlock"
+  },
+  {
+   "name": "reference in text",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "see "
+       },
+       {
+        "type": "entityRef",
+        "attrs": {
+         "kind": "pages.page",
+         "id": "p1",
+         "title": "Plan"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true,
+   "node": "entityRef"
+  },
+  {
+   "name": "document with stickers",
+   "doc": {
+    "type": "doc",
+    "attrs": {
+     "stickers": [
+      {
+       "id": "s1",
+       "kind": "emoji",
+       "value": "🎉",
+       "anchor": "b1",
+       "at": 0,
+       "x": 0.5,
+       "y": 0,
+       "w": 4,
+       "rot": 0,
+       "flip": false,
+       "z": "a",
+       "behind": false,
+       "lock": false,
+       "hidden": false,
+       "narrow": false,
+       "wrap": "none",
+       "wm": 0.6
+      }
+     ]
+    },
+    "content": [
+     {
+      "type": "paragraph",
+      "attrs": {
+       "blockId": "b1"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "hi"
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true
+  },
+  {
+   "name": "a gif sticker",
+   "doc": {
+    "type": "doc",
+    "attrs": {
+     "stickers": [
+      {
+       "id": "s2",
+       "kind": "gif",
+       "value": "https://media.giphy.com/media/x/giphy.webp",
+       "anchor": null,
+       "at": 0,
+       "x": 0.5,
+       "y": 0,
+       "w": 4,
+       "rot": 0,
+       "flip": false,
+       "z": "a",
+       "behind": false,
+       "lock": false,
+       "hidden": false,
+       "narrow": false,
+       "wrap": "none",
+       "wm": 0.6
+      }
+     ]
+    },
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "hi"
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": true
+  },
+  {
+   "name": "not a document",
+   "doc": {
+    "type": "paragraph"
+   },
+   "model": false,
+   "server": false
+  },
+  {
+   "name": "a list holding a paragraph directly",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "bulletList",
+      "content": [
+       {
+        "type": "paragraph",
+        "content": [
+         {
+          "type": "text",
+          "text": "not an item"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "model": false,
+   "server": true
+  },
+  {
+   "name": "an attribute no block has",
+   "doc": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "attrs": {
+       "colour": "red"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "x"
+       }
+      ]
+     }
+    ]
+   },
+   "model": false,
+   "server": true,
+   "engine": "drops"
+  },
+  {
+   "name": "a sticker that loads a remote picture",
+   "doc": {
+    "type": "doc",
+    "attrs": {
+     "stickers": [
+      {
+       "id": "s3",
+       "kind": "image",
+       "value": "https://tracker.example/p.gif",
+       "anchor": null,
+       "at": 0,
+       "x": 0.5,
+       "y": 0,
+       "w": 4,
+       "rot": 0,
+       "flip": false,
+       "z": "a",
+       "behind": false,
+       "lock": false,
+       "hidden": false,
+       "narrow": false,
+       "wrap": "none",
+       "wm": 0.6
+      }
+     ]
+    },
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "x"
+       }
+      ]
+     }
+    ]
+   },
+   "model": true,
+   "server": false
+  }
+ ]
+}

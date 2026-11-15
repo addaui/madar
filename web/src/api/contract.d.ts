@@ -534,6 +534,7 @@ url: string
 export interface LinksAnalyzeOutput {
 content_type?: string
 description?: (string | null)
+icon?: (string | null)
 image?: (string | null)
 site?: (string | null)
 size?: (number | null)
