@@ -1815,3 +1815,25 @@ fn blocks_declare_their_options_and_a_page_keeps_defaults_for_a_type() {
         assert_eq!(a.err(&al, "pages.update", json!({"id": pg, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
     }
 }
+
+
+#[test]
+fn an_owner_instance_has_no_sign_in_for_the_app_and_keeps_the_console_behind_a_password() {
+    use madar_plugins::{distribution, profile_owner};
+    let hash = nuah_adapters::AuthPassword::hash_password("console-secret");
+    let mut p = profile_owner(":memory:", "Sam", &hash);
+    p.settings.insert("@nuah/db-sqlite".into(), json!({"path": ":memory:"}));
+    let core = Core::start(&distribution(p)).unwrap_or_else(|e| panic!("{e:?}"));
+    let call = |cred: Option<&str>, op: &str, input: Value| core.call(CallRequest { op: op.into(), input, credential: cred.map(String::from), key: None, contract: None }).map(|r| r.output);
+    // the app works with no credential, as the Owner
+    let who = call(None, "auth.who", json!({})).unwrap();
+    assert_eq!((who["display"].as_str(), who["roles"].clone()), (Some("Sam"), json!(["member"])));
+    let made = call(None, "projects.create", json!({"name": "Home"})).unwrap();
+    assert!(made["id"].as_str().is_some());
+    // the Admin role (what the console's operations ask for) comes only from the admin password, and is added to the same person
+    assert!(call(None, "auth.sign_in", json!({"password": "wrong"})).is_err());
+    let tok = call(None, "auth.sign_in", json!({"password": "console-secret"})).unwrap()["token"].as_str().unwrap().to_string();
+    let admin = call(Some(&tok), "auth.who", json!({})).unwrap();
+    assert_eq!((admin["subject"].as_str(), admin["roles"].clone()), (Some("owner"), json!(["member", "admin"])));
+    assert_eq!(call(Some(&tok), "projects.list", json!({})).unwrap()["projects"].as_array().unwrap().len(), 1, "and sees the same Owner's data");
+}

@@ -151,7 +151,6 @@ pub struct Tasks;
 
 impl Plugin for Tasks {
     fn manifest(&self) -> Manifest {
-        let task_out = json!({"type":"object","required":["id","rev","project","title","status"]});
         let aff = json!({"type":"projects.project","id":"project"});
         let date = json!({"type":["string","null"]});
         let proj = json!({"type":"string"});

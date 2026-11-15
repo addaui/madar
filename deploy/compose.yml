@@ -1,6 +1,10 @@
 # Copy this folder to the server and run: docker compose up -d
 # The first start has no nuah.json yet: it runs a setup page and prints a setup code in the log (docker compose logs).
 # A reverse proxy in front handles TLS and forwards to 127.0.0.1:3000.
+#
+# Sign-in is your choice. Accounts (the default) or none for the app: in the console (Admin), replace @nuah/auth-password by @nuah/auth-open and set the
+# admin password (make its hash with `docker compose run --rm madar hash-password`). Then nobody signs in to Madar: whoever reaches it is the Owner, and the
+# console still asks for the admin password. Keep such an instance on a network you trust (a LAN, a VPN, or the proxy's own login). (ADR 0076)
 services:
   madar:
     image: ghcr.io/addaui/madar:latest

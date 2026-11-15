@@ -37,10 +37,12 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 3942,
     fs: { allow: ["..", "../../nuah-plugins"] },
+    // The Core refuses a request whose Origin is not its Host (cross-site writes), so the proxy keeps the Host the browser used
+    // (`changeOrigin: false`); the Core must then answer to that name: NUAH_ALLOW_HOSTS=localhost:3942 (or the machine's address and port).
     proxy: {
-      "/link": { target: core, changeOrigin: true },
-      "/pulse": { target: core, changeOrigin: true },
-      "/files": { target: core, changeOrigin: true },
+      "/link": { target: core, changeOrigin: false },
+      "/pulse": { target: core, changeOrigin: false },
+      "/files": { target: core, changeOrigin: false },
     },
   },
   test: {

@@ -28,7 +28,7 @@ use std::sync::Arc;
 /// Every plugin Madar ships, plus the adapters it can run on.
 pub fn catalog() -> Catalog {
     let mut list: Vec<Arc<dyn Plugin>> = vec![
-        Arc::new(AdapterMemory), Arc::new(AdapterSqlite), Arc::new(AdapterPostgres), Arc::new(AuthLocal), Arc::new(AuthPassword),
+        Arc::new(AdapterMemory), Arc::new(AdapterSqlite), Arc::new(AdapterPostgres), Arc::new(AuthLocal), Arc::new(nuah_adapters::AuthOpen), Arc::new(AuthPassword),
         Arc::new(PolicyAllowAll), Arc::new(PolicyRoles), Arc::new(StdClock), Arc::new(StdIds),
         Arc::new(projects::Projects), Arc::new(tasks::Tasks), Arc::new(discussion::Discussion),
         Arc::new(small::Audit), Arc::new(small::Quota), Arc::new(nuah_prefs::Prefs), Arc::new(nuah_appearance::Appearance), Arc::new(nuah_metric_prometheus::MetricPrometheus), Arc::new(LogConsole), Arc::new(LogFile), Arc::new(small::Export),
@@ -68,6 +68,16 @@ fn base_profile(name: &str, adapters: &[&str]) -> Profile {
 pub fn profile_embedded(db_path: &str) -> Profile {
     let mut p = base_profile("embedded", &["@nuah/db-sqlite", "@nuah/auth-local", "@nuah/policy-roles", "@nuah/clock-system", "@nuah/ids-random", "@nuah/log-console"]);
     p.settings.insert("@nuah/db-sqlite".into(), json!({"path": db_path}));
+    p
+}
+
+/// One person, no sign-in for the app, a password for the console (ADR 0076): whoever reaches the Core is the Owner; the Admin role comes only from the admin
+/// password (`admin_password_hash`, made with `madar hash-password`). Safe on any address in the sense that a visitor never gets the instance, but whoever can
+/// reach it can use the Owner's data, so it belongs on a network you trust.
+pub fn profile_owner(db_path: &str, owner_name: &str, admin_password_hash: &str) -> Profile {
+    let mut p = base_profile("owner", &["@nuah/db-sqlite", "@nuah/auth-open", "@nuah/policy-roles", "@nuah/clock-system", "@nuah/ids-random", "@nuah/log-console"]);
+    p.settings.insert("@nuah/db-sqlite".into(), json!({"path": db_path}));
+    p.settings.insert("@nuah/auth-open".into(), json!({"owner_name": owner_name, "admin_password_hash": admin_password_hash}));
     p
 }
 

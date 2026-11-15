@@ -19,3 +19,9 @@ export function useDateFormat() {
     },
   };
 }
+
+/** Today's date where the person is, as "YYYY-MM-DD" (what a due date is written as). Not `toISOString`, which is the date in UTC and so says "yesterday" or "tomorrow" for hours of every day. */
+export function todayLocal(now = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+}

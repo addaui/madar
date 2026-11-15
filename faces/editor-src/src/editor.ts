@@ -239,7 +239,7 @@ const TaskBlock = Node.create({
         const a = node.attrs
         dom.dataset.checked = a.checked ? 'true' : 'false'; box.setAttribute('aria-checked', a.checked ? 'true' : 'false')
         meta.replaceChildren()
-        if (a.due) { const c = document.createElement('span'); c.className = 'tb-chip'; c.dataset.kind = 'due'; try { c.textContent = new Date(a.due + 'T00:00:00').toLocaleDateString(lang, { month: 'short', day: 'numeric' }) } catch { c.textContent = a.due } const today = new Date().toISOString().slice(0, 10); if (!a.checked && a.due < today) c.dataset.late = 'true'; meta.append(c) }
+        if (a.due) { const c = document.createElement('span'); c.className = 'tb-chip'; c.dataset.kind = 'due'; try { c.textContent = new Date(a.due + 'T00:00:00').toLocaleDateString(lang, { month: 'short', day: 'numeric' }) } catch { c.textContent = a.due } const now = new Date(), pad = (n: number) => String(n).padStart(2, '0'), today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()); if (!a.checked && a.due < today) c.dataset.late = 'true'; meta.append(c) }
         if (TASK_PRI[lang][a.priority]) { const c = document.createElement('span'); c.className = 'tb-chip'; c.dataset.kind = 'priority'; c.dataset.p = a.priority; c.textContent = TASK_PRI[lang][a.priority]; meta.append(c) }
         notes.textContent = a.details || ''; notes.hidden = !a.details
       }

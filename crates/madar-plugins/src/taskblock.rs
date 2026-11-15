@@ -4,7 +4,7 @@
 use crate::content::{block, choice, date_opt, text_opt, with_options};
 use crate::util::manifest;
 use nuah_kernel::*;
-use serde_json::{json, Value};
+use serde_json::json;
 
 pub struct TaskBlock;
 impl Plugin for TaskBlock {

@@ -3,7 +3,7 @@ import { startTransition } from "react";
 import { useCommand, useRead } from "../../api/hooks";
 import { useDescribe } from "../../api/session";
 import { useT, type Key } from "../../i18n/i18n";
-import { useDateFormat } from "../../lib/format";
+import { todayLocal, useDateFormat } from "../../lib/format";
 import { cn } from "../../lib/cn";
 import { usePersistedValue, spaceState } from "../../app/ui-state";
 import { Disclosure } from "../../ui/Disclosure";
@@ -77,7 +77,7 @@ function PageTaskRow({ item }: { item: { page: string; title?: string; icon?: st
       <Checkbox isDisabled={!item.block} aria-label={item.block ? item.text : item.text + " — " + t("saveToTick")} onChange={tick} />
       <span className="grid min-w-0 grow"><span className="truncate" dir="auto">{item.text}</span>{item.notes && <span className="truncate text-xs text-muted" dir="auto">{item.notes}</span>}</span>
       {item.priority && <span className={cn("rounded-chip border border-line px-2 py-0.5 text-xs", item.priority === "high" && "text-danger")}>{t(("pri_" + item.priority) as Key)}</span>}
-      {item.due && <span className={cn("rounded-chip border border-line px-2 py-0.5 text-xs", item.due < new Date().toISOString().slice(0, 10) && "text-danger")}>{item.due}</span>}
+      {item.due && <span className={cn("rounded-chip border border-line px-2 py-0.5 text-xs", item.due < todayLocal() && "text-danger")}>{item.due}</span>}
       <TextLink href={item.project ? `#/p/${item.project}?tab=knowledge&page=${item.page}` : `#/pages/${item.page}`}
         className="inline-flex items-center gap-1 rounded-chip border border-line px-2 py-0.5 text-xs"><PageGlyph icon={item.icon} className="size-3.5 text-muted" /><span dir="auto">{item.title || t("untitled")}</span></TextLink>
       {item.project_name && <span className="rounded-chip border border-line px-2 py-0.5 text-xs" dir="auto">{item.project_name}</span>}
