@@ -2,9 +2,8 @@
   "name": "madar-editor",
   "private": true,
   "license": "Apache-2.0",
-  "description": "The rich-text editor Face module (ADR 0020). Built to ../web/vendor/editor.js; the built file is committed so the web board needs no build.",
+  "description": "The rich-text editor Face module (ADR 0020). Built to ../../web/public/vendor-editor.js for the React Face.",
   "scripts": {
-    "build": "bun build src/editor.ts --target browser --format iife --minify --outfile ../madar/web/vendor/editor.js",
     "build:react": "bun build src/editor.ts --target browser --format iife --minify --outfile ../../web/public/vendor-editor.js"
   },
   "dependencies": {

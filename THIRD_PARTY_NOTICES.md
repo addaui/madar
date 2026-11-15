@@ -26,7 +26,7 @@ The bell, heading, list, code, callout, attachment, video, bookmark and mention 
 
 ## Editor bundle
 
-`faces/madar/web/vendor/editor.js` is built from `faces/editor-src` and contains the following open-source packages. Package names are from the package manager's metadata; the file is minified, so the exact set follows from the dependencies listed in `faces/editor-src/package.json`.
+`web/public/vendor-editor.js` is built from `faces/editor-src` and contains the following open-source packages. Package names are from the package manager's metadata; the file is minified, so the exact set follows from the dependencies listed in `faces/editor-src/package.json`.
 
 | Package | License | Copyright |
 |---|---|---|
