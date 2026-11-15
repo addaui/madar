@@ -26,8 +26,8 @@ export function Members({ project, manager, onClose }: { project: Project; manag
     <Window title={t("members")} onClose={onClose}>
       <ul className="m-0 grid list-none gap-1 p-0">
         {members.map((m) => (
-          <li key={m.subject} className="flex items-center gap-2.5 rounded-md px-2 py-1.5"><Avatar subject={m.subject} name={m.display ?? m.subject} /><span className="min-w-0 grow truncate" dir="auto">{m.display ?? m.subject}</span><span className="rounded-chip border border-line px-2 py-0.5 text-xs">{t(m.level as "editor")}</span>
-            {manager && m.level !== "owner" && <IconButton icon="close" label={t("remove")} size="sm" tone="danger" onPress={async () => { await link.call("projects.unshare", { project: project.id, subject: m.subject }); await refreshAll(qc); }} />}</li>
+          <li key={m.subject} className="flex items-center gap-2.5 rounded-md px-2 py-1.5"><Avatar subject={m.subject} name={m.display ?? m.subject} /><span className="min-w-0 grow truncate" dir="auto">{m.display ?? m.subject}</span><span className="rounded-chip border border-line px-2 py-0.5 text-xs">{t(m.level as "editor")}{m.via === "space" ? " · " + t("viaSpace") : ""}</span>
+            {manager && m.level !== "owner" && m.via === "project" && <IconButton icon="close" label={t("remove")} size="sm" tone="danger" onPress={async () => { await link.call("projects.unshare", { project: project.id, subject: m.subject }); await refreshAll(qc); }} />}</li>
         ))}
       </ul>
       {manager && (

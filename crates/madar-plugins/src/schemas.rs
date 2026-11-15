@@ -40,7 +40,7 @@ pub fn attribute() -> Value {
 
 pub fn project() -> Value {
     obj(
-        &["id", "rev", "name", "statuses", "level"],
+        &["id", "rev", "name", "statuses", "level", "space"],
         json!({
             "id": s(), "rev": int(), "name": s(), "key": nullable(STR), "level": s(), "space": s(), "created_by": s(), "can": strings(),
             "statuses": list(obj(&["id", "name"], json!({"id": s(), "name": s()}))),

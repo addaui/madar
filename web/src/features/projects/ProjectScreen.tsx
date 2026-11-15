@@ -44,7 +44,7 @@ export function ProjectScreen({ projectId, search }: { projectId: string; search
   const [dialog, setDialog] = useState<ProjectDialog | null>(null);
 
   const go = (next: ProjectSearch) => void navigate({ to: "/p/$projectId", params: { projectId }, search: next });
-  const refresh = () => qc.invalidateQueries({ predicate: (q) => /^(tasks|projects|workspaces)\./.test(String(q.queryKey[0])) });
+  const refresh = () => qc.invalidateQueries({ predicate: (q) => /^(tasks|projects|spaces)\./.test(String(q.queryKey[0])) });
 
   // Escape closes the task beside the board
   const closeTask = useEffectEvent(() => go({ ...search, task: undefined }));

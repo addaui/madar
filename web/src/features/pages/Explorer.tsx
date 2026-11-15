@@ -29,7 +29,7 @@ export function Explorer({ scope, nav }: { scope: PageScope; nav: ExplorerNav })
   const { current, draft } = nav;
   const [edit, setEdit] = useState<Edit>(null);
   const closed = useCollapsed();
-  const spaces = useRead("workspaces.list").data.workspaces;
+  const spaces = useRead("spaces.list").data.spaces;
   const canMove = useHasOp("pages.set_space") && !scope.project && spaces.length > 1;
 
   const refresh = () => qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\.list/.test(String(q.queryKey[0])) });

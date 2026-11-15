@@ -7,6 +7,7 @@ import { useT } from "../i18n/i18n";
 import { Icon } from "../ui/Icon";
 import { MenuButton, type MenuEntries } from "../ui/Menu";
 import { PopupButton } from "../ui/Popup";
+import { openDialog } from "./dialogs";
 import { Inbox } from "./Inbox";
 import { spaceState, usePersistedValue } from "./ui-state";
 
@@ -25,27 +26,29 @@ export function BellMenu() {
 
 export function SpacesMenu() {
   const t = useT();
-  const ws = useRead("workspaces.list").data;
+  const ws = useRead("spaces.list").data;
   const qc = useQueryClient();
   const current = usePersistedValue(spaceState);
-  const canCreate = useHasOp("workspaces.create"), canRename = useHasOp("workspaces.rename"), canDelete = useHasOp("workspaces.delete");
-  const cur = ws.workspaces.find((w) => w.id === current) ?? ws.workspaces[0];
+  const canCreate = useHasOp("spaces.create"), canRename = useHasOp("spaces.rename"), canDelete = useHasOp("spaces.delete"), canLeave = useHasOp("spaces.leave");
+  const cur = ws.spaces.find((w) => w.id === current) ?? ws.spaces[0];
   if (!cur) return null;
   const name = cur.builtin ? t("mySpace") : cur.name;
   const refresh = () => qc.invalidateQueries();
   const entries: MenuEntries = [
-    ...ws.workspaces.map((w) => ({ label: w.builtin ? t("mySpace") : w.name, icon: "folder", checked: w.id === cur.id, onclick: () => { spaceState.set(w.id); void refresh(); } })),
+    ...ws.spaces.map((w) => ({ label: w.builtin ? t("mySpace") : w.name, icon: "folder", checked: w.id === cur.id, onclick: () => { spaceState.set(w.id); void refresh(); } })),
     canCreate ? "-" : null,
     canCreate ? { label: t("newWorkspace"), icon: "plus", onclick: async () => {
       const n = await askText(t("newWorkspace"));
       if (!n) return;
-      const w = await link.call("workspaces.create", { name: n }) as { id?: string };
+      const w = await link.call("spaces.create", { name: n }) as { id?: string };
       if (w.id) spaceState.set(w.id);
       await refresh();
     } } : null,
-    !cur.builtin && (canRename || canDelete) ? "-" : null,
-    !cur.builtin && canRename ? { label: t("renameWs"), icon: "edit", onclick: async () => { const n = await askText(t("renameWs"), cur.name); if (n) { await link.call("workspaces.rename", { id: cur.id, name: n }); await refresh(); } } } : null,
-    !cur.builtin && canDelete ? { label: t("deleteWs"), icon: "trash", danger: true, onclick: async () => { if (!(await askConfirm(t("sure")))) return; await link.call("workspaces.delete", { id: cur.id }); await refresh(); } } : null,
+    !cur.builtin ? "-" : null,
+    !cur.builtin ? { label: t("spaceMembers"), icon: "mention", onclick: () => openDialog("spaceMembers") } : null,
+    !cur.builtin && canLeave && cur.role !== "admin" ? { label: t("leaveSpace"), icon: "close", onclick: async () => { if (!(await askConfirm(t("sure")))) return; await link.call("spaces.leave", { space: cur.id }); spaceState.set("default"); await refresh(); } } : null,
+    !cur.builtin && canRename ? { label: t("renameWs"), icon: "edit", onclick: async () => { const n = await askText(t("renameWs"), cur.name); if (n) { await link.call("spaces.rename", { space: cur.id, name: n }); await refresh(); } } } : null,
+    !cur.builtin && canDelete ? { label: t("deleteWs"), icon: "trash", danger: true, onclick: async () => { if (!(await askConfirm(t("sure")))) return; await link.call("spaces.delete", { space: cur.id }); await refresh(); } } : null,
   ];
   return (
     <MenuButton label={t("spaces")} entries={entries}

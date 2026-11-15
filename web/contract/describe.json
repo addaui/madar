@@ -1,5 +1,5 @@
 {
-  "contract": "90d38e41a99f769c",
+  "contract": "d55418b37c0e5939",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -4396,7 +4396,8 @@
           "rev",
           "name",
           "statuses",
-          "level"
+          "level",
+          "space"
         ],
         "type": "object"
       },
@@ -4536,7 +4537,8 @@
           "rev",
           "name",
           "statuses",
-          "level"
+          "level",
+          "space"
         ],
         "type": "object"
       },
@@ -4674,7 +4676,8 @@
                 "rev",
                 "name",
                 "statuses",
-                "level"
+                "level",
+                "space"
               ],
               "type": "object"
             },
@@ -4857,7 +4860,8 @@
           "rev",
           "name",
           "statuses",
-          "level"
+          "level",
+          "space"
         ],
         "type": "object"
       },
@@ -5141,7 +5145,8 @@
           "rev",
           "name",
           "statuses",
-          "level"
+          "level",
+          "space"
         ],
         "type": "object"
       },

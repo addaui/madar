@@ -118,21 +118,21 @@ function SideList() {
 function ProjectsList() {
   const t = useT();
   const projects = useRead("projects.list").data.projects;
-  const ws = useRead("workspaces.list").data;
+  const ws = useRead("spaces.list").data;
   const space = usePersistedValue(spaceState);
-  const place = new Map(ws.placements.map((p) => [p.project, p.workspace]));
+  const current = ws.spaces.some((w) => w.id === space) ? space : "default";
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const canCreate = useHasOp("projects.create"), canPlace = useHasOp("workspaces.place");
+  const canCreate = useHasOp("projects.create"), canMove = useHasOp("projects.move");
+  const moveTo = async (project: string, to: string) => { await link.call("projects.move", { project, space: to }); await qc.invalidateQueries(); };
   const create = async () => {
     const name = await askText(t("newProject"));
     if (!name) return;
-    const p = await link.call("projects.create", { name }) as { id: string };
-    if (space !== "default" && canPlace) await link.call("workspaces.place", { project: p.id, workspace: space });
+    const p = await link.call("projects.create", { name, space: current }) as { id: string };
     await qc.invalidateQueries();
     void navigate({ to: "/p/$projectId", params: { projectId: p.id } });
   };
-  const menu = (p: { id: string; key?: string | null }) => (): MenuItems => {
+  const menu = (p: { id: string; key?: string | null; space: string; level: string }) => (): MenuItems => {
     const go = (tab?: "knowledge" | "overview") => void navigate({ to: "/p/$projectId", params: { projectId: p.id }, search: tab ? { tab } : {} });
     return [
       { label: t("open"), icon: "board", onclick: () => go() },
@@ -140,9 +140,11 @@ function ProjectsList() {
       { label: t("overview"), icon: "chart", onclick: () => go("overview") },
       p.key ? "-" : null,
       p.key ? { label: t("copyId") + " · " + p.key, icon: "link", onclick: () => void copyText(p.key!, t("copied")) } : null,
+      canMove && p.level === "owner" ? "-" : null,
+      canMove && p.level === "owner" ? { label: t("moveToSpace"), icon: "move", sub: () => ws.spaces.filter((w) => w.id !== p.space).map((w) => ({ label: w.builtin ? t("mySpace") : w.name, icon: "folder", onclick: () => void moveTo(p.id, w.id) })) } : null,
     ];
   };
-  const mine = projects.filter((p) => (place.get(p.id) ?? "default") === (ws.workspaces.some((w) => w.id === space) ? space : "default"));
+  const mine = projects.filter((p) => p.space === current);
   return (
     <>
       <div className="mt-1 flex min-h-[var(--row)] items-center px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted"><span className="grow">{t("projects")}</span>{canCreate && <IconButton icon="plus" size="sm" label={t("newProject")} onPress={() => void create()} />}</div>

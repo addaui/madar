@@ -1,7 +1,7 @@
 /** Which cached reads a Pulse event makes stale: the operation-name prefixes to refetch, by event kind. */
 const AFFECTS: [prefix: string, ops: string[]][] = [
   ["tasks.", ["tasks.", "projects.", "pages.tasks", "knowledge.", "timeline."]],
-  ["projects.", ["projects.", "tasks.", "workspaces."]],
+  ["projects.", ["projects.", "tasks.", "spaces."]],
   ["pages.style", ["pages.styles"]],
   ["pages.", ["pages.", "knowledge.", "refs.", "search."]],
   ["knowledge.", ["knowledge.", "refs."]],
@@ -9,7 +9,7 @@ const AFFECTS: [prefix: string, ops: string[]][] = [
   ["inbox.", ["inbox."]],
   ["prefs.", ["prefs."]],
   ["appearance.", ["appearance."]],
-  ["workspaces.", ["workspaces.", "pages.list", "projects.list"]],
+  ["spaces.", ["spaces.", "pages.list", "projects."]],
 ];
 
 export function affectedBy(kind: string): string[] {
