@@ -1904,9 +1904,10 @@ fn every_plugin_core() -> Core {
     p.enabled.retain(|e| e != "@nuah/auth-local");
     p.enabled.push("@nuah/auth-password".into());
     p.settings.insert("@nuah/auth-password".into(), json!({"accounts": []}));
-    for id in ["@nuah/net-public", "@nuah/link-analyzer", "@madar/previews", "@nuah/gifs", "@nuah/gifs-giphy"] {
+    for id in ["@nuah/net-public", "@nuah/link-analyzer", "@madar/previews", "@nuah/gifs", "@nuah/gifs-giphy", "@madar/features"] {
         p.enabled.push(id.into());
     }
+    p.grants.insert("@madar/features".into(), vec!["shell".into()]);
     p.grants.insert("@nuah/link-analyzer".into(), vec!["net".into()]);
     p.grants.insert("@madar/previews".into(), vec!["net".into()]);
     let clock = FixedClock::at(1_700_000_000_000);

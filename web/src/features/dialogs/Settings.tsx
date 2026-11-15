@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { link } from "../../api/link";
 import { useRead } from "../../api/hooks";
-import { themesOf, useDescribe, usePrefs } from "../../api/session";
+import { themesOf, useDescribe, useHasOp, usePrefs } from "../../api/session";
 import { useI18n } from "../../i18n/i18n";
 import { Button } from "../../ui/Button";
 import { useUnavailableEmojiSets } from "../../ui/emoji";
@@ -14,7 +14,7 @@ import { Window } from "./Dialog";
 interface Item { key: string; group?: string; type: string; label: { en: string; ar?: string }; default?: unknown; choices?: { value: string; label: { en: string; ar?: string } }[]; min?: number; max?: number }
 
 /** Preferences, built from the schema the plugins declare. Each change is saved at once. */
-export function Settings({ onClose, onAppearance }: { onClose: () => void; onAppearance: () => void }) {
+export function Settings({ onClose, onAppearance, onFeatures }: { onClose: () => void; onAppearance: () => void; onFeatures: () => void }) {
   const { t, lang } = useI18n();
   const qc = useQueryClient();
   const prefs = usePrefs() as Record<string, unknown>;
@@ -22,6 +22,7 @@ export function Settings({ onClose, onAppearance }: { onClose: () => void; onApp
   const items = (useRead("prefs.schema").data as { items: Item[] }).items;
   const themes = themesOf(describe);
   const noFont = useUnavailableEmojiSets();
+  const canManageFeatures = useHasOp("features.list");
   const save = async (key: string, value: unknown) => {
     const out = await link.call("prefs.set", { [key]: value } as never);
     qc.setQueryData(["prefs.get", {}], out);
@@ -30,6 +31,7 @@ export function Settings({ onClose, onAppearance }: { onClose: () => void; onApp
   const label = (it: Item) => (lang === "ar" && it.label.ar) || it.label.en;
   return (
     <Window title={t("settings")} onClose={onClose} wide>
+      {canManageFeatures && <section className="mb-4 flex items-center justify-between gap-3 rounded-md border border-line p-3"><span>{t("featuresIntro").split(".")[0]}.</span><Button onPress={onFeatures}>{t("featuresBtn")}</Button></section>}
       {groups.map((g) => (
         <section key={g} className="mb-4 rounded-md border border-line p-3">
           <h2 className="m-0 mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">{t(("g_" + g) as "g_other")}</h2>

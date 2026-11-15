@@ -1,5 +1,5 @@
 {
-  "contract": "5cd78ffe8c191b73",
+  "contract": "5eaaff9e706cfba7",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -737,6 +737,373 @@
         "id": "project",
         "type": "projects.project"
       }
+    },
+    "features.apply": {
+      "allowed": true,
+      "description": "Start the instance again with the saved file, so the changes show.",
+      "input": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "kind": "outbound",
+      "output": {
+        "properties": {
+          "restarting": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "restarting"
+        ],
+        "type": "object"
+      },
+      "permission": "features.manage",
+      "plugin": "@madar/features",
+      "public": false,
+      "reasons": {
+        "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
+        "features.no_shell": "This instance does not let the app change its configuration",
+        "features.platform_plugin": "This plugin belongs to the operator; change it in the console",
+        "features.problems": "The change would leave the instance unable to start; nothing was saved"
+      },
+      "resource": null
+    },
+    "features.configure": {
+      "allowed": true,
+      "description": "Change the settings of a feature plugin.",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "settings": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "settings"
+        ],
+        "type": "object"
+      },
+      "kind": "outbound",
+      "output": {
+        "properties": {
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "restart_required": {
+            "type": "boolean"
+          },
+          "saved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "saved",
+          "restart_required"
+        ],
+        "type": "object"
+      },
+      "permission": "features.manage",
+      "plugin": "@madar/features",
+      "public": false,
+      "reasons": {
+        "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
+        "features.no_shell": "This instance does not let the app change its configuration",
+        "features.platform_plugin": "This plugin belongs to the operator; change it in the console",
+        "features.problems": "The change would leave the instance unable to start; nothing was saved"
+      },
+      "resource": null
+    },
+    "features.disable": {
+      "allowed": true,
+      "description": "Switch a feature plugin off. When other features need it the call is refused and names them, unless it confirms with `cascade`, which switches them off too.",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "cascade": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "outbound",
+      "output": {
+        "properties": {
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "restart_required": {
+            "type": "boolean"
+          },
+          "saved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "saved",
+          "restart_required"
+        ],
+        "type": "object"
+      },
+      "permission": "features.manage",
+      "plugin": "@madar/features",
+      "public": false,
+      "reasons": {
+        "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
+        "features.no_shell": "This instance does not let the app change its configuration",
+        "features.platform_plugin": "This plugin belongs to the operator; change it in the console",
+        "features.problems": "The change would leave the instance unable to start; nothing was saved"
+      },
+      "resource": null
+    },
+    "features.enable": {
+      "allowed": true,
+      "description": "Switch a feature plugin on.",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "outbound",
+      "output": {
+        "properties": {
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "restart_required": {
+            "type": "boolean"
+          },
+          "saved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "saved",
+          "restart_required"
+        ],
+        "type": "object"
+      },
+      "permission": "features.manage",
+      "plugin": "@madar/features",
+      "public": false,
+      "reasons": {
+        "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
+        "features.no_shell": "This instance does not let the app change its configuration",
+        "features.platform_plugin": "This plugin belongs to the operator; change it in the console",
+        "features.problems": "The change would leave the instance unable to start; nothing was saved"
+      },
+      "resource": null
+    },
+    "features.list": {
+      "allowed": true,
+      "description": "Every plugin of the catalog with its class and state; a feature also has its settings form.",
+      "input": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "kind": "outbound",
+      "output": {
+        "properties": {
+          "features": {
+            "items": {
+              "properties": {
+                "defines": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "policy": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "policy"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "needs": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "provides": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "settings": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "settings_schema": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "name",
+                "description",
+                "enabled",
+                "needs",
+                "provides"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "platform": {
+            "items": {
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reasons": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "enabled",
+                "reasons"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "features",
+          "platform"
+        ],
+        "type": "object"
+      },
+      "permission": "features.manage",
+      "plugin": "@madar/features",
+      "public": false,
+      "reasons": {
+        "features.no_shell": "This instance does not let the app change its configuration"
+      },
+      "resource": null
+    },
+    "features.replace": {
+      "allowed": true,
+      "description": "Swap one provider of an extension point for another, both feature plugins.",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "kind": "outbound",
+      "output": {
+        "properties": {
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "restart_required": {
+            "type": "boolean"
+          },
+          "saved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "saved",
+          "restart_required"
+        ],
+        "type": "object"
+      },
+      "permission": "features.manage",
+      "plugin": "@madar/features",
+      "public": false,
+      "reasons": {
+        "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
+        "features.no_shell": "This instance does not let the app change its configuration",
+        "features.platform_plugin": "This plugin belongs to the operator; change it in the console",
+        "features.problems": "The change would leave the instance unable to start; nothing was saved"
+      },
+      "resource": null
     },
     "files.download": {
       "allowed": true,

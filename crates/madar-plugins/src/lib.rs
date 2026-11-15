@@ -11,6 +11,7 @@ pub mod projects;
 pub mod small;
 pub mod taskblock;
 pub mod tasks;
+pub mod features;
 pub mod files;
 pub mod previews;
 pub mod search;
@@ -33,7 +34,7 @@ pub fn catalog() -> Catalog {
         Arc::new(projects::Projects), Arc::new(tasks::Tasks), Arc::new(discussion::Discussion),
         Arc::new(small::Audit), Arc::new(small::Quota), Arc::new(nuah_prefs::Prefs), Arc::new(nuah_appearance::Appearance), Arc::new(nuah_metric_prometheus::MetricPrometheus), Arc::new(LogConsole), Arc::new(LogFile), Arc::new(small::Export),
         Arc::new(small::Notify), Arc::new(small::NotifyInbox),
-        Arc::new(content::Editor), Arc::new(content::EditorBasic), Arc::new(taskblock::TaskBlock), Arc::new(content::Refs), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(nuah_emoji::Emoji), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(previews::Previews::default()), Arc::new(nuah_link_analyzer::LinkAnalyzer::default()), Arc::new(nuah_gifs::Gifs), Arc::new(nuah_gifs_giphy::GifsGiphy), Arc::new(NetPublic::default()), Arc::new(workspaces::Workspaces),
+        Arc::new(content::Editor), Arc::new(content::EditorBasic), Arc::new(taskblock::TaskBlock), Arc::new(content::Refs), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(nuah_emoji::Emoji), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(previews::Previews::default()), Arc::new(nuah_link_analyzer::LinkAnalyzer::default()), Arc::new(nuah_gifs::Gifs), Arc::new(nuah_gifs_giphy::GifsGiphy), Arc::new(NetPublic::default()), Arc::new(workspaces::Workspaces), Arc::new(features::Features), 
     ];
     for t in nuah_appearance::themes() {
         list.push(Arc::new(t));

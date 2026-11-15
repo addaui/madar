@@ -95,10 +95,12 @@ impl nuah_shell::Product for Madar {
     fn starting_point(&self, home: &std::path::Path) -> Profile {
         let db = home.join("madar.db");
         let mut p = crate::profile_server(&db.to_string_lossy(), json!([]));
-        p.enabled.extend(["@nuah/http", "@madar/web", "@nuah/console"].map(String::from));
+        p.enabled.extend(["@nuah/http", "@madar/web", "@nuah/console", "@madar/features"].map(String::from));
         p.grants.insert("@nuah/http".into(), vec!["serve".into()]);
         // the console changes the identity file (administrators only) and asks the shell to restart
         p.grants.insert("@nuah/console".into(), vec!["shell".into()]);
+        // the Owner switches feature plugins from the app's settings (ADR 0080); the plugin refuses every platform plugin itself
+        p.grants.insert("@madar/features".into(), vec!["shell".into()]);
         p
     }
     fn bootstrap(&self) -> Option<Box<dyn nuah_shell::Bootstrap>> {

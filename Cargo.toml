@@ -24,3 +24,20 @@ nuah-emoji = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.3.0" }
 nuah-link-analyzer = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.3.0" }
 nuah-gifs = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.3.0" }
 nuah-gifs-giphy = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.3.0" }
+
+# Local until Nuah's class (ADR 0080) and nuah-plugins are tagged.
+[patch."https://github.com/addaui/nuah"]
+nuah-kernel = { path = "../nuah/crates/nuah-kernel" }
+nuah-adapters = { path = "../nuah/crates/nuah-adapters" }
+nuah-http = { path = "../nuah/crates/nuah-http" }
+nuah-shell = { path = "../nuah/crates/nuah-shell" }
+nuah-console = { path = "../nuah/crates/nuah-console" }
+nuah-setup-web = { path = "../nuah/crates/nuah-setup-web" }
+[patch."https://github.com/addaui/nuah-plugins"]
+nuah-prefs = { path = "../nuah-plugins/crates/nuah-prefs" }
+nuah-appearance = { path = "../nuah-plugins/crates/nuah-appearance" }
+nuah-metric-prometheus = { path = "../nuah-plugins/crates/nuah-metric-prometheus" }
+nuah-emoji = { path = "../nuah-plugins/crates/nuah-emoji" }
+nuah-link-analyzer = { path = "../nuah-plugins/crates/nuah-link-analyzer" }
+nuah-gifs = { path = "../nuah-plugins/crates/nuah-gifs" }
+nuah-gifs-giphy = { path = "../nuah-plugins/crates/nuah-gifs-giphy" }
