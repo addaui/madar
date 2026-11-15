@@ -1237,7 +1237,7 @@ fn everyone_has_a_personal_space_that_is_not_stored_and_cannot_be_shared() {
     let a = app();
     let al = who("alice");
     let l = a.ok(&al, "spaces.list", json!({}));
-    assert_eq!(l["spaces"], json!([{"id": "default", "name": "Default", "builtin": true, "role": "admin"}]));
+    assert_eq!(l["spaces"], json!([{"id": "default", "name": "My Space", "builtin": true, "role": "admin"}]));
     assert_eq!(a.err(&al, "spaces.members", json!({"space": "default"})).category, Category::NotFound);
     assert_eq!(a.err(&al, "spaces.share", json!({"space": "default", "subject": "bob", "role": "member"})).category, Category::NotFound);
     assert_eq!(a.err(&al, "spaces.rename", json!({"space": "default", "name": "Mine"})).category, Category::NotFound);
@@ -1320,11 +1320,47 @@ fn a_space_keeps_an_admin_and_is_deleted_only_when_empty() {
     assert_eq!(a.err(&al, "spaces.share", json!({"space": team, "subject": "alice", "role": "member"})).reason.as_deref(), Some("spaces.last_admin"));
     a.ok(&al, "spaces.share", json!({"space": team, "subject": "bob", "role": "admin"}));
     let p = a.ok(&al, "projects.create", json!({"name": "In it", "space": team}))["id"].as_str().unwrap().to_string();
-    assert_eq!(a.err(&bo, "spaces.delete", json!({"space": team})).reason.as_deref(), Some("spaces.not_empty"));
+    let e = a.err(&bo, "spaces.delete", json!({"space": team}));
+    assert_eq!(e.reason.as_deref(), Some("spaces.not_empty"));
+    assert!(e.message.contains("1 project"), "{}", e.message);
     a.ok(&al, "projects.move", json!({"project": p, "space": "default"}));
     a.ok(&bo, "spaces.delete", json!({"space": team}));
     assert_eq!(a.ok(&al, "spaces.list", json!({}))["spaces"].as_array().unwrap().len(), 1);
     assert_eq!(a.err(&al, "spaces.members", json!({"space": team})).category, Category::NotFound);
+}
+
+#[test]
+fn deleting_a_space_with_cascade_deletes_its_projects_and_what_is_in_them() {
+    let a = app();
+    let (al, bo, ca) = (who("alice"), who("bob"), who("carol"));
+    let team = space_of(&a, &al, "Team");
+    a.ok(&al, "spaces.share", json!({"space": team, "subject": "bob", "role": "member"}));
+    let p = a.ok(&bo, "projects.create", json!({"name": "Doomed", "space": team}))["id"].as_str().unwrap().to_string();
+    a.task(&bo, &p, "a task");
+    // a member may not delete the Space, with or without the cascade
+    assert_eq!(a.err(&bo, "spaces.delete", json!({"space": team, "cascade": true})).category, Category::Denied);
+    a.ok(&al, "spaces.delete", json!({"space": team, "cascade": true}));
+    a.settle();
+    assert_eq!(a.err(&bo, "projects.get", json!({"project": p})).category, Category::NotFound);
+    assert!(a.ok(&bo, "projects.list", json!({}))["projects"].as_array().unwrap().is_empty());
+    assert_eq!(a.err(&al, "spaces.members", json!({"space": team})).category, Category::NotFound);
+    // another person's project in the personal Space is untouched
+    let mine = a.project(&ca, "Mine");
+    assert_eq!(a.ok(&ca, "projects.get", json!({"project": mine}))["name"], "Mine");
+}
+
+#[test]
+fn the_number_of_spaces_a_person_may_start_is_a_setting_the_owner_can_change() {
+    let clock = FixedClock::at(1_700_000_000_000);
+    let p = profile_test(&[("@madar/spaces", json!({"max_per_person": 2}))]);
+    let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|e| panic!("{e:#?}"));
+    let a = App { core, clock: FixedClock::at(0) };
+    let al = who("alice");
+    space_of(&a, &al, "One");
+    space_of(&a, &al, "Two");
+    assert_eq!(a.err(&al, "spaces.create", json!({"name": "Three"})).reason.as_deref(), Some("spaces.too_many"));
+    // and the setting is the owner's: it does not make the plugin the operator's
+    assert_eq!(spaces::Spaces.manifest().class().class, PluginClass::Feature);
 }
 
 #[test]

@@ -17,7 +17,7 @@ pub const SPACES: &str = "spaces.spaces";
 pub const SPACE_MEMBERS: &str = "spaces.members";
 /// The id of every person's own Space.
 pub const PERSONAL: &str = "default";
-/// How many Spaces one person may create.
+/// How many Spaces one person may create when the setting `max_per_person` is not set.
 pub const MAX_SPACES: u64 = 20;
 
 pub fn member_id(space: &str, subject: &str) -> String {
@@ -83,14 +83,17 @@ impl Plugin for Spaces {
         let space = json!({"type":"object","required":["space"],"properties":{"space":{"type":"string"}},"additionalProperties":false});
         let reasons = json!({
             "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
-            "spaces.not_empty": "Move its projects elsewhere first",
+            "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
             "spaces.too_many": "You have reached the number of Spaces one person may create",
             "spaces.no_such_person": "Nobody signs in under that name"
         });
         manifest(json!({
             "id": "@madar/spaces", "version": "0.1.0", "name": "Spaces", "namespaces": ["spaces"],
             "description": "Spaces: groups of projects with members and roles; every person also has their own",
-            "requires": {"capabilities": ["emit"]},
+            "requires": {"capabilities": ["emit", "call"]},
+            "settings_schema": {"type": "object", "additionalProperties": false, "properties": {
+                "max_per_person": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 20, "title": "Spaces one person may create", "x-tier": "owner", "x-apply": "live",
+                    "description": "How many Spaces each person may start. Spaces others invited them to do not count."}}},
             "data": {"collections": [SPACES, SPACE_MEMBERS], "reads": ["projects.projects"], "version": 1,
                      "indexes": [{"collection": SPACES, "field": "created_by"}, {"collection": SPACE_MEMBERS, "field": "subject"}, {"collection": SPACE_MEMBERS, "field": "space"}]},
             "permissions": {
@@ -107,8 +110,8 @@ impl Plugin for Spaces {
                     "input": {"type":"object","required":["name"],"properties":{"name":name},"additionalProperties":false}, "output": crate::schemas::space()},
                 "spaces.rename": {"kind": "command", "permission": "spaces.manage", "resource": {"type":"spaces.space","id":"space"}, "description": "Rename a Space",
                     "input": {"type":"object","required":["space","name"],"properties":{"space":{"type":"string"},"name":name},"additionalProperties":false}, "output": crate::schemas::space()},
-                "spaces.delete": {"kind": "command", "permission": "spaces.manage", "resource": {"type":"spaces.space","id":"space"}, "description": "Delete a Space; it must hold no project", "reasons": reasons,
-                    "input": space, "output": crate::schemas::done()},
+                "spaces.delete": {"kind": "command", "permission": "spaces.manage", "resource": {"type":"spaces.space","id":"space"}, "description": "Delete a Space. While it holds projects the call is refused and says how many; with `cascade` it deletes them and everything in them too.", "reasons": reasons,
+                    "input": {"type":"object","required":["space"],"properties":{"space":{"type":"string"},"cascade":{"type":"boolean"}},"additionalProperties":false}, "output": crate::schemas::done()},
                 "spaces.members": {"kind": "query", "permission": "spaces.read", "resource": {"type":"spaces.space","id":"space"}, "description": "Who is in a Space, and their role",
                     "input": space, "output": crate::schemas::space_members()},
                 "spaces.share": {"kind": "command", "permission": "spaces.manage", "resource": {"type":"spaces.space","id":"space"}, "description": "Add someone to a Space, or change their role", "reasons": reasons,
@@ -133,7 +136,7 @@ impl Plugin for Spaces {
 
         b.op("spaces.list", |tx, _| {
             let me = tx.who().subject.clone();
-            let mut out = vec![json!({"id": PERSONAL, "name": "Default", "builtin": true, "role": "admin"})];
+            let mut out = vec![json!({"id": PERSONAL, "name": "My Space", "builtin": true, "role": "admin"})];
             let mut mine = vec![];
             for m in tx.query(SPACE_MEMBERS, &Query::new().eq("subject", me.as_str()).limit(500))?.items {
                 if let Some(s) = tx.get(SPACES, text(&m.body, "space"))? {
@@ -146,7 +149,8 @@ impl Plugin for Spaces {
         });
         b.op("spaces.create", |tx, i| {
             let me = tx.who().subject.clone();
-            if tx.count(SPACES, &[Cond { field: "created_by".into(), op: Cmp::Eq, value: json!(me) }])? >= MAX_SPACES {
+            let limit = tx.settings().get("max_per_person").and_then(|v| v.as_u64()).unwrap_or(MAX_SPACES);
+            if tx.count(SPACES, &[Cond { field: "created_by".into(), op: Cmp::Eq, value: json!(me) }])? >= limit {
                 return Err(Error::reason(Category::Invalid, "spaces.too_many", "You have reached the number of Spaces one person may create"));
             }
             let s = tx.create(SPACES, json!({"name": i["name"], "created_by": me}))?;
@@ -167,8 +171,15 @@ impl Plugin for Spaces {
         b.op("spaces.delete", |tx, i| {
             let id = text(&i, "space");
             require_role(tx, id, &["admin"])?;
-            if tx.count("projects.projects", &[Cond { field: "space".into(), op: Cmp::Eq, value: json!(id) }])? > 0 {
-                return Err(Error::reason(Category::Conflict, "spaces.not_empty", "Move its projects elsewhere first"));
+            let held = tx.query("projects.projects", &Query::new().eq("space", id).limit(1000))?.items;
+            if !held.is_empty() {
+                if i["cascade"] != true {
+                    return Err(Error::reason(Category::Conflict, "spaces.not_empty", &format!("It holds {} project{}. Move them elsewhere, or delete the Space together with them.", held.len(), if held.len() == 1 { "" } else { "s" })));
+                }
+                // the admin of a Space owns its projects, so the ordinary delete (with its cleanup) is allowed
+                for p in held {
+                    tx.call("projects.delete", json!({"project": p.id}))?;
+                }
             }
             let members = tx.query(SPACE_MEMBERS, &Query::new().eq("space", id).limit(500))?.items;
             // the members are removed in this very request, so each is told directly instead of through the Scope

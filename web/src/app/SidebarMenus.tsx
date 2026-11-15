@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { link } from "../api/link";
 import { useRead } from "../api/hooks";
 import { useHasOp } from "../api/session";
-import { askConfirm, askText } from "../ui/overlays";
+import { askConfirm, askCountdown, askText } from "../ui/overlays";
 import { useT } from "../i18n/i18n";
 import { Icon } from "../ui/Icon";
 import { MenuButton, type MenuEntries } from "../ui/Menu";
@@ -34,6 +34,14 @@ export function SpacesMenu() {
   if (!cur) return null;
   const name = cur.builtin ? t("mySpace") : cur.name;
   const refresh = () => qc.invalidateQueries();
+  // Deleting a Space takes its projects with it, so it is asked twice: a plain yes or no, then a countdown that can still be stopped.
+  const deleteSpace = async (warning: string) => {
+    if (!(await askConfirm(warning, { action: t("yes"), cancel: t("no") }))) return;
+    if (!(await askCountdown(cur.name))) return;
+    await link.call("spaces.delete", { space: cur.id, cascade: true });
+    spaceState.set("default");
+    await refresh();
+  };
   const entries: MenuEntries = [
     ...ws.spaces.map((w) => ({ label: w.builtin ? t("mySpace") : w.name, icon: "folder", checked: w.id === cur.id, onclick: () => { spaceState.set(w.id); void refresh(); } })),
     canCreate ? "-" : null,
@@ -46,9 +54,16 @@ export function SpacesMenu() {
     } } : null,
     !cur.builtin ? "-" : null,
     !cur.builtin ? { label: t("spaceMembers"), icon: "mention", onclick: () => openDialog("spaceMembers") } : null,
-    !cur.builtin && canLeave && cur.role !== "admin" ? { label: t("leaveSpace"), icon: "close", onclick: async () => { if (!(await askConfirm(t("sure")))) return; await link.call("spaces.leave", { space: cur.id }); spaceState.set("default"); await refresh(); } } : null,
+    !cur.builtin && canLeave ? { label: t("leaveSpace"), icon: "close", onclick: async () => {
+      if (!(await askConfirm(t("sure")))) return;
+      try { await link.call("spaces.leave", { space: cur.id }); spaceState.set("default"); await refresh(); } catch (e) {
+        // the last admin cannot just go: the Space would be left with nobody, so leaving means deleting it
+        if ((e as { reason?: string }).reason !== "spaces.last_admin") throw e;
+        await deleteSpace(t("leaveDeletesSpace"));
+      }
+    } } : null,
     !cur.builtin && canRename ? { label: t("renameWs"), icon: "edit", onclick: async () => { const n = await askText(t("renameWs"), cur.name); if (n) { await link.call("spaces.rename", { space: cur.id, name: n }); await refresh(); } } } : null,
-    !cur.builtin && canDelete ? { label: t("deleteWs"), icon: "trash", danger: true, onclick: async () => { if (!(await askConfirm(t("sure")))) return; await link.call("spaces.delete", { space: cur.id }); await refresh(); } } : null,
+    !cur.builtin && canDelete ? { label: t("deleteWs"), icon: "trash", danger: true, onclick: () => void deleteSpace(t("deleteSpaceWarn")) } : null,
   ];
   return (
     <MenuButton label={t("spaces")} entries={entries}

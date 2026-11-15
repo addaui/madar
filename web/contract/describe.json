@@ -1,5 +1,5 @@
 {
-  "contract": "d55418b37c0e5939",
+  "contract": "6a2360e761e50206",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -5388,17 +5388,20 @@
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
         "spaces.no_such_person": "Nobody signs in under that name",
-        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
       "resource": null
     },
     "spaces.delete": {
       "allowed": true,
-      "description": "Delete a Space; it must hold no project",
+      "description": "Delete a Space. While it holds projects the call is refused and says how many; with `cascade` it deletes them and everything in them too.",
       "input": {
         "additionalProperties": false,
         "properties": {
+          "cascade": {
+            "type": "boolean"
+          },
           "space": {
             "type": "string"
           }
@@ -5418,7 +5421,7 @@
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
         "spaces.no_such_person": "Nobody signs in under that name",
-        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
       "resource": {
@@ -5451,7 +5454,7 @@
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
         "spaces.no_such_person": "Nobody signs in under that name",
-        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
       "resource": {
@@ -5663,7 +5666,7 @@
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
         "spaces.no_such_person": "Nobody signs in under that name",
-        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
       "resource": {
@@ -5700,7 +5703,7 @@
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
         "spaces.no_such_person": "Nobody signs in under that name",
-        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
       "resource": {

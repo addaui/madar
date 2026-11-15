@@ -59,7 +59,7 @@ fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     p.grants.insert("@nuah/emoji".into(), vec!["call".into()]);
     p.grants.insert("@madar/files".into(), vec!["call".into()]);
     p.grants.insert("@madar/timeline".into(), vec!["call".into()]);
-    p.grants.insert("@madar/spaces".into(), vec!["emit".into()]);
+    p.grants.insert("@madar/spaces".into(), vec!["emit".into(), "call".into()]);
     p.grants.insert("@madar/export".into(), vec!["call".into()]);
     p.grants.insert("@madar/notify-inbox".into(), vec!["emit".into()]);
     p

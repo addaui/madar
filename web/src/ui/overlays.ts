@@ -11,7 +11,8 @@ export type MenuItems = MenuEntries;
 export type OverlayRequest =
   | { kind: "toast"; text: string }
   | { kind: "text"; label: string; initial: string; resolve: (v: string | null) => void }
-  | { kind: "confirm"; label: string; action?: string; danger: boolean; resolve: (v: boolean) => void }
+  | { kind: "confirm"; label: string; action?: string; cancel?: string; danger: boolean; resolve: (v: boolean) => void }
+  | { kind: "countdown"; label: string; seconds: number; resolve: (v: boolean) => void }
   | { kind: "menu"; x: number; y: number; items: MenuItems }
   | { kind: "image"; label: string; resolve: (v: string | null) => void }
   | { kind: "ref"; resolve: (v: { kind: string; id: string; title: string } | null) => void };
@@ -28,7 +29,9 @@ export function connectOverlayHost(fn: ((r: OverlayRequest) => void) | null) {
 
 export const askText = (label: string, initial = "") => new Promise<string | null>((resolve) => push({ kind: "text", label, initial, resolve }));
 /** Asks before something that cannot be taken back. The button says `action` (Delete unless told otherwise), in the warning colour unless `danger` is false. */
-export const askConfirm = (label: string, o: { action?: string; danger?: boolean } = {}) => new Promise<boolean>((resolve) => push({ kind: "confirm", label, action: o.action, danger: o.danger ?? true, resolve }));
+export const askConfirm = (label: string, o: { action?: string; cancel?: string; danger?: boolean } = {}) => new Promise<boolean>((resolve) => push({ kind: "confirm", label, action: o.action, cancel: o.cancel, danger: o.danger ?? true, resolve }));
+/** Counts down in plain sight and says true when it reaches zero, false if the person stops it first. For what cannot be taken back and should not happen at the first click. */
+export const askCountdown = (label: string, seconds = 3) => new Promise<boolean>((resolve) => push({ kind: "countdown", label, seconds, resolve }));
 export const openContextMenu = (x: number, y: number, items: MenuItems) => push({ kind: "menu", x, y, items });
 /** A menu that opens under the control that was pressed (a "more" button). */
 export const openMenuFrom = (control: EventTarget, items: MenuItems) => {
