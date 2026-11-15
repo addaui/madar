@@ -194,7 +194,7 @@ impl Plugin for Tasks {
                     "reasons": {"tasks.bad_status": "That column does not exist", "tasks.unknown_attribute": "That attribute is not defined in this project", "tasks.archived": "An archived task can only be restored"},
                     "input": {"type":"object","required":["project","id"],"properties":{"project":proj,"id":{"type":"string"},"status":{"type":"string"},"after":{"type":["string","null"]}},"additionalProperties":false},
                     "output": crate::schemas::task(), "affordances": aff},
-                "tasks.remove": {"kind": "command", "description": "Delete a task and its subtasks", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
+                "tasks.remove": {"kind": "command", "output": {"type":"object"}, "description": "Delete a task and its subtasks", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project","id"],"properties":{"project":proj,"id":{"type":"string"}},"additionalProperties":false}},
                 "tasks.query": {"kind": "query", "description": "Find tasks in a project: filter, sort (also by custom attributes), page", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project"],"properties":{"project":proj,"status":{"type":"string"},"assignee":{"type":["string","null"]},"label":{"type":"string"},
@@ -217,7 +217,7 @@ impl Plugin for Tasks {
                 "tasks.labels.list": {"kind": "query", "description": "The labels of a project", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project"],"properties":{"project":proj},"additionalProperties":false},
                     "output": crate::schemas::labels()},
-                "tasks.labels.remove": {"kind": "command", "description": "Remove a label from a project and from its tasks", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
+                "tasks.labels.remove": {"kind": "command", "output": {"type":"object"}, "description": "Remove a label from a project and from its tasks", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project","id"],"properties":{"project":proj,"id":{"type":"string"}},"additionalProperties":false}}
             },
             "hooks": [{"stage": "before", "on": "projects.update", "order": 0, "handler": "tasks.guard_columns",

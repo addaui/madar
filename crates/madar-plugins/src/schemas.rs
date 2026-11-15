@@ -165,6 +165,26 @@ pub fn page_styles() -> Value {
     obj(&["styles"], json!({"styles": list(obj(&["id", "name", "settings"], json!({"id": s(), "name": s(), "settings": {"type": "object"}})))}))
 }
 
+/// What a command returns when it has nothing to report: an empty object (the Core still checks that it is one).
+pub fn done() -> Value {
+    json!({"type": "object"})
+}
+
+/// The earlier pictures of a page, newest first, each with the first words of its text.
+pub fn page_versions() -> Value {
+    obj(&["versions"], json!({"versions": list(obj(&["id", "title"], json!({"id": s(), "at": nullable("number"), "by": nullable(STR), "title": s(), "edited_at": nullable("number"), "text": s()})))}))
+}
+
+/// One earlier picture of a page, with its body.
+pub fn page_version() -> Value {
+    obj(&["id", "title", "body"], json!({"id": s(), "at": nullable("number"), "by": nullable(STR), "title": s(), "body": {"type": "object"}}))
+}
+
+/// One saved page style.
+pub fn page_style() -> Value {
+    obj(&["id", "name", "settings"], json!({"id": s(), "name": s(), "settings": {"type": "object"}}))
+}
+
 pub fn removed() -> Value {
     obj(&["removed"], json!({"removed": int()}))
 }

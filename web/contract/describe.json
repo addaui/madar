@@ -1,5 +1,5 @@
 {
-  "contract": "a3410952649d5323",
+  "contract": "5cd78ffe8c191b73",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -593,7 +593,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "projects.write",
       "plugin": "@madar/discussion",
       "public": false,
@@ -839,7 +841,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": null,
       "plugin": "@madar/files",
       "public": false,
@@ -1011,7 +1015,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": null,
       "plugin": "@madar/notify-inbox",
       "public": false,
@@ -1654,7 +1660,91 @@
         "type": "object"
       },
       "kind": "query",
-      "output": null,
+      "output": {
+        "properties": {
+          "pages": {
+            "items": {
+              "properties": {
+                "created_at": {
+                  "type": "integer"
+                },
+                "created_by": {
+                  "type": "string"
+                },
+                "folder": {
+                  "type": "boolean"
+                },
+                "icon": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "parent": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "position": {
+                  "type": "number"
+                },
+                "project": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rev": {
+                  "type": "integer"
+                },
+                "settings": {
+                  "type": "object"
+                },
+                "space": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "tags": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "rev",
+                "title",
+                "folder"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages"
+        ],
+        "type": "object"
+      },
       "permission": "projects.read",
       "plugin": "@madar/pages",
       "public": false,
@@ -1694,7 +1784,84 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "properties": {
+          "body": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "boolean"
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": "number"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "settings": {
+            "type": "object"
+          },
+          "space": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "rev",
+          "title",
+          "folder",
+          "body"
+        ],
+        "type": "object"
+      },
       "permission": "projects.write",
       "plugin": "@madar/pages",
       "public": false,
@@ -1916,7 +2083,37 @@
         "type": "object"
       },
       "kind": "query",
-      "output": null,
+      "output": {
+        "properties": {
+          "at": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "object"
+          },
+          "by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "body"
+        ],
+        "type": "object"
+      },
       "permission": "projects.read",
       "plugin": "@madar/pages",
       "public": false,
@@ -1946,7 +2143,53 @@
         "type": "object"
       },
       "kind": "query",
-      "output": null,
+      "output": {
+        "properties": {
+          "versions": {
+            "items": {
+              "properties": {
+                "at": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "by": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "edited_at": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions"
+        ],
+        "type": "object"
+      },
       "permission": "projects.read",
       "plugin": "@madar/pages",
       "public": false,
@@ -2684,7 +2927,91 @@
         "type": "object"
       },
       "kind": "query",
-      "output": null,
+      "output": {
+        "properties": {
+          "pages": {
+            "items": {
+              "properties": {
+                "created_at": {
+                  "type": "integer"
+                },
+                "created_by": {
+                  "type": "string"
+                },
+                "folder": {
+                  "type": "boolean"
+                },
+                "icon": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "parent": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "position": {
+                  "type": "number"
+                },
+                "project": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rev": {
+                  "type": "integer"
+                },
+                "settings": {
+                  "type": "object"
+                },
+                "space": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "tags": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "rev",
+                "title",
+                "folder"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages"
+        ],
+        "type": "object"
+      },
       "permission": null,
       "plugin": "@madar/pages",
       "public": false,
@@ -2819,7 +3146,84 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "properties": {
+          "body": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "boolean"
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": "number"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "settings": {
+            "type": "object"
+          },
+          "space": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "rev",
+          "title",
+          "folder",
+          "body"
+        ],
+        "type": "object"
+      },
       "permission": null,
       "plugin": "@madar/pages",
       "public": false,
@@ -2884,7 +3288,25 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "settings": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "settings"
+        ],
+        "type": "object"
+      },
       "permission": null,
       "plugin": "@madar/pages",
       "public": false,
@@ -3227,7 +3649,37 @@
         "type": "object"
       },
       "kind": "query",
-      "output": null,
+      "output": {
+        "properties": {
+          "at": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "object"
+          },
+          "by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "body"
+        ],
+        "type": "object"
+      },
       "permission": null,
       "plugin": "@madar/pages",
       "public": false,
@@ -3250,7 +3702,53 @@
         "type": "object"
       },
       "kind": "query",
-      "output": null,
+      "output": {
+        "properties": {
+          "versions": {
+            "items": {
+              "properties": {
+                "at": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "by": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "edited_at": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions"
+        ],
+        "type": "object"
+      },
       "permission": null,
       "plugin": "@madar/pages",
       "public": false,
@@ -3552,7 +4050,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "projects.manage",
       "plugin": "@madar/projects",
       "public": false,
@@ -3688,7 +4188,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "projects.read",
       "plugin": "@madar/projects",
       "public": false,
@@ -3902,7 +4404,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "projects.manage",
       "plugin": "@madar/projects",
       "public": false,
@@ -3935,7 +4439,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "projects.manage",
       "plugin": "@madar/projects",
       "public": false,
@@ -5089,7 +5595,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "projects.write",
       "plugin": "@madar/tasks",
       "public": false,
@@ -5822,7 +6330,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "projects.write",
       "plugin": "@madar/tasks",
       "public": false,
@@ -6248,7 +6758,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": null,
       "plugin": "@madar/workspaces",
       "public": false,
@@ -6339,7 +6851,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "projects.read",
       "plugin": "@madar/workspaces",
       "public": false,
@@ -6371,7 +6885,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": null,
       "plugin": "@madar/workspaces",
       "public": false,

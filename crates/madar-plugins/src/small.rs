@@ -206,7 +206,7 @@ impl Plugin for NotifyInbox {
             "operations": {
                 "inbox.list": {"kind": "query", "description": "Your notifications", "input": {"type":"object","properties":{"unread":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200}},"additionalProperties":false},
                     "output": crate::schemas::inbox()},
-                "inbox.read": {"kind": "command", "description": "Mark notifications as read", "input": {"type":"object","properties":{"id":{"type":"string"}},"additionalProperties":false}}
+                "inbox.read": {"kind": "command", "output": {"type":"object"}, "description": "Mark notifications as read", "input": {"type":"object","properties":{"id":{"type":"string"}},"additionalProperties":false}}
             }
         }))
     }

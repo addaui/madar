@@ -80,7 +80,7 @@ impl Plugin for Files {
                 "files.sweep": {"kind": "command", "description": "Delete your own uploads that no page, task or comment shows (older than `older_than_days`, default 1)",
                     "input": {"type":"object","properties":{"older_than_days":{"type":"integer","minimum":0,"maximum":365}},"additionalProperties":false},
                     "output": {"type":"object","required":["removed"]}},
-                "files.remove": {"kind": "command", "description": "Delete a file (its uploader, or a project owner)",
+                "files.remove": {"kind": "command", "output": {"type":"object"}, "description": "Delete a file (its uploader, or a project owner)",
                     "input": {"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false}}
             }
         }))

@@ -65,7 +65,7 @@ impl Plugin for Discussion {
                 "discussion.block_counts": {"kind": "query", "description": "How many threads each block of a page has", "permission": "projects.read", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project","page"],"properties":{"project":pr,"page":pr},"additionalProperties":false},
                     "output": {"type":"object","required":["counts"]}},
-                "discussion.remove": {"kind": "command", "description": "Remove a comment (its author or the project's owner)", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
+                "discussion.remove": {"kind": "command", "output": {"type":"object"}, "description": "Remove a comment (its author or the project's owner)", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},
                     "reasons": {"discussion.not_yours": "Only the author or the project owner can remove a comment"},
                     "input": {"type":"object","required":["project","id"],"properties":{"project":pr,"id":pr},"additionalProperties":false}}
             },

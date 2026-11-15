@@ -1897,11 +1897,8 @@ fn the_declared_events_match_the_golden_file_the_face_tests_read() {
     assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), got, "run `UPDATE_FIXTURES=1 cargo test` to regenerate fixtures/events.json");
 }
 
-/// The Face's typed calls come from `web/contract/describe.json`. It is written from a profile with every optional plugin on, not from whichever instance the
-/// author happened to run, so an operation of an optional plugin (link analysis, GIFs, previews) is typed too. Regenerate with `UPDATE_FIXTURES=1 cargo test`
-/// and then `bun run contract` in `web/`.
-#[test]
-fn the_face_contract_snapshot_is_made_from_a_profile_with_every_plugin_on() {
+/// A Core with every optional plugin on (password sign-in has the most operations; link analysis, previews and GIFs are optional).
+fn every_plugin_core() -> Core {
     let mut p = profile_test(&[("@nuah/gifs-giphy", json!({"api_key": "abcdefgh12345678"}))]);
     // the password sign-in has the most operations (accounts); an admin sees all of them
     p.enabled.retain(|e| e != "@nuah/auth-local");
@@ -1913,7 +1910,28 @@ fn the_face_contract_snapshot_is_made_from_a_profile_with_every_plugin_on() {
     p.grants.insert("@nuah/link-analyzer".into(), vec!["net".into()]);
     p.grants.insert("@madar/previews".into(), vec!["net".into()]);
     let clock = FixedClock::at(1_700_000_000_000);
-    let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|e| panic!("{e:#?}"));
+    Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|e| panic!("{e:#?}"))
+}
+
+/// Every Operation says what it returns, so the Face's client is typed and the Core checks the answer. The few that are not Madar's own are listed with the
+/// plugin that owns them (a request to that repository), so a new Madar operation cannot be added without a result shape.
+#[test]
+fn every_operation_declares_what_it_returns() {
+    const NOT_OURS: &[&str] = &["auth.account.list", "auth.account.set_password", "auth.account.update"];
+    let d = every_plugin_core().describe(&Identity::new("root", "root", &["admin"]));
+    let missing: Vec<&String> = d["operations"].as_object().unwrap().iter().filter(|(k, v)| v["output"].is_null() && !NOT_OURS.contains(&k.as_str())).map(|(k, _)| k).collect();
+    assert!(missing.is_empty(), "operations with no output schema: {missing:?}");
+    for k in NOT_OURS {
+        assert!(d["operations"][*k]["output"].is_null(), "{k} has a schema now: take it off the list");
+    }
+}
+
+/// The Face's typed calls come from `web/contract/describe.json`. It is written from a profile with every optional plugin on, not from whichever instance the
+/// author happened to run, so an operation of an optional plugin (link analysis, GIFs, previews) is typed too. Regenerate with `UPDATE_FIXTURES=1 cargo test`
+/// and then `bun run contract` in `web/`.
+#[test]
+fn the_face_contract_snapshot_is_made_from_a_profile_with_every_plugin_on() {
+    let core = every_plugin_core();
     let d = core.describe(&Identity::new("root", "root", &["admin"]));
     let ops = d["operations"].as_object().unwrap();
     for must in ["auth.sign_in", "auth.account.create", "links.analyze", "links.fetch", "gifs.provider", "pages.tasks", "pages.set_task", "files.upload", "editor.blocks"] {

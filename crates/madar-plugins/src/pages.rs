@@ -695,7 +695,8 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
     // what each operation returns, from `schemas` (the Core checks it; the Face's client is generated from it)
     for (name, out) in [("create", crate::schemas::page()), ("get", crate::schemas::page()), ("list", crate::schemas::pages()), ("update", crate::schemas::page()),
         ("move", crate::schemas::page_item()), ("delete", crate::schemas::removed()), ("restore", crate::schemas::page()), ("tasks", crate::schemas::page_tasks()),
-        ("set_space", crate::schemas::page_item()), ("tags", crate::schemas::page_tags()), ("styles", crate::schemas::page_styles()), ("style_delete", crate::schemas::removed())] {
+        ("set_space", crate::schemas::page_item()), ("tags", crate::schemas::page_tags()), ("styles", crate::schemas::page_styles()), ("style_delete", crate::schemas::removed()),
+        ("set_task", crate::schemas::page()), ("search", crate::schemas::pages()), ("versions", crate::schemas::page_versions()), ("version", crate::schemas::page_version()), ("style_save", crate::schemas::page_style())] {
         if let Some(op) = m.get_mut(&format!("{prefix}.{name}")) {
             op["output"] = out;
         }
