@@ -3,17 +3,19 @@
  * position is in units that survive a different screen: `x` and `w` are fractions of the column's width, `y` is in em from the anchor block's top.
  * Nothing here knows about the screen: `resolve.ts` turns a sticker into a box, and the layer draws it.
  */
-export type StickerKind = "emoji" | "image" | "pack";
+export type StickerKind = "emoji" | "image" | "pack" | "gif";
 /** What to do when the column has less room than the sticker was placed in: stay on screen by hugging the edge (the default), shrink, or hide. */
 export type Narrow = "hug" | "shrink" | "hide";
 
 export interface Sticker {
   id: string;
   kind: StickerKind;
-  /** An emoji, the id of a shape from our own pack, or the address of an uploaded file (`/files/<id>`). */
+  /** An emoji, the id of a shape from our own pack, an uploaded file (`/files/<id>`), or a GIF at its provider (an https address, ADR 0072). */
   value: string;
   /** The id of the block it is anchored to; null is pinned to the page (its `y` counts from the top of the page). */
   anchor: string | null;
+  /** Pinned to a word: the character of the anchor block it sits beside (it follows that character through edits and reflow); `y` then counts from that character's line. */
+  at?: number;
   /** The left edge (the right edge in right-to-left), as a fraction of the column's width. */
   x: number;
   /** The top edge, in em from the anchor's top. */
@@ -33,6 +35,59 @@ export interface Sticker {
   /** Not drawn (still in the list). */
   hidden?: boolean;
   narrow?: Narrow;
+  /** The gap text keeps from it when it wraps, in em (0.6 when not set). */
+  wm?: number;
+  /** How text goes around it (ADR 0071): over it (the default), or around its outline (`contour`), an oval or a rectangle. */
+  wrap?: Wrap;
+  /** Layouts for narrower columns: what differs from the sticker's own, by size class. */
+  sizes?: { narrow?: Override; medium?: Override };
+}
+export type Wrap = "none" | "contour" | "oval" | "rect";
+
+// ---- size classes: how the column is wide now decides which layout a sticker uses (ADR 0071) ----
+export type SizeClass = "narrow" | "medium" | "wide";
+/**
+ * What a size class may change about a sticker: where it is, how big, turned, flipped, hidden, and what it is attached to (a layout for a narrower page
+ * may attach it to another paragraph). `at: null` says "no word" where the sticker itself has one. Layer, lock, wrap and margin are the same in every class.
+ */
+export type Override = Partial<Pick<Sticker, "x" | "y" | "w" | "rot" | "flip" | "hidden" | "anchor">> & { at?: number | null };
+export const OVERRIDE_KEYS = ["x", "y", "w", "rot", "flip", "hidden", "anchor", "at"] as const;
+/** The column widths (px) where a class ends. They are tokens of the page, not of any one theme. */
+export const NARROW_MAX = 520, MEDIUM_MAX = 760;
+export const classOf = (columnWidth: number): SizeClass => (columnWidth < NARROW_MAX ? "narrow" : columnWidth < MEDIUM_MAX ? "medium" : "wide");
+
+/** The sticker as it is in a size class: its own fields, with the class's overrides on top. */
+export function effective(s: Sticker, cls: SizeClass): Sticker {
+  const o = cls === "wide" ? undefined : s.sizes?.[cls];
+  if (!o) return s;
+  const { at, ...rest } = o;
+  const out: Sticker = { ...s, ...rest };
+  if (at === null) delete out.at; else if (at !== undefined) out.at = at;
+  else if (rest.anchor !== undefined && rest.anchor !== s.anchor) delete out.at;   // a word belongs to its own block
+  return out;
+}
+/**
+ * Applies a change made in a class. What a class may differ in (position, size, turn, flip, hidden) goes to that class's overrides, or to the sticker itself in
+ * the wide class; everything else (what it is anchored to, its layer, lock, wrap) is the same in every class and goes to the sticker.
+ */
+export function applyIn(s: Sticker, cls: SizeClass | null, patch: Partial<Sticker>): Sticker {
+  if (!cls || cls === "wide") return { ...s, ...patch };
+  const o: Override = { ...s.sizes?.[cls] }, rest: Partial<Sticker> = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if ((OVERRIDE_KEYS as readonly string[]).includes(k)) (o as Record<string, unknown>)[k] = v === undefined && k === "at" ? null : v;
+    else (rest as Record<string, unknown>)[k] = v;
+  }
+  return { ...s, ...rest, sizes: { ...s.sizes, [cls]: o } };
+}
+/** Takes a class back to the sticker's own layout. */
+export function resetClass(s: Sticker, cls: SizeClass): Sticker {
+  if (cls === "wide" || !s.sizes?.[cls]) return s;
+  const sizes = { ...s.sizes };
+  delete sizes[cls];
+  if (Object.keys(sizes).length) return { ...s, sizes };
+  const r: Partial<Sticker> = { ...s };
+  delete r.sizes;
+  return r as Sticker;
 }
 
 // ---- fractional keys: a key between two others, so two people reordering at once never collide on a number ----

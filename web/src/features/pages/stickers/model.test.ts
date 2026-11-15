@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addSticker, bringForward, bringToFront, inOrder, keyBetween, moveTo, ranks, sendBackward, sendToBack, setBehind, type Sticker } from "./model";
-import { placementOf, resolvePlacement, type Column } from "./resolve";
+import { addSticker, applyIn, classOf, effective, resetClass, bringForward, bringToFront, inOrder, keyBetween, moveTo, ranks, sendBackward, sendToBack, setBehind, type Sticker } from "./model";
+import { placementOf, resolvePlacement, wrapOf, type Column } from "./resolve";
 
 const base = { kind: "emoji" as const, value: "🎉", anchor: "b1", x: 0.3, y: 1.5, w: 0.2, rot: 0 };
 const make = (n: number, behind = false): Sticker[] => { let l: Sticker[] = []; for (let i = 0; i < n; i++) l = addSticker(l, { ...base, id: "s" + i, behind }); return l; };
@@ -80,5 +80,83 @@ describe("resolvePlacement", () => {
     const b = resolvePlacement(stk({ x: 0.4, y: 3, w: 0.25 }), col);
     const p = placementOf(col, b);
     expect(p.x).toBeCloseTo(0.4); expect(p.y).toBeCloseTo(3); expect(p.w).toBeCloseTo(0.25);
+  });
+});
+
+describe("wrapOf", () => {
+  const text = { start: 0, end: 0, top: 100 };
+  const box = (start: number, w = 100) => resolvePlacement(stk({ x: start / 800, w: w / 800, y: 2 }), col);
+  const float = (w: ReturnType<typeof wrapOf>) => { if (w?.kind !== "float") throw new Error("not a float"); return w; };
+  it("does not wrap unless asked, and not behind the text or pinned to the page", () => {
+    expect(wrapOf(stk(), box(20), 800, text, 16)).toBeNull();
+    expect(wrapOf(stk({ wrap: "oval", behind: true }), box(20), 800, text, 16)).toBeNull();
+    expect(wrapOf(stk({ wrap: "oval", anchor: null }), box(20), 800, text, 16)).toBeNull();
+  });
+  it("near an edge it is a float on that edge and says how far in it is", () => {
+    const left = float(wrapOf(stk({ wrap: "rect" }), box(40), 800, text, 16));
+    expect([left.side, left.inset]).toEqual(["start", 40]);
+    const right = float(wrapOf(stk({ wrap: "rect" }), box(640), 800, text, 16));
+    expect([right.side, right.inset]).toEqual(["end", 800 - 740]);
+  });
+  it("with room on both sides it is a hole in the lines, so text goes on both sides", () => {
+    const w = wrapOf(stk({ wrap: "oval" }), box(300), 800, text, 16)!;
+    expect(w.kind).toBe("gap");
+    if (w.kind === "gap") expect([w.x0, w.x1, w.shape]).toEqual([300 - 10, 400 + 10, "oval"]);   // the box plus the margin (0.6 em, rounded)
+  });
+  it("measures from the block's text, not the layer", () => {
+    const w = float(wrapOf(stk({ wrap: "rect" }), box(40), 800, { start: 16, end: 16, top: 150 }, 16));
+    expect(w.inset).toBe(24);
+    expect(w.top).toBe(232 - 150);
+    const g = wrapOf(stk({ wrap: "rect" }), box(300), 800, { start: 16, end: 16, top: 150 }, 16)!;
+    if (g.kind === "gap") expect([g.x0, g.y0]).toEqual([300 - 16 - 10, 232 - 150 - 10]);
+  });
+  it("follows the outline only for a picture it can read, else an oval", () => {
+    expect(float(wrapOf(stk({ wrap: "contour", kind: "image", value: "/files/a" }), box(20), 800, text, 16)).image).toBe("/files/a");
+    const e = float(wrapOf(stk({ wrap: "contour" }), box(20), 800, text, 16));
+    expect([e.shape, e.image]).toEqual(["oval", undefined]);
+  });
+  it("a right-to-left block keeps to the float", () => {
+    expect(wrapOf(stk({ wrap: "rect" }), box(300), 800, text, 16, true)?.kind).toBe("float");
+  });
+  it("gives up when it would leave no room for text", () => {
+    expect(wrapOf(stk({ wrap: "rect", w: 0.9 }), resolvePlacement(stk({ w: 0.9 }), col), 800, text, 16)).toBeNull();
+  });
+});
+
+describe("size classes", () => {
+  it("are decided by the column's width", () => {
+    expect([classOf(320), classOf(519), classOf(520), classOf(759), classOf(760), classOf(1200)]).toEqual(["narrow", "narrow", "medium", "medium", "wide", "wide"]);
+  });
+  it("a class changes only what it overrides", () => {
+    const s = applyIn(stk({ x: 0.7, w: 0.3 }), "narrow", { x: 0.5, w: 0.2 });
+    expect(effective(s, "narrow")).toMatchObject({ x: 0.5, w: 0.2, y: 1.5, anchor: "b1" });
+    expect(effective(s, "wide")).toMatchObject({ x: 0.7, w: 0.3 });
+    expect(effective(s, "medium")).toMatchObject({ x: 0.7 });
+  });
+  it("keeps what is the same in every class out of the class", () => {
+    const s = applyIn(stk(), "narrow", { lock: true, x: 0.1 });
+    expect(s.lock).toBe(true);
+    expect(s.sizes!.narrow).toEqual({ x: 0.1 });
+  });
+  it("a class can attach the sticker to another paragraph, and its word goes with it", () => {
+    const s = applyIn(stk({ at: 12 }), "narrow", { anchor: "b2", at: undefined, y: 0 });
+    expect(effective(s, "narrow")).toMatchObject({ anchor: "b2", y: 0 });
+    expect(effective(s, "narrow").at).toBeUndefined();
+    expect(effective(s, "wide")).toMatchObject({ anchor: "b1", at: 12 });
+    const w = applyIn(stk(), "narrow", { anchor: "b2", at: 3 });
+    expect(effective(w, "narrow")).toMatchObject({ anchor: "b2", at: 3 });
+  });
+  it("another paragraph in a class drops the sticker's own word even when none is said", () => {
+    const s = applyIn(stk({ at: 12 }), "medium", { anchor: "b9" });
+    expect(effective(s, "medium").at).toBeUndefined();
+  });
+  it("a change made in the wide class is the sticker's own", () => {
+    expect(applyIn(stk(), "wide", { x: 0.9 }).x).toBe(0.9);
+    expect(applyIn(stk(), null, { x: 0.9 }).x).toBe(0.9);
+  });
+  it("can be reset to the sticker's own layout", () => {
+    const s = applyIn(stk(), "narrow", { x: 0.1 });
+    expect(resetClass(s, "narrow").sizes).toBeUndefined();
+    expect(resetClass(stk(), "narrow")).toEqual(stk());
   });
 });

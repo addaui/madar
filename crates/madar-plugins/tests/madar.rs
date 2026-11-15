@@ -865,13 +865,16 @@ fn your_own_pages_live_in_a_space_and_search_can_stay_in_one() {
 }
 
 #[test]
-fn open_checklist_items_on_pages_can_be_listed_and_ticked() {
+fn open_task_blocks_on_pages_can_be_listed_and_ticked_and_a_checklist_is_not_a_task() {
     let a = app();
     let al = who("alice");
     let p = a.project(&al, "Home");
-    let item = |id: &str, text: &str, checked: bool| json!({"type": "taskItem", "attrs": {"checked": checked, "blockId": id}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]});
-    let body = |items: Vec<Value>| json!({"type": "doc", "content": [{"type": "taskList", "content": items}]});
-    let mine = a.ok(&al, "pages.create", json!({"title": "Errands", "body": body(vec![item("b1", "buy milk", false), item("b2", "call mum", true), item("b3", "book flights", false)])}));
+    let item = |id: &str, text: &str, checked: bool| json!({"type": "taskBlock", "attrs": {"checked": checked, "blockId": id}, "content": [{"type": "text", "text": text}]});
+    let body = |items: Vec<Value>| json!({"type": "doc", "content": items});
+    // text and other leaf nodes come before the task: ticking must not touch them
+    let mut lines = vec![json!({"type": "paragraph", "content": [{"type": "text", "text": "intro"}]}), json!({"type": "horizontalRule"})];
+    lines.extend([item("b1", "buy milk", false), item("b2", "call mum", true), item("b3", "book flights", false)]);
+    let mine = a.ok(&al, "pages.create", json!({"title": "Errands", "body": body(lines)}));
     let shared = a.ok(&al, "knowledge.create", json!({"project": p, "title": "Launch", "body": body(vec![item("c1", "write notes", false)])}));
     a.settle();
     let items = |v: &Value| -> Vec<String> { let mut t: Vec<String> = v["items"].as_array().unwrap().iter().map(|x| x["text"].as_str().unwrap().to_string()).collect(); t.sort(); t };
@@ -892,6 +895,20 @@ fn open_checklist_items_on_pages_can_be_listed_and_ticked() {
     a.ok(&al, "pages.set_task", json!({"id": mine["id"], "block": "b1", "checked": false}));
     assert_eq!(items(&a.ok(&al, "pages.tasks", json!({}))), ["book flights", "buy milk"]);
     assert_eq!(a.err(&al, "pages.set_task", json!({"id": mine["id"], "block": "nope", "checked": true})).category, Category::NotFound);
+    // a checklist is not a task (ADR 0075): its items are never listed
+    let checklist = json!({"type": "doc", "content": [{"type": "taskList", "content": [{"type": "taskItem", "attrs": {"checked": false, "blockId": "k1"}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "pack socks"}]}]}]}]});
+    a.ok(&al, "pages.create", json!({"title": "Packing", "body": checklist}));
+    a.settle();
+    assert!(!items(&a.ok(&al, "pages.tasks", json!({}))).contains(&"pack socks".to_string()));
+    // details: ones with a due date come first, soonest first, and carry their details
+    let dated = json!({"type": "doc", "content": [{"type": "taskBlock", "attrs": {"checked": false, "blockId": "d1", "due": "2026-12-01", "priority": "high", "details": "bring ID"}, "content": [{"type": "text", "text": "renew passport"}]},
+        {"type": "taskBlock", "attrs": {"checked": false, "blockId": "d2", "due": "2026-11-20"}, "content": [{"type": "text", "text": "pay rent"}]}]});
+    a.ok(&al, "pages.create", json!({"title": "Admin", "body": dated}));
+    a.settle();
+    let list = a.ok(&al, "pages.tasks", json!({}));
+    let order: Vec<&str> = list["items"].as_array().unwrap().iter().map(|x| x["text"].as_str().unwrap()).collect();
+    assert_eq!(&order[..2], ["pay rent", "renew passport"], "dated first, soonest first");
+    assert_eq!((list["items"][1]["priority"].as_str(), list["items"][1]["notes"].as_str(), list["items"][1]["due"].as_str()), (Some("high"), Some("bring ID"), Some("2026-12-01")));
     let ve = viewer("vic");
     a.ok(&al, "projects.share", json!({"project": p, "subject": "vic", "level": "viewer"}));
     assert_eq!(a.err(&ve, "knowledge.set_task", json!({"project": p, "id": shared["id"], "block": "c1", "checked": false})).category, Category::Denied, "a viewer cannot tick");
@@ -984,7 +1001,7 @@ fn the_editor_offers_the_blocks_plugins_declare() {
     let a = app();
     let blocks = a.ok(&who("alice"), "editor.blocks", json!({}));
     let ids: Vec<&str> = blocks["blocks"].as_array().unwrap().iter().map(|b| b["id"].as_str().unwrap()).collect();
-    for want in ["heading1", "codeBlock", "taskList", "toggle", "callout", "image", "youtube", "entityRef"] {
+    for want in ["heading1", "codeBlock", "taskList", "taskBlock", "toggle", "callout", "image", "youtube", "entityRef"] {
         assert!(ids.contains(&want), "{want} in {ids:?}");
     }
     assert_eq!(blocks["blocks"][0]["plugin"], "@madar/editor-basic");
@@ -1757,7 +1774,44 @@ fn stickers_on_a_page_are_checked_and_keep_their_pictures_alive() {
     assert!(ok(json!([s(json!({"w": 0}))])).is_err());
     assert!(ok(json!([s(json!({"kind": "image", "value": "https://evil.example/x.png"}))])).is_err(), "only our own files");
     assert!(ok(json!([s(json!({})), s(json!({}))])).is_err(), "ids are unique");
+    assert!(ok(json!([s(json!({"kind": "gif", "value": "https://media.giphy.com/media/x/giphy.gif"}))])).is_ok(), "a GIF is its provider's address");
+    assert!(ok(json!([s(json!({"kind": "gif", "value": "http://media.giphy.com/x.gif"}))])).is_err(), "https only");
+    assert!(ok(json!([s(json!({"kind": "gif", "value": "javascript:alert(1)"}))])).is_err());
+    assert!(ok(json!([s(json!({"wrap": "oval", "at": 12, "sizes": {"narrow": {"x": 0.1, "w": 0.3, "hidden": false}}}))])).is_ok(), "wrap, a word and a narrower layout");
+    assert!(ok(json!([s(json!({"wrap": "sideways"}))])).is_err());
+    assert!(ok(json!([s(json!({"sizes": {"huge": {"x": 0.1}}}))])).is_err(), "only the classes there are");
+    assert!(ok(json!([s(json!({"sizes": {"narrow": {"anchor": "other", "at": null, "y": 0.0}}, "wm": 1.0}))])).is_ok(), "a layout for a narrower page may attach it to another paragraph; the gap text keeps");
+    assert!(ok(json!([s(json!({"sizes": {"narrow": {"anchor": "has space"}}}))])).is_err());
+    assert!(ok(json!([s(json!({"wm": 99}))])).is_err());
+    assert!(ok(json!([s(json!({"sizes": {"narrow": {"x": 99}}}))])).is_err());
     assert!(ok(json!("nope")).is_err());
     let doc = json!({"type": "doc", "attrs": {"stickers": [s(json!({"kind": "image", "value": "/files/abc123"}))]}, "content": []});
     assert_eq!(richtext::files_of(&doc), vec!["abc123".to_string()]);
+}
+
+#[test]
+fn blocks_declare_their_options_and_a_page_keeps_defaults_for_a_type() {
+    let a = app();
+    let al = who("alice");
+    let blocks = a.ok(&al, "editor.blocks", json!({}));
+    let list = blocks["blocks"].as_array().unwrap();
+    let opts = |node: &str| -> Vec<String> { list.iter().filter(|b| b["node"] == node).flat_map(|b| b["options"].as_array().cloned().unwrap_or_default()).map(|o| o["id"].as_str().unwrap().to_string()).collect() };
+    assert_eq!(opts("image"), ["size", "alt"]);
+    assert_eq!(opts("youtube"), ["size", "ratio", "start"]);
+    assert!(opts("paragraph").contains(&"align".to_string()), "plain text has options though it is not in the slash menu");
+    let para = list.iter().find(|b| b["node"] == "paragraph").unwrap();
+    assert_eq!(para["insert"], false);
+    let size = list.iter().find(|b| b["node"] == "image").unwrap()["options"][0].clone();
+    assert_eq!((size["type"].as_str(), size["inherit"].as_bool(), size["default"].as_str()), (Some("choice"), Some(true), Some("auto")));
+    // the choice to show the type in the tab is a preference
+    let prefs = a.ok(&al, "prefs.schema", json!({}));
+    assert!(prefs["items"].as_array().unwrap().iter().any(|i| i["key"] == "editor.element_type_in_tab" && i["type"] == "boolean"));
+    // a page's defaults for a type
+    let pg = a.ok(&al, "pages.create", json!({"title": "Defaults"}))["id"].as_str().unwrap().to_string();
+    let good = json!({"elements": {"image": {"size": "large"}, "youtube": {"size": "small", "start": 30}, "paragraph": {"align": "center"}}});
+    assert_eq!(a.ok(&al, "pages.update", json!({"id": pg, "settings": good}))["settings"]["elements"]["image"]["size"], "large");
+    a.settle();
+    for bad in [json!({"elements": []}), json!({"elements": {"image": "large"}}), json!({"elements": {"Bad Name": {"size": "x"}}}), json!({"elements": {"image": {"size": {"deep": 1}}}}), json!({"elements": {"image": {"size": "x".repeat(80)}}})] {
+        assert_eq!(a.err(&al, "pages.update", json!({"id": pg, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
+    }
 }

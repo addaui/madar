@@ -35,14 +35,14 @@ const safeUrl = (u: string) => /^(https?:\/\/|\/|#|mailto:)/i.test(u || '')
 const BlockDir = Extension.create({
   name: 'blockDir',
   addGlobalAttributes() {
-    return [{ types: ['paragraph', 'heading', 'blockquote', 'codeBlock'], attributes: { dirAuto: { default: 'auto', rendered: true, renderHTML: () => ({ dir: 'auto' }), parseHTML: () => 'auto' } } }]
+    return [{ types: ['paragraph', 'heading', 'blockquote'], attributes: { align: { default: null, rendered: true, parseHTML: (el: HTMLElement) => el.getAttribute('data-align'), renderHTML: (a: any) => (['start', 'center', 'end', 'justify'].includes(a.align) ? { 'data-align': a.align } : {}) } } }, { types: ['paragraph', 'heading', 'blockquote', 'codeBlock'], attributes: { dirAuto: { default: 'auto', rendered: true, renderHTML: () => ({ dir: 'auto' }), parseHTML: () => 'auto' } } }]
   },
 })
 
 // ---- every block has a stable id (ADR 0043) ----
 // A new block gets an id when the document changes; a copy that repeats an id gets a new one, the first keeps it.
 // A block saved before this existed gets its id the next time its page is edited and saved (never on opening a page).
-const BLOCK_TYPES = ['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem', 'callout', 'toggle', 'youtube', 'image', 'linkPreview', 'horizontalRule']
+const BLOCK_TYPES = ['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem', 'callout', 'toggle', 'taskBlock', 'youtube', 'image', 'linkPreview', 'horizontalRule']
 const newBlockId = () => { const a = new Uint8Array(8); crypto.getRandomValues(a); return 'b' + Array.from(a, (x) => (x % 36).toString(36)).join('') }
 const BlockId = Extension.create({
   name: 'blockId',
@@ -79,20 +79,64 @@ const StickerData = Extension.create({
       key: new PluginKey('stickerAnchors'),
       appendTransaction(trs, oldState, state) {
         if (!trs.some((t) => t.docChanged)) return null
-        const list: any[] = state.doc.attrs.stickers || []
+        let list: any[] = state.doc.attrs.stickers || []
         if (!list.length) return null
+        const tr = state.tr
+        let changed = false
         const now = new Set(blockIdsOf(state.doc))
-        if (list.every((s) => s.anchor === null || now.has(s.anchor))) return null
         const before = blockIdsOf(oldState.doc), first = blockIdsOf(state.doc)[0] ?? null
-        const next = list.map((s) => {
-          if (s.anchor === null || now.has(s.anchor)) return s
-          const at = before.indexOf(s.anchor)
+        // A sticker pinned to a word (`at`: a character of its block) follows that character through edits: it is found in the old document, carried through
+        // the steps, and read again in the new one, so a split or a joined line keeps it beside the same word. The sticker itself and each layout for a narrower
+        // page (which may have its own anchor) are followed alike.
+        const follow = (anchor: string, at: number): { anchor: string; at: number } | null => {
+          let oldPos = -1
+          oldState.doc.descendants((n: any, pos: number) => { if (oldPos < 0 && n.isTextblock && n.attrs.blockId === anchor) oldPos = pos + 1 + Math.min(at, n.content.size) })
+          if (oldPos < 0) return null
+          let p = oldPos
+          for (const t of trs) p = t.mapping.map(p, 1)
+          if (p < 0 || p > state.doc.content.size) return null
+          const $p = state.doc.resolve(p)
+          if (!$p.parent.isTextblock) return null
+          let id = $p.parent.attrs.blockId
+          if (!id) { id = newBlockId(); tr.setNodeMarkup($p.before(), undefined, { ...$p.parent.attrs, blockId: id }); changed = true; now.add(id) }
+          return { anchor: id, at: p - $p.start() }
+        }
+        // When an anchor block is gone, the nearest block before it that remains (else after, else the first).
+        const nearest = (id: string): string | null => {
+          const at = before.indexOf(id)
           let to: string | null = null
           for (let i = at - 1; i >= 0 && !to; i--) if (now.has(before[i])) to = before[i]
           for (let i = at + 1; i < before.length && !to && at >= 0; i++) if (now.has(before[i])) to = before[i]
-          return { ...s, anchor: to ?? first }
+          return to ?? first
+        }
+        const fix = (o: any, own: boolean): any => {
+          let out = o
+          if (o.anchor != null && typeof o.at === 'number') {
+            const r = follow(o.anchor, o.at)
+            if (r && (r.anchor !== o.anchor || r.at !== o.at)) { out = { ...out, ...r }; changed = true }
+          }
+          if (out.anchor != null && !now.has(out.anchor)) {
+            const { at: _gone, ...rest } = out
+            out = { ...rest, anchor: nearest(out.anchor), ...(own ? {} : { at: null }) }
+            changed = true
+          }
+          return out
+        }
+        list = list.map((s) => {
+          let out = fix(s, true)
+          if (s.sizes) {
+            let sizes = s.sizes
+            for (const k of ['narrow', 'medium']) {
+              const o = sizes[k]
+              if (!o || o.anchor == null) continue
+              const f = fix(o, false)
+              if (f !== o) sizes = { ...sizes, [k]: f }
+            }
+            if (sizes !== s.sizes) out = { ...out, sizes }
+          }
+          return out
         })
-        return state.tr.setDocAttribute('stickers', next)
+        return changed ? tr.setDocAttribute('stickers', list) : null
       },
     })]
   },
@@ -137,22 +181,23 @@ const embedUrl = (u: string) => {
 const YouTube = Node.create({
   name: 'youtube', group: 'block', atom: true, selectable: true, draggable: true,
   // size, shape and start are the person's choices for this block (ADR 0030); a saved block without them looks as before
-  addAttributes() { return { src: { default: '' }, size: { default: 'wide' }, ratio: { default: '16-9' }, start: { default: 0 } } },
+  addAttributes() { return { src: { default: '' }, size: { default: null }, ratio: { default: null }, start: { default: 0 } } },
   parseHTML() { return [{ tag: 'div.embed' }] },
   renderHTML({ node }) {
     const base = embedUrl(node.attrs.src) || '', st = Math.max(0, Math.floor(Number(node.attrs.start) || 0))
     const src = base && st ? base + '?start=' + st : base
-    const size = ['small', 'medium', 'wide', 'full'].includes(node.attrs.size) ? node.attrs.size : 'wide', ratio = ['16-9', '4-3', '1-1'].includes(node.attrs.ratio) ? node.attrs.ratio : '16-9'
+    // a size or shape the element does not have of its own is left off, so the page's default (or the stock look) applies (ADR 0073)
+    const size = ['small', 'medium', 'wide', 'full'].includes(node.attrs.size) ? node.attrs.size : undefined, ratio = ['16-9', '4-3', '1-1'].includes(node.attrs.ratio) ? node.attrs.ratio : undefined
     return ['div', { class: 'embed', 'data-size': size, 'data-ratio': ratio }, ['iframe', { src, allowfullscreen: 'true', loading: 'lazy', referrerpolicy: 'strict-origin-when-cross-origin', sandbox: 'allow-scripts allow-same-origin allow-presentation' }]]
   },
 })
 
 const ImageBlock = Node.create({
   name: 'image', group: 'block', atom: true, selectable: true, draggable: true,
-  addAttributes() { return { src: { default: '' }, alt: { default: '' }, width: { default: null }, size: { default: 'auto' } } },
+  addAttributes() { return { src: { default: '' }, alt: { default: '' }, width: { default: null }, size: { default: null } } },
   parseHTML() { return [{ tag: 'img[src]' }] },
   renderHTML({ node }) {
-    const size = ['small', 'medium', 'large', 'full'].includes(node.attrs.size) ? node.attrs.size : 'auto'
+    const size = ['small', 'medium', 'large', 'full'].includes(node.attrs.size) ? node.attrs.size : undefined
     return ['img', { src: safeUrl(node.attrs.src) ? node.attrs.src : '', alt: node.attrs.alt, width: node.attrs.width ? String(Number(node.attrs.width)) : undefined, 'data-size': size, loading: 'lazy' }]
   },
 })
@@ -170,6 +215,39 @@ const LinkPreview = Node.create({
     const kids: any[] = [body]
     if (typeof a.image === 'string' && /^https:\/\//i.test(a.image)) kids.push(['img', { class: 'lc-img', src: a.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }])
     return ['a', { class: 'link-card', 'data-mode': a.mode === 'compact' ? 'compact' : 'card', href: u, target: '_blank', rel: 'noopener noreferrer' }, ...kids]
+  },
+})
+
+// A task with details inside a page (ADR 0075): a box, the title (the block's text), and chips for the due date and priority, with the notes under it.
+const TASK_PRI: Record<string, Record<string, string>> = { en: { low: 'Low', medium: 'Medium', high: 'High' }, ar: { low: 'منخفضة', medium: 'متوسطة', high: 'عالية' } }
+const TaskBlock = Node.create({
+  name: 'taskBlock', group: 'block', content: 'inline*', defining: true,
+  addAttributes() { return { checked: { default: false }, due: { default: null }, priority: { default: null }, details: { default: '' } } },
+  parseHTML() { return [{ tag: 'div.task-block' }] },
+  renderHTML({ node }) { return ['div', { class: 'task-block', 'data-checked': node.attrs.checked ? 'true' : 'false' }, ['div', { class: 'tb-title' }, 0]] },
+  addNodeView() {
+    return ({ node: first, getPos, editor }: any) => {
+      let node = first
+      const dom = document.createElement('div'); dom.className = 'task-block'
+      const box = document.createElement('button'); box.type = 'button'; box.className = 'tb-box'; box.contentEditable = 'false'; box.setAttribute('role', 'checkbox')
+      const body = document.createElement('div'); body.className = 'tb-title'
+      const meta = document.createElement('div'); meta.className = 'tb-meta'; meta.contentEditable = 'false'
+      const notes = document.createElement('div'); notes.className = 'tb-notes'; notes.contentEditable = 'false'
+      dom.append(box, body, meta, notes)
+      const lang = (document.documentElement.lang || 'en').startsWith('ar') ? 'ar' : 'en'
+      const paint = () => {
+        const a = node.attrs
+        dom.dataset.checked = a.checked ? 'true' : 'false'; box.setAttribute('aria-checked', a.checked ? 'true' : 'false')
+        meta.replaceChildren()
+        if (a.due) { const c = document.createElement('span'); c.className = 'tb-chip'; c.dataset.kind = 'due'; try { c.textContent = new Date(a.due + 'T00:00:00').toLocaleDateString(lang, { month: 'short', day: 'numeric' }) } catch { c.textContent = a.due } const today = new Date().toISOString().slice(0, 10); if (!a.checked && a.due < today) c.dataset.late = 'true'; meta.append(c) }
+        if (TASK_PRI[lang][a.priority]) { const c = document.createElement('span'); c.className = 'tb-chip'; c.dataset.kind = 'priority'; c.dataset.p = a.priority; c.textContent = TASK_PRI[lang][a.priority]; meta.append(c) }
+        notes.textContent = a.details || ''; notes.hidden = !a.details
+      }
+      box.onmousedown = (ev) => ev.preventDefault()
+      box.onclick = () => { const pos = getPos(); if (typeof pos === 'number') editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, checked: !node.attrs.checked })) }
+      paint()
+      return { dom, contentDOM: body, update: (n: any) => { if (n.type !== node.type) return false; node = n; paint(); return true }, ignoreMutation: (m: any) => !body.contains(m.target) }
+    }
   },
 })
 
@@ -194,13 +272,13 @@ function extensions(placeholder: string, calloutTitle: string): any[] {
       if (parent.type.name === 'callout') return parent.firstChild === node ? calloutTitle : ''
       return $p.depth === 0 ? placeholder : ''
     } }),
-    Callout, Toggle, EntityRef, YouTube, ImageBlock, LinkPreview, UnknownBlock, BlockDir, BlockId, StickerData, Ways,
+    Callout, Toggle, TaskBlock, EntityRef, YouTube, ImageBlock, LinkPreview, UnknownBlock, BlockDir, BlockId, StickerData, Ways,
   ]
 }
 
 // ---- keeping what we cannot draw ----
 const MARKS = new Set(['bold', 'italic', 'underline', 'strike', 'code', 'highlight', 'link'])
-const NODES = new Set(['doc', 'paragraph', 'text', 'hardBreak', 'heading', 'blockquote', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'horizontalRule', 'codeBlock', 'callout', 'toggle', 'entityRef', 'youtube', 'image', 'linkPreview', 'unknownBlock'])
+const NODES = new Set(['doc', 'paragraph', 'text', 'hardBreak', 'heading', 'blockquote', 'bulletList', 'orderedList', 'listItem', 'taskList', 'taskItem', 'horizontalRule', 'codeBlock', 'callout', 'toggle', 'taskBlock', 'entityRef', 'youtube', 'image', 'linkPreview', 'unknownBlock'])
 const INLINE_PARENTS = new Set(['paragraph', 'heading', 'codeBlock'])
 function wrapUnknown(n: Json, parent = ''): Json {
   if (!n || typeof n !== 'object') return n
@@ -228,6 +306,7 @@ const EMPTY = { type: 'doc', content: [{ type: 'paragraph' }] }
 // ---- the slash menu ----
 type Cmd = (e: Editor, ask: Opts) => void | Promise<void>
 const COMMANDS: Record<string, Cmd> = {
+  taskBlock: (e) => e.chain().focus().setNode('taskBlock').run(),
   heading1: (e) => e.chain().focus().setNode('heading', { level: 1 }).run(),
   heading2: (e) => e.chain().focus().setNode('heading', { level: 2 }).run(),
   heading3: (e) => e.chain().focus().setNode('heading', { level: 3 }).run(),
@@ -293,6 +372,8 @@ export interface Opts {
   askText?: (label: string, initial?: string) => Promise<string | null>
   // Opens the context menu at a point. The Face draws it (one menu for the whole app); items are {label, icon?, checked?, danger?, disabled?, heading?, onclick?, sub?}.
   menu?: (x: number, y: number, items: any[]) => void
+  // The element the cursor is in or that is selected (ADR 0073), reported on every change: the block and the blocks around it, innermost first.
+  onContext?: (ctx: { chain: { node: string; pos: number; attrs: any; id: string | null }[]; selected: boolean } | null) => void
   // Stickers (ADR 0071): the Face draws them in two layers (behind the text, in front of it) that the editor makes and hands over.
   stickers?: {
     onList: (list: any[]) => void
@@ -405,6 +486,14 @@ function create(host: HTMLElement, o: Opts) {
   let editable = o.editable !== false
   let silent = true
   let lastStickers: any[] = []
+  let lastCtx = ''
+  const ELEMENT_NODES = new Set(['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'taskList', 'taskBlock', 'callout', 'toggle', 'image', 'youtube', 'linkPreview', 'horizontalRule'])
+  let gapEdit: (tr: any) => void = () => {}
+  let wraps: any[] = [], gaps: any[] = [], wrapsJson = '[]'
+  // A sticker with room on both sides is a hole in the lines it crosses: a gap (an empty inline box) is put in front of the first word that would touch it,
+  // line by line from the top, measuring after each, so the paragraph flows on both sides (ADR 0071). Positions are kept in the document's own numbers.
+  let spacers: { anchor: string; pos: number; width: number }[] = [], settling = false, settleTimer = 0
+  const wrapKey = new PluginKey('stickerWraps')
 
   // A picture dragged over the page shows a line where it will be placed: between two blocks, nearest the pointer (ADR 0068).
   const dropLine = document.createElement('div'); dropLine.className = 'ed-dropline'; dropLine.hidden = true
@@ -467,9 +556,9 @@ function create(host: HTMLElement, o: Opts) {
       handleKeyDown: (_v, ev) => { if (editable && o.menu && (ev.key === 'ContextMenu' || (ev.shiftKey && ev.key === 'F10'))) { ev.preventDefault(); const c = editor.view.coordsAtPos(editor.state.selection.from); openContext(null, c.left, c.bottom); return true } return slashKey(ev) },
     },
     onUpdate: () => { slashUpdate(); if (!silent) o.onChange?.(unwrapUnknown(editor.getJSON())) },
-    onSelectionUpdate: () => { slashUpdate(); paintBar() },
-    onTransaction: () => {
-      paintBar(); ensureTrailing()
+    onSelectionUpdate: () => { slashUpdate(); paintBar(); reportContext() },
+    onTransaction: ({ transaction }: { transaction: any }) => {
+      paintBar(); ensureTrailing(); gapEdit(transaction); reportContext()
       if (o.stickers) {
         const list = editor.state.doc.attrs.stickers || []
         if (list !== lastStickers) { lastStickers = list; o.stickers.onList(list) }
@@ -517,7 +606,7 @@ function create(host: HTMLElement, o: Opts) {
   // variants are listed flat ("Callout: Danger") so a search finds them at once.
   type Entry = { id: string; label: string; group: string; keywords: string; icon?: string; variants?: Entry[] }
   const lbl = (l: Json) => (l && (l[lang] || l.en)) || ''
-  const entries: Entry[] = (o.blocks || []).flatMap((b): Entry[] => {
+  const entries: Entry[] = (o.blocks || []).filter((b: any) => b.insert !== false).flatMap((b): Entry[] => {
     const variants = (b.variants || []).filter((v) => COMMANDS[v.id]).map((v) => ({ id: v.id, label: lbl(v.label), group: b.group, keywords: (v.keywords || '') + ' ' + (b.keywords || '') + ' ' + lbl(b.label).toLowerCase(), icon: v.icon || b.icon }))
     if (variants.length) return [{ id: b.id, label: lbl(b.label), group: b.group, keywords: b.keywords || '', icon: b.icon, variants }]
     return COMMANDS[b.id] && (b.id !== 'subpage' || o.newPage) ? [{ id: b.id, label: lbl(b.label), group: b.group, keywords: b.keywords || '', icon: b.icon }] : []
@@ -875,6 +964,143 @@ function create(host: HTMLElement, o: Opts) {
     return DecorationSet.create(st.doc, ds)
   } } }))
 
+  // ---- the element in context (ADR 0073) ----
+  function reportContext() {
+    if (!o.onContext) return
+    const ELEMENTS = ELEMENT_NODES
+    const sel: any = editor.state.selection, chain: { node: string; pos: number; attrs: any; id: string | null }[] = []
+    const selected = !!sel.node && ELEMENTS.has(sel.node.type.name)
+    if (selected) chain.push({ node: sel.node.type.name, pos: sel.from, attrs: sel.node.attrs, id: sel.node.attrs.blockId ?? null })
+    const $f = sel.$from
+    for (let d = $f.depth; d >= 1; d--) { const n = $f.node(d); if (ELEMENTS.has(n.type.name)) chain.push({ node: n.type.name, pos: $f.before(d), attrs: n.attrs, id: n.attrs.blockId ?? null }) }
+    const key = JSON.stringify([selected, chain.map((c) => [c.node, c.pos, c.attrs])])
+    if (key === lastCtx) return
+    lastCtx = key
+    o.onContext(chain.length ? { chain, selected } : null)
+  }
+  const DEF_CSS: Record<string, Record<string, (v: any) => [string, string][]>> = {
+    paragraph: { align: (v) => [['--def-paragraph-align', v === 'justify' ? 'justify' : v]] },
+    heading: { align: (v) => [['--def-heading-align', v]] },
+    blockquote: { align: (v) => [['--def-blockquote-align', v]] },
+    image: { size: (v) => ({ small: [['--def-image-max', '240px']], medium: [['--def-image-max', '480px']], large: [['--def-image-max', '720px']], full: [['--def-image-w', '100%']] } as any)[v] || [] },
+    youtube: { size: (v) => ({ small: [['--def-embed-max', '320px']], medium: [['--def-embed-max', '560px']], wide: [['--def-embed-max', '760px']], full: [['--def-embed-max', 'none']] } as any)[v] || [], ratio: (v) => ({ '4-3': [['--def-embed-ratio', '4/3']], '1-1': [['--def-embed-ratio', '1/1']], '16-9': [['--def-embed-ratio', '16/9']] } as any)[v] || [] },
+  }
+  /** The page's defaults for element types, as styles on the content: an element with no value of its own looks like this. */
+  const setDefaults = (d: Record<string, Record<string, any>>) => {
+    const root = editor.view.dom as HTMLElement
+    for (const k of [...root.style]) if (k.startsWith('--def-')) root.style.removeProperty(k)
+    for (const [node, opts] of Object.entries(d || {})) for (const [id, v] of Object.entries(opts || {})) for (const [name, val] of (DEF_CSS[node]?.[id]?.(v) || [])) root.style.setProperty(name, val)
+  }
+
+  const applyWraps = () => editor.view.dispatch(editor.state.tr.setMeta(wrapKey, 1).setMeta('addToHistory', false))
+  const blockPosOf = (id: string): number => { let at = -1; editor.state.doc.descendants((n: any, pos: number) => { if (at < 0 && n.isTextblock && n.attrs.blockId === id) at = pos }); return at }
+  /** Every word of a text block with where it is on screen, relative to the block's text (its padding box inside the border). */
+  const wordsOf = (blockPos: number) => {
+    const dom = editor.view.nodeDOM(blockPos) as HTMLElement | null
+    if (!dom) return null
+    const r = dom.getBoundingClientRect(), cs = getComputedStyle(dom), px = (v: string) => parseFloat(v) || 0
+    const ox = r.left + px(cs.borderLeftWidth) + px(cs.paddingLeft), oy = r.top + px(cs.borderTopWidth) + px(cs.paddingTop)
+    const out: { pos: number; left: number; right: number; top: number; bottom: number }[] = []
+    const walker = document.createTreeWalker(dom, NodeFilter.SHOW_TEXT, { acceptNode: (n) => ((n.parentElement as HTMLElement | null)?.closest('.sticker-gap, .sticker-wrap') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) })
+    let node: Text | null
+    while ((node = walker.nextNode() as Text | null)) {
+      const re = /\S+/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(node.data))) {
+        const range = document.createRange(); range.setStart(node, m.index); range.setEnd(node, m.index + m[0].length)
+        const rect = range.getClientRects()[0]
+        if (!rect) continue
+        let pos = -1
+        try { pos = editor.view.posAtDOM(node, m.index) } catch { continue }
+        out.push({ pos, left: rect.left - ox, right: rect.right - ox, top: rect.top - oy, bottom: rect.bottom - oy })
+      }
+    }
+    return out
+  }
+  /** The part of the line at height `y` that the sticker covers: [from, to] pixels from the text's left edge, or null. */
+  const holeAt = (g: any, y: number): [number, number] | null => {
+    if (y < g.y0 || y > g.y1) return null
+    if (g.shape === 'rect') return [g.x0, g.x1]
+    const cx = (g.x0 + g.x1) / 2, cy = (g.y0 + g.y1) / 2, a = (g.x1 - g.x0) / 2, b = (g.y1 - g.y0) / 2, k = (y - cy) / b
+    if (Math.abs(k) >= 1) return null
+    const dx = a * Math.sqrt(1 - k * k)
+    return [cx - dx, cx + dx]
+  }
+  /** The first line that a sticker covers and that does not yet have its gap: where to put it, and how wide. */
+  const nextGap = (g: any, words: NonNullable<ReturnType<typeof wordsOf>>) => {
+    const lines: (typeof words)[] = []
+    for (const w of [...words].sort((p, q) => p.top - q.top || p.left - q.left)) {
+      const last = lines[lines.length - 1]
+      if (last && Math.abs(last[0].top - w.top) < 3) last.push(w); else lines.push([w])
+    }
+    for (const line of lines) {
+      const hole = holeAt(g, (line[0].top + line[0].bottom) / 2)
+      if (!hole) continue
+      const w = line.find((x) => x.right > hole[0] + 0.5)
+      if (!w || w.left >= hole[1] - 0.5) continue
+      if (spacers.some((s) => s.anchor === g.anchor && s.pos === w.pos)) continue
+      return { pos: w.pos, width: Math.max(1, hole[1] - w.left) }
+    }
+    return null
+  }
+  const settleGaps = () => {
+    if (settling) return
+    settling = true
+    try {
+      spacers = []
+      applyWraps()
+      for (const g of gaps) {
+        for (let i = 0; i < 80; i++) {
+          const at = blockPosOf(g.anchor), words = at >= 0 ? wordsOf(at) : null
+          const next = words && nextGap(g, words)
+          if (!next) break
+          spacers.push({ anchor: g.anchor, pos: next.pos, width: next.width })
+          applyWraps()
+        }
+      }
+    } finally { settling = false }
+  }
+  const settleSoon = () => { cancelAnimationFrame(settleTimer); settleTimer = requestAnimationFrame(() => { if (gaps.length) settleGaps() }) }
+  // text metrics change when a font arrives or the column changes width, with the sticker's numbers the same: the gaps are measured again then
+  const onFonts = () => settleSoon()
+  let lastWidth = 0
+  const widthWatch = new ResizeObserver(() => { const w = editor.view.dom.getBoundingClientRect().width; if (Math.abs(w - lastWidth) > 0.5) { lastWidth = w; settleSoon() } })
+  if (o.stickers) { void document.fonts?.ready.then(onFonts); document.fonts?.addEventListener('loadingdone', onFonts); widthWatch.observe(editor.view.dom) }
+  gapEdit = (tr: any) => { if (settling || !tr.docChanged || (!gaps.length && !spacers.length)) return; spacers = spacers.map((sp) => ({ ...sp, pos: tr.mapping.map(sp.pos) })); settleSoon() }
+
+  if (o.stickers) editor.registerPlugin(new Plugin({ key: wrapKey, props: { decorations: (st) => {
+    const ds: Decoration[] = []
+    for (const w of wraps) {
+      let at = -1
+      st.doc.descendants((n: any, pos: number) => { if (at < 0 && n.isTextblock && n.attrs.blockId === w.anchor) at = pos + 1 })
+      if (at < 0) continue
+      ds.push(Decoration.widget(at, () => {
+        const el = document.createElement('div')
+        el.className = 'sticker-wrap'; el.setAttribute('aria-hidden', 'true'); el.contentEditable = 'false'
+        const f = el.style
+        f.setProperty('float', w.side === 'end' ? 'inline-end' : 'inline-start')
+        f.width = w.width + 'px'; f.height = w.height + 'px'
+        f.setProperty(w.side === 'end' ? 'margin-inline-end' : 'margin-inline-start', Math.max(0, w.inset) + 'px')
+        f.marginBlockStart = Math.max(0, w.top) + 'px'
+        f.setProperty('shape-margin', Math.max(0, w.margin) + 'px')
+        if (w.shape === 'oval') f.setProperty('shape-outside', 'ellipse(50% 50%)')
+        else if (w.shape === 'contour' && w.image) { f.setProperty('shape-outside', 'url("' + String(w.image).replace(/["\\]/g, '') + '")'); f.setProperty('shape-image-threshold', '0.2') }
+        else f.setProperty('shape-outside', 'border-box')
+        return el
+      }, { key: 'w' + JSON.stringify(w), side: -1, ignoreSelection: true, stopEvent: () => true }))
+    }
+    for (const sp of spacers) {
+      if (sp.pos < 0 || sp.pos > st.doc.content.size) continue
+      ds.push(Decoration.widget(sp.pos, () => {
+        const el = document.createElement('span')
+        el.className = 'sticker-gap'; el.setAttribute('aria-hidden', 'true'); el.contentEditable = 'false'
+        el.style.width = Math.round(sp.width) + 'px'
+        return el
+      }, { key: 'g' + sp.pos + ':' + Math.round(sp.width), side: -1, ignoreSelection: true, stopEvent: () => true }))
+    }
+    return DecorationSet.create(st.doc, ds)
+  } } }))
+
   return {
     // Content goes between blocks: onto an empty line (which it replaces), or after the block the place is in.
     insert: (content: Json, pos?: number) => {
@@ -892,7 +1118,7 @@ function create(host: HTMLElement, o: Opts) {
     stickers: () => (editor.state.doc.attrs.stickers || []) as any[],
     setStickers: (list: any[]) => { editor.view.dispatch(editor.state.tr.setDocAttribute('stickers', list)) },
     // The block under a point (any block with an id; one without gets an id now). Above the first block it is the first, below the last the last.
-    blockAt: (x: number, y: number): { id: string } | null => {
+    blockAt: (x: number, y: number): { id: string; at?: number } | null => {
       const v = editor.view, doc = editor.state.doc, r = v.dom.getBoundingClientRect()
       const hit = v.posAtCoords({ left: Math.min(Math.max(x, r.left + 2), r.right - 2), top: Math.min(Math.max(y, r.top + 2), r.bottom - 2) })
       if (!hit) return null
@@ -902,18 +1128,36 @@ function create(host: HTMLElement, o: Opts) {
       for (let d = $p.depth; d >= 1; d--) { const n = $p.node(d); if (BLOCK_TYPES.includes(n.type.name)) cands.push({ pos: $p.before(d), node: n }) }
       const c = cands[0]
       if (!c) return null
-      if (c.node.attrs.blockId) return { id: c.node.attrs.blockId }
+      const at = c.node.isTextblock && !false ? Math.max(0, Math.min(hit.pos - c.pos - 1, c.node.content.size)) : undefined
+      if (c.node.attrs.blockId) return { id: c.node.attrs.blockId, at }
       const id = newBlockId()
       v.dispatch(editor.state.tr.setNodeMarkup(c.pos, undefined, { ...c.node.attrs, blockId: id }).setMeta('addToHistory', false))
-      return { id }
+      return { id, at }
     },
+    // The top of the line a character of a block is on (a sticker pinned to a word is placed from it), or null when it is not shown.
+    lineTop: (id: string, at: number): number | null => {
+      let pos = -1
+      editor.state.doc.descendants((n: any, p: number) => { if (pos < 0 && n.isTextblock && n.attrs.blockId === id) pos = p + 1 + Math.max(0, Math.min(at, n.content.size)) })
+      if (pos < 0) return null
+      try { const c = editor.view.coordsAtPos(pos, 1); return c.bottom - c.top > 0 ? c.top : null } catch { return null }
+    },
+    // Text wraps around a sticker: a float at the start of its block, shaped like the sticker (ADR 0071).
+    setWraps: (list: any[]) => {
+      const next = JSON.stringify(list)
+      if (next === wrapsJson) return
+      wrapsJson = next; wraps = list.filter((w: any) => w.kind !== 'gap'); gaps = list.filter((w: any) => w.kind === 'gap')
+      if (gaps.length || spacers.length) settleGaps()
+      else editor.view.dispatch(editor.state.tr.setMeta(wrapKey, 1).setMeta('addToHistory', false))
+    },
+    setAttrs: (pos: number, patch: Record<string, any>) => { const n = editor.state.doc.nodeAt(pos); if (n) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...n.attrs, ...patch })) },
+    setDefaults,
     refreshComments: () => { editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false).setMeta(cmtKey, 1)) },
     json: () => unwrapUnknown(editor.getJSON()),
     set: (doc: Json) => { silent = true; editor.commands.setContent(wrapUnknown(doc && doc.type === 'doc' ? doc : EMPTY), { emitUpdate: false }); silent = false },
     setEditable: (b: boolean) => { editable = b; editor.setEditable(b); host.classList.toggle('ed-editable', b); paintBar() },
     isEmpty: () => editor.isEmpty,
     focus: (end?: boolean) => (end === false ? editor.commands.focus() : focusNow()),
-    destroy: () => { editor.destroy(); host.replaceChildren() },
+    destroy: () => { widthWatch.disconnect(); document.fonts?.removeEventListener('loadingdone', onFonts); cancelAnimationFrame(settleTimer); editor.destroy(); host.replaceChildren() },
   }
 }
 

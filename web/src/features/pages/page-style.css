@@ -62,3 +62,8 @@ input.page-title:disabled { color:var(--text); opacity:1; }
 .page-icon { box-shadow:0 0 0 1px color-mix(in srgb, var(--text) 14%, transparent); }
 .page-icon { inline-size:40px; block-size:40px; font-size:21px; border-radius:12px; }
 .page-icon .emo-img { inline-size:21px; block-size:21px; }
+
+/* Looking at a narrower size class of the page's stickers from a wide window (ADR 0071). */
+.page-col[data-sticker-preview="medium"] { max-inline-size:min(var(--page-w, 820px), 640px); }
+.page-col[data-sticker-preview="narrow"] { max-inline-size:min(var(--page-w, 820px), 380px); }
+.page-col[data-sticker-preview="wide"] { max-inline-size:var(--page-w, 820px); }

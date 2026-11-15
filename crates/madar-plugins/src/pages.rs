@@ -267,6 +267,8 @@ fn check_settings(v: &Value) -> Result<()> {
             "bg_tile" => int(x, 40, 800),
             "bg_attach" => matches!(x.as_str(), Some("fixed" | "scroll")),
             "bg_dim" => int(x, 0, 80),
+            // what the page sets for every element of a type: {node: {option: value}} (ADR 0073)
+            "elements" => elements_ok(x),
             _ => return Err(Error::invalid(&format!("settings.{k}"), "is not a page setting")),
         };
         if !ok {
@@ -274,6 +276,13 @@ fn check_settings(v: &Value) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// A page's defaults for element types: at most 20 types with at most 20 options each, words as keys, and simple values.
+fn elements_ok(v: &Value) -> bool {
+    let word = |s: &str| !s.is_empty() && s.len() <= 40 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    v.as_object().is_some_and(|o| o.len() <= 20 && o.iter().all(|(k, opts)| word(k) && opts.as_object().is_some_and(|m| m.len() <= 20 && m.iter().all(|(n, x)| word(n)
+        && (x.is_boolean() || x.as_f64().is_some_and(|f| f.is_finite()) || x.as_str().is_some_and(|t| t.chars().count() <= 60 && !t.chars().any(|c| c.is_control())))))))
 }
 
 /// What a page shows, for the references that keep uploaded files alive: its text and its background image.
@@ -414,35 +423,50 @@ fn move_page(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     Ok(view(&d, false))
 }
 
-/// Every checklist item of a document, in order, as `(block id, checked, text)`. The text is the item's first line.
-fn checklist_items(doc: &Value) -> Vec<(Option<String>, bool, String)> {
-    fn go(n: &Value, out: &mut Vec<(Option<String>, bool, String)>) {
-        if n["type"] == "taskItem" {
+/// The kinds of block that are tasks (ADR 0075), from what the blocks declare: `{node: {done, due, priority, notes}}` (the names of the attributes). With no editor, none.
+fn task_nodes(tx: &mut Tx) -> std::collections::BTreeMap<String, Value> {
+    let blocks = tx.call("editor.blocks", json!({})).ok().and_then(|b| b["blocks"].as_array().cloned()).unwrap_or_default();
+    blocks.into_iter().filter(|b| b["task"].is_object()).filter_map(|b| Some((b["node"].as_str()?.to_string(), b["task"].clone()))).collect()
+}
+
+/// One task block of a document: its block id, whether it is done, its title (the first line), and its details.
+struct TaskRow { block: Option<String>, done: bool, text: String, due: Value, priority: Value, notes: Value }
+
+fn task_blocks(doc: &Value, kinds: &std::collections::BTreeMap<String, Value>) -> Vec<TaskRow> {
+    fn go(n: &Value, kinds: &std::collections::BTreeMap<String, Value>, out: &mut Vec<TaskRow>) {
+        if let Some(map) = n["type"].as_str().and_then(|t| kinds.get(t)) {
+            let at = |k: &str| map[k].as_str().map(|a| n["attrs"][a].clone()).unwrap_or(Value::Null);
             let line = richtext::text_of(n).lines().next().unwrap_or("").trim().chars().take(200).collect::<String>();
-            out.push((n["attrs"]["blockId"].as_str().map(String::from), n["attrs"]["checked"] == true, line));
+            let text = |v: Value| if v.as_str().is_some_and(|s| s.is_empty()) { Value::Null } else { v };
+            out.push(TaskRow { block: n["attrs"]["blockId"].as_str().map(String::from), done: at("done") == true, text: line, due: text(at("due")), priority: text(at("priority")), notes: text(at("notes")) });
         }
         for k in n["content"].as_array().into_iter().flatten() {
-            go(k, out);
+            go(k, kinds, out);
         }
     }
     let mut out = vec![];
-    go(doc, &mut out);
+    go(doc, kinds, &mut out);
     out
 }
 
-/// The open checklist items on the pages you can see: your own pages (of one Space, when asked) and the pages of your projects, newest page first.
+/// The open task blocks on the pages you can see: your own pages (of one Space, when asked) and the pages of your projects. Ones with a due date come first, soonest first; the rest follow, newest page first. A checklist is not a task (ADR 0075).
 fn page_tasks(tx: &mut Tx, i: &Value) -> Result<Value> {
     let me = tx.who().subject.clone();
     let want = i.get("space").and_then(|x| x.as_str());
     let limit = i.get("limit").and_then(|l| l.as_u64()).unwrap_or(100) as usize;
+    let kinds = task_nodes(tx);
+    if kinds.is_empty() {
+        return Ok(json!({"items": []}));
+    }
     let mut rows: Vec<(i64, Value)> = vec![];
     let take = |d: &Doc, project: Option<&Value>, rows: &mut Vec<(i64, Value)>| {
         if d.body.get("folder") == Some(&json!(true)) {
             return;
         }
-        for (block, checked, text) in checklist_items(&d.body["body"]) {
-            if !checked && !text.is_empty() {
-                rows.push((d.body["updated_at"].as_i64().unwrap_or(0), json!({"page": d.id, "title": d.body["title"], "icon": d.body["icon"], "block": block, "text": text,
+        for t in task_blocks(&d.body["body"], &kinds) {
+            if !t.done && !t.text.is_empty() {
+                rows.push((d.body["updated_at"].as_i64().unwrap_or(0), json!({"page": d.id, "title": d.body["title"], "icon": d.body["icon"], "block": t.block, "text": t.text,
+                    "due": t.due, "priority": t.priority, "notes": t.notes,
                     "project": project.map(|p| p["id"].clone()).unwrap_or(Value::Null), "project_name": project.map(|p| p["name"].clone()).unwrap_or(Value::Null)})));
             }
         }
@@ -464,25 +488,35 @@ fn page_tasks(tx: &mut Tx, i: &Value) -> Result<Value> {
             take(&d, Some(&p), &mut rows);
         }
     }
-    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    // dated first, soonest first (an overdue one is soonest); then the rest, newest page first
+    rows.sort_by(|a, b| match (a.1["due"].as_str(), b.1["due"].as_str()) {
+        (Some(x), Some(y)) => x.cmp(y).then(b.0.cmp(&a.0)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => b.0.cmp(&a.0),
+    });
     rows.truncate(limit);
     Ok(json!({"items": rows.into_iter().map(|(_, r)| r).collect::<Vec<_>>()}))
 }
 
-/// Tick or untick one checklist item of a page, found by its block id.
+/// Tick or untick one task block of a page, found by its block id.
 fn set_task(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let page = get(tx, &s, text(i, "id"))?;
     let (block, checked) = (text(i, "block").to_string(), i["checked"] == true);
-    fn go(n: &mut Value, block: &str, checked: bool) -> bool {
-        if n["type"] == "taskItem" && n["attrs"]["blockId"] == block {
-            n["attrs"]["checked"] = json!(checked);
-            return true;
+    let kinds = task_nodes(tx);
+    fn go(n: &mut Value, block: &str, checked: bool, kinds: &std::collections::BTreeMap<String, Value>) -> bool {
+        if let Some(done) = n["type"].as_str().and_then(|t| kinds.get(t)).and_then(|m| m["done"].as_str()).map(String::from) {
+            if n["attrs"]["blockId"] == block {
+                n["attrs"][done.as_str()] = json!(checked);
+                return true;
+            }
         }
-        n["content"].as_array_mut().is_some_and(|k| k.iter_mut().any(|c| go(c, block, checked)))
+        // `get_mut`, not an index: indexing a node that has no content would add `content: null` to it
+        n.get_mut("content").and_then(|c| c.as_array_mut()).is_some_and(|k| k.iter_mut().any(|c| go(c, block, checked, kinds)))
     }
     let mut body = page.body["body"].clone();
-    if !go(&mut body, &block, checked) {
+    if !go(&mut body, &block, checked, &kinds) {
         return Err(Error::not_found("task"));
     }
     let mut input = json!({"id": page.id, "body": body});
@@ -642,9 +676,9 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
     add("create", "command", true, &format!("Add a page to {scope}"), json!({"title": title, "body": doc, "parent": nullable, "icon": nullable, "folder": {"type":"boolean"}, "space": {"type":"string","maxLength":60}}), vec!["title"]);
     add("get", "query", false, "One page with its body", json!({"id": id}), vec!["id"]);
     add("list", "query", false, &format!("The tree of {scope}, without bodies; your own pages can be limited to one Space"), if personal { json!({"space": {"type":"string","maxLength":60}}) } else { json!({}) }, vec![]);
-    add("set_task", "command", true, "Tick or untick a checklist item of a page, found by its block id", json!({"id": id, "block": {"type":"string","minLength":1,"maxLength":40}, "checked": {"type":"boolean"}}), vec!["id", "block", "checked"]);
+    add("set_task", "command", true, "Tick or untick a task block of a page, found by its block id", json!({"id": id, "block": {"type":"string","minLength":1,"maxLength":40}, "checked": {"type":"boolean"}}), vec!["id", "block", "checked"]);
     if personal {
-        add("tasks", "query", false, "The open checklist items on your pages (of one Space) and on the pages of your projects", json!({"space": {"type":"string","maxLength":60}, "limit": {"type":"integer","minimum":1,"maximum":300}}), vec![]);
+        add("tasks", "query", false, "The open task blocks on your pages (of one Space) and on the pages of your projects", json!({"space": {"type":"string","maxLength":60}, "limit": {"type":"integer","minimum":1,"maximum":300}}), vec![]);
         add("styles", "query", false, "The page styles you saved", json!({}), vec![]);
         add("style_save", "command", true, "Save a page style under a name (a new one, or replace one of yours)", json!({"id": id, "name": {"type":"string","minLength":1,"maxLength":40}, "settings": {"type":"object"}}), vec!["name", "settings"]);
         add("style_delete", "command", true, "Delete one of your saved page styles", json!({"id": id}), vec!["id"]);

@@ -13,6 +13,7 @@ import { toast } from "../../../ui/overlays";
 import { EmojiGrid } from "../EmojiGrid";
 import type { StickerKind } from "./model";
 import { PACK } from "./pack";
+import { GifTab, useGifProvider } from "./GifTab";
 
 export interface Choice { kind: StickerKind; value: string }
 interface Upload { id: string; name: string; type: string; url: string }
@@ -31,6 +32,7 @@ export function StickerPicker({ x, y, project, onPick, onClose }: { x: number; y
   const qc = useQueryClient();
   const uploads = useQuery({ queryKey: ["files.list", { project: project ?? null }], enabled: canList && (tab === "gifs" || tab === "upload"), staleTime: 15_000,
     queryFn: () => link.call("files.list" as never, { ...(project ? { project } : {}), limit: 100 } as never) as Promise<{ files: Upload[] }> });
+  const provider = useGifProvider();
   const [busy, setBusy] = useState(false);
   const files = uploads.data?.files ?? [];
 
@@ -64,12 +66,19 @@ export function StickerPicker({ x, y, project, onPick, onClose }: { x: number; y
           {tab === "emoji" && <EmojiGrid tall onPick={(e) => onPick({ kind: "emoji", value: e })} />}
           {tab === "stickers" && (
             <>
-              <h4 className="m-0 px-1 pb-1.5 text-xs font-semibold text-muted">{t("stickerPacks")}</h4>
+              {provider?.sticker_search && <GifTab provider={provider} variant="stickers" onPick={(g) => onPick({ kind: "gif", value: g.url })} />}
+              <h4 className="m-0 px-1 pb-1.5 pt-2 text-xs font-semibold text-muted">{t("stickerPacks")}</h4>
               <div className="grid grid-cols-4 gap-1.5">{PACK.map((p) => (
                 <BaseButton key={p.id} aria-label={p.label} onPress={() => onPick({ kind: "pack", value: p.id })} className="grid aspect-square place-items-center rounded-md p-2 hoverable">{p.draw()}</BaseButton>))}</div>
             </>
           )}
-          {tab === "gifs" && <>{drop}{grid(gifs, t("noGifs"))}</>}
+          {tab === "gifs" && (
+            <>
+              {provider && <GifTab provider={provider} onPick={(g) => onPick({ kind: "gif", value: g.url })} />}
+              {(gifs.length > 0 || !provider) && <h4 className="m-0 px-1 pb-1.5 pt-2 text-xs font-semibold text-muted">{t("uploadedHere")}</h4>}
+              {drop}{(gifs.length > 0 || !provider) && grid(gifs, t("noGifs"))}
+            </>
+          )}
           {tab === "upload" && <>{drop}<h4 className="m-0 px-1 pb-1.5 text-xs font-semibold text-muted">{t("uploadedHere")}</h4>{grid(files, t("noUploads"))}</>}
         </div>
       </Tabs>

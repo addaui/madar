@@ -25,3 +25,16 @@ nuah-metric-prometheus = { git = "https://github.com/addaui/nuah-plugins", tag =
 nuah-emoji = { path = "../nuah-plugins/crates/nuah-emoji" }
 # not released yet: becomes a tag of nuah-plugins when `@nuah/link-analyzer` is released (ADR 0068)
 nuah-link-analyzer = { path = "../nuah-plugins/crates/nuah-link-analyzer" }
+# not released yet: becomes a tag of nuah-plugins when `@nuah/gifs` and `@nuah/gifs-giphy` are released (ADR 0072)
+nuah-gifs = { path = "../nuah-plugins/crates/nuah-gifs" }
+nuah-gifs-giphy = { path = "../nuah-plugins/crates/nuah-gifs-giphy" }
+
+# Not released yet: the manifest's `connect` (ADR 0072) is in the local Nuah, on the branch `plugin-connect-origins`. Remove this when Nuah is tagged
+# and the dependencies above move to that tag.
+[patch."https://github.com/addaui/nuah"]
+nuah-kernel = { path = "../nuah/crates/nuah-kernel" }
+nuah-adapters = { path = "../nuah/crates/nuah-adapters" }
+nuah-http = { path = "../nuah/crates/nuah-http" }
+nuah-shell = { path = "../nuah/crates/nuah-shell" }
+nuah-console = { path = "../nuah/crates/nuah-console" }
+nuah-setup-web = { path = "../nuah/crates/nuah-setup-web" }

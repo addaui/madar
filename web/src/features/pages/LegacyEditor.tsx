@@ -11,7 +11,11 @@ import "./legacy-editor.css";
 export interface EditorJson { type: "doc"; content?: unknown[] }
 export interface EditorHandle { json(): EditorJson; set(doc: EditorJson): void; setEditable(on: boolean): void; focus(atEnd?: boolean): void; destroy(): void; isEmpty(): boolean; refreshComments?(): void; insert(content: unknown, pos?: number): void; replaceUrl(url: string, content: unknown): void;
   /** The page's stickers (ADR 0071), kept in the document's attributes; `blockAt` is the block under a point (it gets an id if it had none). */
-  stickers(): unknown[]; setStickers(list: unknown[]): void; blockAt(x: number, y: number): { id: string } | null }
+  stickers(): unknown[]; setStickers(list: unknown[]): void; blockAt(x: number, y: number): { id: string; at?: number } | null;
+  /** The top of the line a character of a block is on (for a sticker pinned to a word), and the floats that make text wrap around stickers. */
+  lineTop(id: string, at: number): number | null; setWraps(list: unknown[]): void;
+  /** Writes attributes of the block at a position, and sets the page's defaults for element types (ADR 0073). */
+  setAttrs(pos: number, patch: Record<string, unknown>): void; setDefaults(defaults: Record<string, Record<string, unknown>>): void }
 /** A point on screen, for a popover to open at. */
 export interface Spot { left: number; top: number; bottom: number }
 interface EditorOptions {
@@ -29,6 +33,8 @@ interface EditorOptions {
   newPage?: () => Promise<{ id: string; title: string; icon?: string | null } | null>;
   onFiles?: (files: File[], pos: number) => void;
   onPasteUrl?: (url: string, at: Spot) => void;
+  /** The element the cursor is in or that is selected, on every change (ADR 0073). */
+  onContext?: (ctx: { chain: { node: string; pos: number; attrs: Record<string, unknown>; id: string | null }[]; selected: boolean } | null) => void;
   stickers?: {
     onList: (list: unknown[]) => void;
     onLayers: (l: { back: HTMLElement; front: HTMLElement }) => void;
@@ -43,7 +49,8 @@ export function loadEditorBundle(): Promise<void> {
   if (window.MadarEditor) return Promise.resolve();
   loading ??= new Promise((resolve, reject) => {
     const s = document.createElement("script");
-    s.src = import.meta.env.BASE_URL + "vendor-editor.js";
+    // the dev server may hand out a cached bundle; a built Face is revalidated by the Core (it marks Faces no-cache)
+    s.src = import.meta.env.BASE_URL + "vendor-editor.js" + (import.meta.env.DEV ? "?v=" + Date.now() : "");
     s.onload = () => resolve();
     s.onerror = () => reject(new Error("The editor could not be loaded."));
     document.head.append(s);
@@ -79,19 +86,20 @@ export interface LegacyEditorProps {
   commentsVersion?: number;
   /** Stickers (ADR 0071): what the editor reports and asks (see `useStickers`). */
   stickers?: EditorOptions["stickers"];
+  onContext?: EditorOptions["onContext"];
   /** Changes when the document was replaced from outside (a fresh copy after a conflict, a restored version). */
   version: number;
 }
 
 /** Mounts the editor into a div and keeps it in step: made once per page, handed a new document only when `version` changes. */
-export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChange, onReady, onOpenRef, pickRef, preview, turnIntoPage, newPage, project, comments, commentsVersion, stickers, version }: LegacyEditorProps) {
+export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChange, onReady, onOpenRef, pickRef, preview, turnIntoPage, newPage, project, comments, commentsVersion, stickers, onContext, version }: LegacyEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<EditorHandle | null>(null);
   const images = useImageInsert({ project, editor: () => api.current });
   const imagesNow = useRef(images);
   useEffect(() => { imagesNow.current = images; });
-  const latest = useRef({ onChange, onOpenRef });
-  useEffect(() => { latest.current = { onChange, onOpenRef }; });
+  const latest = useRef({ onChange, onOpenRef, onContext });
+  useEffect(() => { latest.current = { onChange, onOpenRef, onContext }; });
 
   useEffect(() => {
     let dead = false;
@@ -108,7 +116,7 @@ export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChang
         pickImage: images.pickImage && ((at) => imagesNow.current.pickImage!(at)),
         onFiles: images.onFiles && ((f, pos) => imagesNow.current.onFiles?.(f, pos)),
         onPasteUrl: images.onPasteUrl && ((u, at) => imagesNow.current.onPasteUrl?.(u, at)),
-        comments, stickers,
+        comments, stickers, onContext: (c) => latest.current.onContext?.(c),
       });
       onReady?.(api.current);
     });

@@ -6,6 +6,8 @@ export interface PageSettings {
   pattern?: "none" | "ruled" | "grid" | "dots"; pattern_color?: string; margin_line?: string; block_rule?: "none" | "line" | "dashed" | "dotted"; flavor?: "terminal";
   bg_image?: string; bg_fit?: "cover" | "contain" | "scale" | "tile"; bg_scale?: number; bg_tile?: number; bg_attach?: "fixed" | "scroll"; bg_dim?: number;
   bg_art?: "leaves"; bg_art_color?: string;
+  /** What the page sets for every element of a type: {image: {size: "large"}} (ADR 0073). */
+  elements?: Record<string, Record<string, string | number | boolean>>;
   sheet_art?: "autumn"; sheet_image?: string; sheet_corner?: "top-right" | "top-left" | "bottom-right" | "bottom-left"; sheet_size?: number; sheet_mirror?: boolean;
 }
 

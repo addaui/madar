@@ -10,6 +10,7 @@ import { link } from "../../api/link";
 import { askRef, toast } from "../../ui/overlays";
 import { LegacyEditor, type EditorHandle, type EditorJson } from "./LegacyEditor";
 import { useStickers } from "./stickers/useStickers";
+import { elementStore, type ElementContext } from "./element/store";
 import { saverFor, useSaveState } from "./pageSaver";
 import { useBlockComments } from "./useBlockComments";
 import { inputOf, keyOf, opOf, type PageScope } from "./scope";
@@ -18,6 +19,9 @@ import type { PageSettings } from "./style/settings";
 import { useAppScheme } from "./style/useAppScheme";
 import "./page-style.css";
 
+
+/** A document as text with every object's keys in order, so two copies that differ only in key order (the Core sorts them) compare equal. */
+const canon = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as object).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
 
 /** The sheet of one saved page: icon, title and editor. Keyed by page id, so another page starts clean. */
 export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: PageScope; onWords: (n: number) => void; onSave: (s: string) => void }) {
@@ -46,6 +50,8 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
     if (page.rev === seen.current) return;
     seen.current = page.rev;
     if (dirty.current || saver.busy) return;
+    // a copy that is what the editor already shows (our own save coming back) changes nothing, and must not move the cursor
+    if (canon(page.body) === canon(latest.current)) { setTitle(page.title); return; }
     setTitle(page.title); setDoc(page.body as EditorJson); latest.current = page.body as EditorJson; setVersion((v) => v + 1);
   }, [page, saver]);
   useEffect(() => { const f = () => { dirty.current = false; toast(t("pageChanged")); }; saver.conflicts.add(f); return () => { saver.conflicts.delete(f); }; }, [saver, t]);
@@ -59,6 +65,10 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
     const body = sheet.current?.querySelector<HTMLElement>(".ed-body");
     paintPage(root.current, sheet.current, [titlebar.current, body].filter((x): x is HTMLElement => !!x), page.settings as PageSettings);
   }, [page.settings, ready, scheme]);
+
+  // the page's defaults for element types reach the editor, which styles elements without a value of their own from them (ADR 0073)
+  useEffect(() => { handle.current?.setDefaults(((page.settings ?? {}) as PageSettings).elements ?? {}); }, [page.settings, ready]);
+  useEffect(() => () => { elementStore.set({ ctx: null, api: null, pick: 0 }); }, []);
 
   const countWords = (d: EditorJson) => { const txt = window.MadarEditor ? window.MadarEditor.text(d) : ""; onWords((txt.match(/[\p{L}\p{N}]+/gu) ?? []).length); };
   const onChange = (d: EditorJson) => {
@@ -84,7 +94,8 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
               className="min-w-0 flex-1" inputClassName="page-title py-1 text-[32px] font-bold leading-tight tracking-tight text-[var(--page-fg,var(--text))]" />
           </div>
           <LegacyEditor doc={doc} version={version} editable lang={lang} {...comments.editor} blocks={blocks.blocks} placeholder={t("writeHere")} onChange={onChange}
-            onReady={(h) => { handle.current = h; countWords(latest.current); setReady((r) => r + 1); }} stickers={stickers.options}
+            onReady={(h) => { handle.current = h; elementStore.set({ api: { setAttrs: (pos, patch) => h.setAttrs(pos, patch) } }); countWords(latest.current); setReady((r) => r + 1); }} stickers={stickers.options}
+            onContext={(c) => elementStore.set({ ctx: c as ElementContext | null, pick: 0 })}
             onOpenRef={(kind, rid) => { location.hash = kind === "pages.page" ? (scope.project ? `#/p/${scope.project}?tab=knowledge&page=${rid}` : `#/pages/${rid}`) : `#/today`; }}
             pickRef={askRef}
             preview={hasPreviews ? (url) => link.call((hasAnalyzer ? "links.analyze" : "previews.get") as never, { url } as never).catch(() => null) : undefined}

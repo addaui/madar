@@ -799,8 +799,11 @@ export interface PagesTasksOutput {
 items: {
 block: string
 checked?: boolean
+due?: (string | null)
 icon?: (string | null)
+notes?: (string | null)
 page: string
+priority?: (string | null)
 project?: (string | null)
 project_name?: (string | null)
 text: string

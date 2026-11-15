@@ -157,7 +157,7 @@ pub fn pages() -> Value {
 pub fn page_tasks() -> Value {
     obj(
         &["items"],
-        json!({"items": list(obj(&["page", "block", "text"], json!({"page": s(), "title": s(), "icon": nullable(STR), "block": s(), "text": s(), "project": nullable(STR), "project_name": nullable(STR), "checked": boolean()})))}),
+        json!({"items": list(obj(&["page", "block", "text"], json!({"page": s(), "title": s(), "icon": nullable(STR), "block": s(), "text": s(), "project": nullable(STR), "project_name": nullable(STR), "checked": boolean(), "due": nullable(STR), "priority": nullable(STR), "notes": nullable(STR)})))}),
     )
 }
 

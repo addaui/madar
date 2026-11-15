@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 import { link } from "../../api/link";
 import { useDescribe } from "../../api/session";
 import type { Page } from "../../api/types";
@@ -12,8 +12,8 @@ import { Segmented } from "../../ui/Segmented";
 import { Select } from "../../ui/Select";
 import { Slider } from "../../ui/Slider";
 import { Window } from "../dialogs/Dialog";
-import { Icon } from "../../ui/Icon";
 import { askConfirm, askImage, askText, toast } from "../../ui/overlays";
+import { Opt, Section } from "./OptionRow";
 import { saverFor } from "./pageSaver";
 import { keyOf, type PageScope } from "./scope";
 import { autumnImage } from "./style/art";
@@ -180,18 +180,4 @@ function MoreStyles({ shown, onClose, writer, hasStyles, onBuiltin, onSaved, onS
         {writer && hasStyles && <div className="mt-4 flex justify-end"><Button icon="plus" onPress={async () => { await onSave(); await load(); }}>{t("saveStyle")}</Button></div>}
     </Window>
   );
-}
-
-function Opt({ icon, label, set, onRevert, writer, revert, children }: { icon: string; label: string; set: boolean; onRevert: () => void; writer: boolean; revert: string; children: ReactNode }) {
-  return (
-    <div className="grid min-h-[38px] grid-cols-[minmax(0,1fr)_auto_26px] items-center gap-2 rounded-sm bg-sunken ps-[11px] pe-1">
-      <div className="flex min-w-0 items-center gap-2 text-[13px] text-muted"><Icon name={icon} className="size-[15px] shrink-0" /><span className="truncate">{label}</span></div>
-      <div className="flex items-center justify-end gap-2">{children}</div>
-      <span className="grid place-items-center">{writer && set && <IconButton icon="undo" label={revert} size="sm" className="size-6" onPress={onRevert} />}</span>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="mb-4"><h3 className="m-0 mb-1.5 text-[13px] font-semibold text-muted">{title}</h3><div className="grid gap-1.5">{children}</div></section>;
 }

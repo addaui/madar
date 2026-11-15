@@ -6,5 +6,5 @@ import { PACK } from "./pack";
 export function StickerArt({ s, onSize }: { s: Pick<Sticker, "kind" | "value">; onSize?: (aspect: number) => void }) {
   if (s.kind === "emoji") return <span className="sticker-emoji"><Emo ch={s.value} /></span>;
   if (s.kind === "pack") return <>{PACK.find((p) => p.id === s.value)?.draw() ?? null}</>;
-  return <img src={s.value} alt="" draggable={false} className="size-full object-contain" onLoad={(e) => { const i = e.currentTarget; if (onSize && i.naturalWidth) onSize(i.naturalHeight / i.naturalWidth); }} />;
+  return <img src={s.value} alt="" draggable={false} referrerPolicy="no-referrer" className="size-full object-contain" onLoad={(e) => { const i = e.currentTarget; if (onSize && i.naturalWidth) onSize(i.naturalHeight / i.naturalWidth); }} />;
 }
