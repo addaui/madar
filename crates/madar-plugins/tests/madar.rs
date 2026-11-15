@@ -1874,3 +1874,25 @@ fn the_declared_blocks_match_the_golden_file_the_editor_tests_read() {
     }
     assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), got, "run `UPDATE_FIXTURES=1 cargo test` to regenerate fixtures/editor-blocks.json");
 }
+
+/// Every event the Core can announce, written to `fixtures/events.json`; the Face's table of which reads each event makes stale is tested against it,
+/// so an event added by a plugin cannot be forgotten there. Regenerate with `UPDATE_FIXTURES=1 cargo test`.
+#[test]
+fn the_declared_events_match_the_golden_file_the_face_tests_read() {
+    let a = app();
+    let d = a.core.describe(&who("alice"));
+    let mut kinds: Vec<String> = match &d["events"] {
+        Value::Array(l) => l.iter().filter_map(|e| e.as_str().or_else(|| e["kind"].as_str()).map(String::from)).collect(),
+        Value::Object(m) => m.keys().cloned().collect(),
+        other => panic!("describe has no events list: {other}"),
+    };
+    kinds.sort();
+    kinds.dedup();
+    assert!(kinds.len() > 10, "{kinds:?}");
+    let got = serde_json::to_string_pretty(&json!({"about": "Written by the Rust test `the_declared_events_match_the_golden_file_the_face_tests_read`; do not edit by hand.", "events": kinds})).unwrap() + "\n";
+    let path = fixture_path("events.json");
+    if std::env::var("UPDATE_FIXTURES").is_ok() {
+        std::fs::write(&path, &got).unwrap();
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), got, "run `UPDATE_FIXTURES=1 cargo test` to regenerate fixtures/events.json");
+}

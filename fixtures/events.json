@@ -1,0 +1,31 @@
+{
+  "about": "Written by the Rust test `the_declared_events_match_the_golden_file_the_face_tests_read`; do not edit by hand.",
+  "events": [
+    "appearance.changed",
+    "discussion.added",
+    "discussion.removed",
+    "inbox.received",
+    "pages.created",
+    "pages.moved",
+    "pages.removed",
+    "pages.style.removed",
+    "pages.style.saved",
+    "pages.updated",
+    "prefs.changed",
+    "projects.created",
+    "projects.deleted",
+    "projects.shared",
+    "projects.unshared",
+    "projects.updated",
+    "tasks.assigned",
+    "tasks.completed",
+    "tasks.created",
+    "tasks.label_created",
+    "tasks.label_removed",
+    "tasks.moved",
+    "tasks.recurred",
+    "tasks.removed",
+    "tasks.updated",
+    "workspaces.changed"
+  ]
+}
