@@ -31,7 +31,7 @@ export function StickerPicker({ x, y, project, onPick, onClose }: { x: number; y
   const canList = useHasOp("files.list"), canUpload = useHasOp("files.upload");
   const qc = useQueryClient();
   const uploads = useQuery({ queryKey: ["files.list", { project: project ?? null }], enabled: canList && (tab === "gifs" || tab === "upload"), staleTime: 15_000,
-    queryFn: () => link.call("files.list" as never, { ...(project ? { project } : {}), limit: 100 } as never) as Promise<{ files: Upload[] }> });
+    queryFn: () => link.call("files.list", { ...(project ? { project } : {}), limit: 100 }) as Promise<{ files: Upload[] }> });
   const provider = useGifProvider();
   const [busy, setBusy] = useState(false);
   const files = uploads.data?.files ?? [];

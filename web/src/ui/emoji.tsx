@@ -17,7 +17,7 @@ const emojiCode = (ch: string) => Array.from(ch).map((c) => c.codePointAt(0)!.to
  */
 export function EmojiProvider({ children }: { children: ReactNode }) {
   const prefs = usePrefs();
-  const sets = useQuery({ queryKey: ["emoji.sets", {}], queryFn: () => link.call("emoji.sets" as never, {} as never) as Promise<{ sets: EmojiSet[] }>, staleTime: Infinity });
+  const sets = useQuery({ queryKey: ["emoji.sets", {}], queryFn: () => link.call("emoji.sets", {}) as Promise<{ sets: EmojiSet[] }>, staleTime: Infinity });
   const id = prefs["emoji.set"] ?? "system";
   const set = sets.data?.sets.find((x) => x.id === id);
   const url = set?.kind === "images" && set.url ? set.url : null;
@@ -27,7 +27,7 @@ export function EmojiProvider({ children }: { children: ReactNode }) {
     let face: FontFace | null = null, gone = false;
     const apply = (f: FontFace) => { face = f; document.fonts.add(f); return f.load().then(() => { if (!gone) root.setProperty("--emoji-first", '"MadarEmoji"'); }); };
     if (set?.kind === "font" && set.asset) {
-      link.call("emoji.asset" as never, { id: set.asset } as never).then((a) => {
+      link.call("emoji.asset", { id: set.asset } as never).then((a) => {
         const bin = atob((a as { data: string }).data), buf = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
         return gone ? undefined : apply(new FontFace("MadarEmoji", buf.buffer, { unicodeRange: EMOJI_RANGE }));
@@ -43,7 +43,7 @@ export function EmojiProvider({ children }: { children: ReactNode }) {
 
 /** The ids of the sets whose font this device does not have: choosing one would change nothing, so the preferences say so instead of failing silently. */
 export function useUnavailableEmojiSets(): ReadonlySet<string> {
-  const sets = useQuery({ queryKey: ["emoji.sets", {}], queryFn: () => link.call("emoji.sets" as never, {} as never) as Promise<{ sets: EmojiSet[] }>, staleTime: Infinity });
+  const sets = useQuery({ queryKey: ["emoji.sets", {}], queryFn: () => link.call("emoji.sets", {}) as Promise<{ sets: EmojiSet[] }>, staleTime: Infinity });
   const gone = useQuery({
     queryKey: ["emoji.unavailable", sets.data?.sets.map((x) => x.id)], enabled: !!sets.data, staleTime: Infinity,
     queryFn: async () => {

@@ -14,7 +14,7 @@ const PAGE = 24;
 export function useGifProvider(): Descriptor | null {
   const has = useHasOp("gifs.provider");
   const q = useQuery({ queryKey: ["gifs.provider"], enabled: has, staleTime: 3_600_000, retry: false,
-    queryFn: () => link.call("gifs.provider" as never, {} as never) as Promise<Descriptor> });
+    queryFn: () => link.call("gifs.provider", {}) as Promise<Descriptor> });
   return q.data?.configured ? q.data : null;
 }
 

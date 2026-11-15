@@ -1896,3 +1896,33 @@ fn the_declared_events_match_the_golden_file_the_face_tests_read() {
     }
     assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), got, "run `UPDATE_FIXTURES=1 cargo test` to regenerate fixtures/events.json");
 }
+
+/// The Face's typed calls come from `web/contract/describe.json`. It is written from a profile with every optional plugin on, not from whichever instance the
+/// author happened to run, so an operation of an optional plugin (link analysis, GIFs, previews) is typed too. Regenerate with `UPDATE_FIXTURES=1 cargo test`
+/// and then `bun run contract` in `web/`.
+#[test]
+fn the_face_contract_snapshot_is_made_from_a_profile_with_every_plugin_on() {
+    let mut p = profile_test(&[("@nuah/gifs-giphy", json!({"api_key": "abcdefgh12345678"}))]);
+    // the password sign-in has the most operations (accounts); an admin sees all of them
+    p.enabled.retain(|e| e != "@nuah/auth-local");
+    p.enabled.push("@nuah/auth-password".into());
+    p.settings.insert("@nuah/auth-password".into(), json!({"accounts": []}));
+    for id in ["@nuah/net-public", "@nuah/link-analyzer", "@madar/previews", "@nuah/gifs", "@nuah/gifs-giphy"] {
+        p.enabled.push(id.into());
+    }
+    p.grants.insert("@nuah/link-analyzer".into(), vec!["net".into()]);
+    p.grants.insert("@madar/previews".into(), vec!["net".into()]);
+    let clock = FixedClock::at(1_700_000_000_000);
+    let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|e| panic!("{e:#?}"));
+    let d = core.describe(&Identity::new("root", "root", &["admin"]));
+    let ops = d["operations"].as_object().unwrap();
+    for must in ["auth.sign_in", "auth.account.create", "links.analyze", "links.fetch", "gifs.provider", "pages.tasks", "pages.set_task", "files.upload", "editor.blocks"] {
+        assert!(ops.contains_key(must), "{must} is missing from the snapshot");
+    }
+    let got = serde_json::to_string_pretty(&json!({"contract": d["contract"], "operations": d["operations"]})).unwrap() + "\n";
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/contract/describe.json");
+    if std::env::var("UPDATE_FIXTURES").is_ok() {
+        std::fs::write(&path, &got).unwrap();
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), got, "run `UPDATE_FIXTURES=1 cargo test` and `bun run contract` in web/");
+}

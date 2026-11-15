@@ -36,7 +36,7 @@ export function EmojiGrid({ onPick, tall = false }: { onPick: (emoji: string) =>
   const { t, lang } = useI18n();
   const [q, setQ] = useState("");
   const deferred = useDeferredValue(q.trim());
-  const cat = useQuery({ queryKey: ["emoji.catalog", { lang }], queryFn: () => link.call("emoji.catalog" as never, { lang } as never) as Promise<Catalog>, staleTime: Infinity, retry: false });
+  const cat = useQuery({ queryKey: ["emoji.catalog", { lang }], queryFn: () => link.call("emoji.catalog", { lang }) as Promise<Catalog>, staleTime: Infinity, retry: false });
   const data: Catalog = cat.data ?? { groups: [{ key: "all", name: "" }], items: FALLBACK.map((e) => [e, "", "", 0] as Item) };
   const typed = /^[^\p{L}\p{N}\s]/u.test(deferred) ? firstEmoji(deferred) : "";
   const found = deferred ? searchEmoji(data.items, deferred).slice(0, 120) : [];
