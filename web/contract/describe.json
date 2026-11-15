@@ -1,5 +1,5 @@
 {
-  "contract": "5eaaff9e706cfba7",
+  "contract": "90d38e41a99f769c",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -4272,6 +4272,10 @@
             "minLength": 1,
             "type": "string"
           },
+          "space": {
+            "description": "The Space to start it in; yours when absent",
+            "type": "string"
+          },
           "statuses": {
             "items": {
               "additionalProperties": false,
@@ -4364,6 +4368,9 @@
           },
           "rev": {
             "type": "integer"
+          },
+          "space": {
+            "type": "string"
           },
           "statuses": {
             "items": {
@@ -4502,6 +4509,9 @@
           "rev": {
             "type": "integer"
           },
+          "space": {
+            "type": "string"
+          },
           "statuses": {
             "items": {
               "properties": {
@@ -4637,6 +4647,9 @@
                 "rev": {
                   "type": "integer"
                 },
+                "space": {
+                  "type": "string"
+                },
                 "statuses": {
                   "items": {
                     "properties": {
@@ -4711,6 +4724,9 @@
                 },
                 "subject": {
                   "type": "string"
+                },
+                "via": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -4731,6 +4747,126 @@
       "plugin": "@madar/projects",
       "public": false,
       "reasons": {},
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
+    },
+    "projects.move": {
+      "allowed": true,
+      "description": "Move a project to another Space (or to your own, `default`)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "space": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "space"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "attributes": {
+            "items": {
+              "properties": {
+                "choices": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "can": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "level": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "space": {
+            "type": "string"
+          },
+          "statuses": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "rev",
+          "name",
+          "statuses",
+          "level"
+        ],
+        "type": "object"
+      },
+      "permission": "projects.manage",
+      "plugin": "@madar/projects",
+      "public": false,
+      "reasons": {
+        "projects.move_denied": "Moving needs the admin role in the Space it leaves and in the one it joins"
+      },
       "resource": {
         "id": "project",
         "type": "projects.project"
@@ -4978,6 +5114,9 @@
           "rev": {
             "type": "integer"
           },
+          "space": {
+            "type": "string"
+          },
           "statuses": {
             "items": {
               "properties": {
@@ -5196,6 +5335,373 @@
       "public": false,
       "reasons": {},
       "resource": null
+    },
+    "spaces.create": {
+      "allowed": true,
+      "description": "Start a Space; you become its admin",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "builtin": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "builtin",
+          "role"
+        ],
+        "type": "object"
+      },
+      "permission": "spaces.create",
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {
+        "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
+        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.too_many": "You have reached the number of Spaces one person may create"
+      },
+      "resource": null
+    },
+    "spaces.delete": {
+      "allowed": true,
+      "description": "Delete a Space; it must hold no project",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "space": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "space"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": "spaces.manage",
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {
+        "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
+        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.too_many": "You have reached the number of Spaces one person may create"
+      },
+      "resource": {
+        "id": "space",
+        "type": "spaces.space"
+      }
+    },
+    "spaces.leave": {
+      "allowed": true,
+      "description": "Leave a Space",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "space": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "space"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": "spaces.read",
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {
+        "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
+        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.too_many": "You have reached the number of Spaces one person may create"
+      },
+      "resource": {
+        "id": "space",
+        "type": "spaces.space"
+      }
+    },
+    "spaces.list": {
+      "allowed": true,
+      "description": "Your Spaces: your own first, then the ones you are in, with your role",
+      "input": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "spaces": {
+            "items": {
+              "properties": {
+                "builtin": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "builtin",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "spaces"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "spaces.members": {
+      "allowed": true,
+      "description": "Who is in a Space, and their role",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "space": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "space"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "members": {
+            "items": {
+              "properties": {
+                "display": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "subject",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "type": "object"
+      },
+      "permission": "spaces.read",
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {},
+      "resource": {
+        "id": "space",
+        "type": "spaces.space"
+      }
+    },
+    "spaces.rename": {
+      "allowed": true,
+      "description": "Rename a Space",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "type": "string"
+          },
+          "space": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "space",
+          "name"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "builtin": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "builtin",
+          "role"
+        ],
+        "type": "object"
+      },
+      "permission": "spaces.manage",
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {},
+      "resource": {
+        "id": "space",
+        "type": "spaces.space"
+      }
+    },
+    "spaces.share": {
+      "allowed": true,
+      "description": "Add someone to a Space, or change their role",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The name the person signs in with",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "member",
+              "viewer"
+            ]
+          },
+          "space": {
+            "type": "string"
+          },
+          "subject": {
+            "description": "Their stable id, when you already have it",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "space",
+          "role"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": "spaces.manage",
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {
+        "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
+        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.too_many": "You have reached the number of Spaces one person may create"
+      },
+      "resource": {
+        "id": "space",
+        "type": "spaces.space"
+      }
+    },
+    "spaces.unshare": {
+      "allowed": true,
+      "description": "Take someone out of a Space",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "space": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "space",
+          "subject"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": "spaces.manage",
+      "plugin": "@madar/spaces",
+      "public": false,
+      "reasons": {
+        "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
+        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.not_empty": "Move its projects elsewhere first",
+        "spaces.too_many": "You have reached the number of Spaces one person may create"
+      },
+      "resource": {
+        "id": "space",
+        "type": "spaces.space"
+      }
     },
     "tasks.create": {
       "allowed": true,
@@ -7077,189 +7583,6 @@
         "id": "project",
         "type": "projects.project"
       }
-    },
-    "workspaces.create": {
-      "allowed": true,
-      "description": "Add a workspace of your own",
-      "input": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "maxLength": 60,
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "type": "object"
-      },
-      "kind": "command",
-      "output": {
-        "required": [
-          "id",
-          "name"
-        ],
-        "type": "object"
-      },
-      "permission": null,
-      "plugin": "@madar/workspaces",
-      "public": false,
-      "reasons": {},
-      "resource": null
-    },
-    "workspaces.delete": {
-      "allowed": true,
-      "description": "Delete one of your workspaces; it must hold no project",
-      "input": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "type": "object"
-      },
-      "kind": "command",
-      "output": {
-        "type": "object"
-      },
-      "permission": null,
-      "plugin": "@madar/workspaces",
-      "public": false,
-      "reasons": {
-        "workspaces.not_empty": "Move its projects elsewhere first"
-      },
-      "resource": null
-    },
-    "workspaces.list": {
-      "allowed": true,
-      "description": "Your workspaces (the built-in default first) and where each project you see is placed",
-      "input": {
-        "additionalProperties": false,
-        "type": "object"
-      },
-      "kind": "query",
-      "output": {
-        "properties": {
-          "placements": {
-            "items": {
-              "properties": {
-                "project": {
-                  "type": "string"
-                },
-                "workspace": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "project",
-                "workspace"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "workspaces": {
-            "items": {
-              "properties": {
-                "builtin": {
-                  "type": "boolean"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "workspaces",
-          "placements"
-        ],
-        "type": "object"
-      },
-      "permission": null,
-      "plugin": "@madar/workspaces",
-      "public": false,
-      "reasons": {},
-      "resource": null
-    },
-    "workspaces.place": {
-      "allowed": true,
-      "description": "Put a project you can see into one of your workspaces (or `default`)",
-      "input": {
-        "additionalProperties": false,
-        "properties": {
-          "project": {
-            "type": "string"
-          },
-          "workspace": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "project",
-          "workspace"
-        ],
-        "type": "object"
-      },
-      "kind": "command",
-      "output": {
-        "type": "object"
-      },
-      "permission": "projects.read",
-      "plugin": "@madar/workspaces",
-      "public": false,
-      "reasons": {},
-      "resource": {
-        "id": "project",
-        "type": "projects.project"
-      }
-    },
-    "workspaces.rename": {
-      "allowed": true,
-      "description": "Rename one of your workspaces",
-      "input": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "maxLength": 60,
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name"
-        ],
-        "type": "object"
-      },
-      "kind": "command",
-      "output": {
-        "type": "object"
-      },
-      "permission": null,
-      "plugin": "@madar/workspaces",
-      "public": false,
-      "reasons": {},
-      "resource": null
     }
   }
 }

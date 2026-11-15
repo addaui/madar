@@ -68,10 +68,10 @@ impl Plugin for Search {
                 }
             }
             items.retain(|x| kinds.is_empty() || kinds.iter().any(|k| k == text(x, "kind")));
-            // limited to one Space: your own pages carry theirs, a project is where you placed it (the default when you did not)
+            // limited to one Space: your own pages carry theirs, a project is in the Space it was started in or moved to
             if let Some(space) = i.get("space").and_then(|s| s.as_str()) {
-                let places: std::collections::BTreeMap<String, String> = tx.call("workspaces.list", json!({})).ok()
-                    .and_then(|w| w["placements"].as_array().cloned()).unwrap_or_default().iter().map(|p| (text(p, "project").to_string(), text(p, "workspace").to_string())).collect();
+                let places: std::collections::BTreeMap<String, String> = tx.call("projects.list", json!({})).ok()
+                    .and_then(|w| w["projects"].as_array().cloned()).unwrap_or_default().iter().map(|p| (text(p, "id").to_string(), text(p, "space").to_string())).collect();
                 items.retain(|x| match x["space"].as_str() {
                     Some(s) => s == space,
                     None => places.get(text(x, "project")).map(|w| w.as_str()).unwrap_or("default") == space,

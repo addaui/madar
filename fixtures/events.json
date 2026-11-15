@@ -17,6 +17,11 @@
     "projects.shared",
     "projects.unshared",
     "projects.updated",
+    "spaces.created",
+    "spaces.deleted",
+    "spaces.shared",
+    "spaces.unshared",
+    "spaces.updated",
     "tasks.assigned",
     "tasks.completed",
     "tasks.created",
@@ -25,7 +30,6 @@
     "tasks.moved",
     "tasks.recurred",
     "tasks.removed",
-    "tasks.updated",
-    "workspaces.changed"
+    "tasks.updated"
   ]
 }

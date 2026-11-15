@@ -42,7 +42,7 @@ pub fn project() -> Value {
     obj(
         &["id", "rev", "name", "statuses", "level"],
         json!({
-            "id": s(), "rev": int(), "name": s(), "key": nullable(STR), "level": s(), "created_by": s(), "can": strings(),
+            "id": s(), "rev": int(), "name": s(), "key": nullable(STR), "level": s(), "space": s(), "created_by": s(), "can": strings(),
             "statuses": list(obj(&["id", "name"], json!({"id": s(), "name": s()}))),
             "attributes": list(attribute()),
         }),
@@ -54,7 +54,7 @@ pub fn projects() -> Value {
 }
 
 pub fn members() -> Value {
-    obj(&["members"], json!({"members": list(obj(&["subject", "level"], json!({"subject": s(), "display": nullable(STR), "level": s()})))}))
+    obj(&["members"], json!({"members": list(obj(&["subject", "level"], json!({"subject": s(), "display": nullable(STR), "level": s(), "via": s()})))}))
 }
 
 pub fn task() -> Value {
@@ -109,14 +109,16 @@ pub fn labels() -> Value {
     obj(&["labels"], json!({"labels": list(label())}))
 }
 
-pub fn workspaces() -> Value {
-    obj(
-        &["workspaces", "placements"],
-        json!({
-            "workspaces": list(obj(&["id", "name"], json!({"id": s(), "name": s(), "builtin": boolean()}))),
-            "placements": list(obj(&["project", "workspace"], json!({"project": s(), "workspace": s()}))),
-        }),
-    )
+pub fn space() -> Value {
+    obj(&["id", "name", "builtin", "role"], json!({"id": s(), "name": s(), "builtin": boolean(), "role": s()}))
+}
+
+pub fn spaces() -> Value {
+    obj(&["spaces"], json!({"spaces": list(space())}))
+}
+
+pub fn space_members() -> Value {
+    obj(&["members"], json!({"members": list(obj(&["subject", "role"], json!({"subject": s(), "display": nullable(STR), "role": s()})))}))
 }
 
 pub fn inbox() -> Value {

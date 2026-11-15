@@ -842,7 +842,7 @@ fn emoji_sets_come_from_plugins_and_the_choice_is_a_preference() {
 fn your_own_pages_live_in_a_space_and_search_can_stay_in_one() {
     let a = app();
     let al = who("alice");
-    let w = a.ok(&al, "workspaces.create", json!({"name": "Studio"}))["id"].as_str().unwrap().to_string();
+    let w = a.ok(&al, "spaces.create", json!({"name": "Studio"}))["id"].as_str().unwrap().to_string();
     let home = a.ok(&al, "pages.create", json!({"title": "Zebra plan"}));
     let studio = a.ok(&al, "pages.create", json!({"title": "Zebra mural", "space": w}));
     let under = a.ok(&al, "pages.create", json!({"title": "Zebra sketch", "parent": studio["id"], "space": "default"}));
@@ -883,12 +883,12 @@ fn open_task_blocks_on_pages_can_be_listed_and_ticked_and_a_checklist_is_not_a_t
     let hit = all["items"].as_array().unwrap().iter().find(|x| x["text"] == "write notes").unwrap();
     assert_eq!(hit["project_name"], "Home");
     assert_eq!(items(&a.ok(&al, "pages.tasks", json!({"space": "other"}))), Vec::<String>::new(), "a Space with none of them");
-    assert_eq!(items(&a.ok(&al, "pages.tasks", json!({"space": "default"}))), ["book flights", "buy milk", "write notes"], "an unplaced project is in the default Space");
-    let w = a.ok(&al, "workspaces.create", json!({"name": "Studio"}))["id"].as_str().unwrap().to_string();
-    a.ok(&al, "workspaces.place", json!({"project": p, "workspace": w}));
+    assert_eq!(items(&a.ok(&al, "pages.tasks", json!({"space": "default"}))), ["book flights", "buy milk", "write notes"], "a project never moved is in the personal Space");
+    let w = a.ok(&al, "spaces.create", json!({"name": "Studio"}))["id"].as_str().unwrap().to_string();
+    a.ok(&al, "projects.move", json!({"project": p, "space": w}));
     assert_eq!(items(&a.ok(&al, "pages.tasks", json!({"space": w}))), ["write notes"], "the project's pages follow the project");
     assert_eq!(items(&a.ok(&al, "pages.tasks", json!({"space": "default"}))), ["book flights", "buy milk"]);
-    a.ok(&al, "workspaces.place", json!({"project": p, "workspace": "default"}));
+    a.ok(&al, "projects.move", json!({"project": p, "space": "default"}));
     a.ok(&al, "pages.set_task", json!({"id": mine["id"], "block": "b1", "checked": true}));
     a.ok(&al, "knowledge.set_task", json!({"project": p, "id": shared["id"], "block": "c1", "checked": true}));
     assert_eq!(items(&a.ok(&al, "pages.tasks", json!({}))), ["book flights"]);
@@ -1226,47 +1226,133 @@ fn the_timeline_merges_comments_and_history_newest_first_and_pages_through_them(
     assert_eq!(a.err(&who("mallory"), "timeline.feed", json!({"project": p, "target": target})).category, Category::NotFound);
 }
 
-// ---- workspaces (ADR 0023) --------------------------------------------------------------------------------------
+// ---- Spaces (ADR 0049, 0083) ---------------------------------------------------------------------------------------
 
-#[test]
-fn workspaces_group_the_projects_you_see_and_belong_to_you_alone() {
-    let a = app();
-    let (al, bo) = (who("alice"), who("bob"));
-    let p = a.project(&al, "Client work");
-    let q = a.project(&al, "Garden");
-    let work = a.ok(&al, "workspaces.create", json!({"name": "Work"}))["id"].as_str().unwrap().to_string();
-    a.ok(&al, "workspaces.place", json!({"project": p, "workspace": work}));
-    let l = a.ok(&al, "workspaces.list", json!({}));
-    assert_eq!(l["workspaces"][0]["id"], "default");
-    assert_eq!(l["workspaces"].as_array().unwrap().len(), 2);
-    assert_eq!(l["placements"], json!([{"project": p, "workspace": work}]));
-    // the other person's view is theirs: nothing placed, and Alice's workspace is not theirs to use
-    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
-    assert!(a.ok(&bo, "workspaces.list", json!({}))["placements"].as_array().unwrap().is_empty());
-    assert_eq!(a.err(&bo, "workspaces.place", json!({"project": p, "workspace": work})).category, Category::NotFound);
-    // a workspace with projects in it cannot be deleted; emptied, it can
-    assert_eq!(a.err(&al, "workspaces.delete", json!({"id": work})).reason.as_deref(), Some("workspaces.not_empty"));
-    a.ok(&al, "workspaces.place", json!({"project": p, "workspace": "default"}));
-    a.ok(&al, "workspaces.delete", json!({"id": work}));
-    assert_eq!(a.ok(&al, "workspaces.list", json!({}))["workspaces"].as_array().unwrap().len(), 1);
-    // you cannot place a project you cannot see
-    assert_eq!(a.err(&bo, "workspaces.place", json!({"project": q, "workspace": "default"})).category, Category::NotFound);
+fn space_of(a: &App, who: &Identity, name: &str) -> String {
+    a.ok(who, "spaces.create", json!({"name": name}))["id"].as_str().unwrap().to_string()
 }
 
 #[test]
-fn leaving_or_deleting_a_project_clears_its_placement_and_the_plugin_can_be_off() {
+fn everyone_has_a_personal_space_that_is_not_stored_and_cannot_be_shared() {
+    let a = app();
+    let al = who("alice");
+    let l = a.ok(&al, "spaces.list", json!({}));
+    assert_eq!(l["spaces"], json!([{"id": "default", "name": "Default", "builtin": true, "role": "admin"}]));
+    assert_eq!(a.err(&al, "spaces.members", json!({"space": "default"})).category, Category::NotFound);
+    assert_eq!(a.err(&al, "spaces.share", json!({"space": "default", "subject": "bob", "role": "member"})).category, Category::NotFound);
+    assert_eq!(a.err(&al, "spaces.rename", json!({"space": "default", "name": "Mine"})).category, Category::NotFound);
+}
+
+#[test]
+fn a_project_in_a_space_takes_its_members_and_their_levels_from_it() {
+    let a = app();
+    let (al, bo, ca, da) = (who("alice"), who("bob"), who("carol"), who("dave"));
+    let team = space_of(&a, &al, "Team");
+    a.ok(&al, "spaces.share", json!({"space": team, "subject": "bob", "role": "member"}));
+    a.ok(&al, "spaces.share", json!({"space": team, "subject": "carol", "role": "viewer"}));
+    let p = a.ok(&bo, "projects.create", json!({"name": "Launch", "space": team}))["id"].as_str().unwrap().to_string();
+    // the viewer reads and cannot write; the stranger does not know it exists; the admin who never touched it owns it
+    a.ok(&ca, "projects.get", json!({"project": p}));
+    assert_eq!(a.err(&ca, "tasks.create", json!({"project": p, "title": "x"})).category, Category::Denied);
+    assert_eq!(a.err(&da, "projects.get", json!({"project": p})).category, Category::NotFound);
+    a.ok(&bo, "tasks.create", json!({"project": p, "title": "write"}));
+    assert_eq!(a.ok(&al, "projects.get", json!({"project": p}))["level"], "owner");
+    // the list says where it is and at what level
+    let l = a.ok(&ca, "projects.list", json!({}));
+    assert_eq!(l["projects"][0]["space"], json!(team));
+    assert_eq!(l["projects"][0]["level"], "viewer");
+    let rows = a.ok(&al, "projects.members", json!({"project": p}))["members"].clone();
+    let level_of = |s: &str| rows.as_array().unwrap().iter().find(|r| r["subject"] == s).map(|r| (r["level"].clone(), r["via"].clone()));
+    assert_eq!(level_of("carol"), Some((json!("viewer"), json!("space"))));
+    assert_eq!(level_of("alice"), Some((json!("owner"), json!("space"))));
+    assert_eq!(level_of("bob"), Some((json!("owner"), json!("project"))), "the creator's own row is the owner's");
+    // a Space member cannot be removed from one project, only from the Space
+    assert_eq!(a.err(&al, "projects.unshare", json!({"project": p, "subject": "carol"})).category, Category::NotFound);
+    // but a project can add someone beside the Space, and the larger level wins
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "carol", "level": "editor"}));
+    a.ok(&ca, "tasks.create", json!({"project": p, "title": "now allowed"}));
+    // leaving the Space takes the Space's part away
+    a.ok(&al, "spaces.unshare", json!({"space": team, "subject": "bob"}));
+    a.settle();
+    a.ok(&bo, "projects.get", json!({"project": p})); // he created it, so his own row remains
+    assert_eq!(a.ok(&bo, "projects.get", json!({"project": p}))["level"], "owner");
+    assert_eq!(a.err(&da, "tasks.list", json!({"project": p})).category, Category::NotFound);
+}
+
+#[test]
+fn only_a_member_may_start_a_project_in_a_space() {
+    let a = app();
+    let (al, ca, da) = (who("alice"), who("carol"), who("dave"));
+    let team = space_of(&a, &al, "Team");
+    a.ok(&al, "spaces.share", json!({"space": team, "subject": "carol", "role": "viewer"}));
+    assert_eq!(a.err(&ca, "projects.create", json!({"name": "x", "space": team})).category, Category::NotFound, "a viewer cannot start one");
+    assert_eq!(a.err(&da, "projects.create", json!({"name": "x", "space": team})).category, Category::NotFound, "a stranger cannot");
+    assert_eq!(a.err(&al, "projects.create", json!({"name": "x", "space": "nope"})).category, Category::NotFound);
+}
+
+#[test]
+fn moving_a_project_needs_admin_in_both_spaces_and_becoming_personal_needs_its_owner() {
     let a = app();
     let (al, bo) = (who("alice"), who("bob"));
-    let p = a.project(&al, "Shared");
-    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
-    let w = a.ok(&bo, "workspaces.create", json!({"name": "Mine"}))["id"].as_str().unwrap().to_string();
-    a.ok(&bo, "workspaces.place", json!({"project": p, "workspace": w}));
-    a.ok(&bo, "projects.leave", json!({"project": p}));
-    a.settle();
-    assert!(a.ok(&bo, "workspaces.list", json!({}))["placements"].as_array().unwrap().is_empty());
-    let path = temp_db();
-    let core = start_file(&path, &["workspaces"]).unwrap_or_else(|p| panic!("{p:#?}"));
-    assert!(core.call_as(&al, "workspaces.list", json!({}), None).is_err());
+    let (from, to) = (space_of(&a, &al, "From"), space_of(&a, &al, "To"));
+    a.ok(&al, "spaces.share", json!({"space": from, "subject": "bob", "role": "member"}));
+    let p = a.ok(&al, "projects.create", json!({"name": "Move me", "space": from}))["id"].as_str().unwrap().to_string();
+    // a member of the Space is not enough to move it out
+    let e = a.err(&bo, "projects.move", json!({"project": p, "space": "default"}));
+    assert_eq!(e.category, Category::Denied, "{e}");
+    // an admin of the source who is not in the target cannot send it there
+    let stranger = space_of(&a, &bo, "Bob's");
+    assert_eq!(a.err(&al, "projects.move", json!({"project": p, "space": stranger})).category, Category::NotFound);
+    a.ok(&al, "projects.move", json!({"project": p, "space": to}));
+    assert_eq!(a.ok(&al, "projects.get", json!({"project": p}))["space"], json!(to));
+    assert_eq!(a.err(&bo, "projects.get", json!({"project": p})).category, Category::NotFound, "bob was in the old Space only");
+    // personal: only the people on the project's own rows keep it
+    a.ok(&al, "projects.move", json!({"project": p, "space": "default"}));
+    assert_eq!(a.ok(&al, "projects.get", json!({"project": p}))["space"], "default");
+}
+
+#[test]
+fn a_space_keeps_an_admin_and_is_deleted_only_when_empty() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let team = space_of(&a, &al, "Team");
+    assert_eq!(a.err(&al, "spaces.leave", json!({"space": team})).reason.as_deref(), Some("spaces.last_admin"));
+    assert_eq!(a.err(&al, "spaces.share", json!({"space": team, "subject": "alice", "role": "member"})).reason.as_deref(), Some("spaces.last_admin"));
+    a.ok(&al, "spaces.share", json!({"space": team, "subject": "bob", "role": "admin"}));
+    let p = a.ok(&al, "projects.create", json!({"name": "In it", "space": team}))["id"].as_str().unwrap().to_string();
+    assert_eq!(a.err(&bo, "spaces.delete", json!({"space": team})).reason.as_deref(), Some("spaces.not_empty"));
+    a.ok(&al, "projects.move", json!({"project": p, "space": "default"}));
+    a.ok(&bo, "spaces.delete", json!({"space": team}));
+    assert_eq!(a.ok(&al, "spaces.list", json!({}))["spaces"].as_array().unwrap().len(), 1);
+    assert_eq!(a.err(&al, "spaces.members", json!({"space": team})).category, Category::NotFound);
+}
+
+#[test]
+fn a_person_may_start_twenty_spaces_and_a_viewer_may_not_manage_one() {
+    let a = app();
+    let (al, ca) = (who("alice"), who("carol"));
+    for n in 0..20 {
+        space_of(&a, &al, &format!("S{n}"));
+    }
+    assert_eq!(a.err(&al, "spaces.create", json!({"name": "one too many"})).reason.as_deref(), Some("spaces.too_many"));
+    let team = a.ok(&al, "spaces.list", json!({}))["spaces"][1]["id"].as_str().unwrap().to_string();
+    a.ok(&al, "spaces.share", json!({"space": team, "subject": "carol", "role": "viewer"}));
+    a.ok(&ca, "spaces.members", json!({"space": team}));
+    for (op, input) in [("spaces.rename", json!({"space": team, "name": "x"})), ("spaces.share", json!({"space": team, "subject": "dave", "role": "member"})), ("spaces.delete", json!({"space": team}))] {
+        assert_eq!(a.err(&ca, op, input).category, Category::Denied, "{op}");
+    }
+    a.ok(&ca, "spaces.leave", json!({"space": team}));
+}
+
+#[test]
+fn your_own_pages_can_only_be_put_in_a_space_you_are_in() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let team = space_of(&a, &al, "Team");
+    a.ok(&al, "pages.create", json!({"title": "In Team", "space": team}));
+    assert_eq!(a.err(&bo, "pages.create", json!({"title": "Sneaky", "space": team})).category, Category::NotFound);
+    let page = a.ok(&al, "pages.create", json!({"title": "Home"}));
+    assert_eq!(a.err(&al, "pages.set_space", json!({"id": page["id"], "space": "made-up"})).category, Category::NotFound);
 }
 
 // ---- search, versions, recurrence, page history, files (ADR 0025) ---------------------------------------------------

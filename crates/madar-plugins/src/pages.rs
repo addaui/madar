@@ -142,6 +142,9 @@ fn create(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let parent = i.get("parent").and_then(|p| p.as_str()).map(String::from);
     // your own pages live in a Space: the parent's, or the one asked for, or the default
     let mut space = i.get("space").and_then(|x| x.as_str()).unwrap_or("default").to_string();
+    if s.project.is_none() && parent.is_none() {
+        known_space(tx, &space)?;
+    }
     if let Some(p) = &parent {
         let up = get(tx, &s, p).map_err(|_| Error::reason(Category::Invalid, "pages.bad_parent", "The parent page is not here"))?;
         if folder && up.body.get("folder") != Some(&json!(true)) {
@@ -476,12 +479,10 @@ fn page_tasks(tx: &mut Tx, i: &Value) -> Result<Value> {
             take(&d, None, &mut rows);
         }
     }
-    // a project's pages belong to the Space the project is placed in (the default one when it was never placed)
-    let places: std::collections::BTreeMap<String, String> = tx.call("workspaces.list", json!({})).ok().and_then(|w| w["placements"].as_array().cloned()).unwrap_or_default()
-        .iter().map(|p| (text(p, "project").to_string(), text(p, "workspace").to_string())).collect();
+    // a project's pages belong to the Space the project is in
     let projects = tx.call("projects.list", json!({}))?;
     for p in projects["projects"].as_array().cloned().unwrap_or_default() {
-        if want.is_some_and(|w| places.get(text(&p, "id")).map(|x| x.as_str()).unwrap_or("default") != w) {
+        if want.is_some_and(|w| text(&p, "space") != w) {
             continue;
         }
         for d in tx.query(PAGES, &Query::new().eq("project", text(&p, "id")).limit(2000))?.items {
@@ -526,6 +527,19 @@ fn set_task(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     update(tx, &input, personal)
 }
 
+/// A Space your own pages may live in: your own (`default`) or one you are in (ADR 0083).
+fn known_space(tx: &mut Tx, space: &str) -> Result<()> {
+    if space == "default" {
+        return Ok(());
+    }
+    let mine = tx.call("spaces.list", json!({}))?;
+    if mine["spaces"].as_array().is_some_and(|l| l.iter().any(|s| s["id"] == space)) {
+        Ok(())
+    } else {
+        Err(Error::not_found("space"))
+    }
+}
+
 /// Move one of your own pages, with everything under it, into another Space. A page that was under a page of the old Space becomes a top page.
 fn set_space(tx: &mut Tx, i: &Value) -> Result<Value> {
     let s = Scope::of(tx, i, true);
@@ -534,6 +548,7 @@ fn set_space(tx: &mut Tx, i: &Value) -> Result<Value> {
     if page.body.get("space").and_then(|x| x.as_str()).unwrap_or("default") == space {
         return Ok(view(&page, false));
     }
+    known_space(tx, &space)?;
     let all = subtree(tx, &s, &page)?;
     let mut root = None;
     for d in all {
@@ -712,7 +727,7 @@ impl Plugin for Pages {
         manifest(json!({
             "id": "@madar/pages", "version": "0.1.0", "name": "Pages", "namespaces": ["knowledge", "pages"],
             "description": "A tree of rich-text pages: a project's Knowledge (knowledge.*) and your own Pages (pages.*)",
-            "requires": {"plugins": ["@madar/projects"], "capabilities": ["emit", "call"]},
+            "requires": {"plugins": ["@madar/projects", "@madar/spaces"], "capabilities": ["emit", "call"]},
             "provides": [{"extension_point": "search.source", "optional": true}],
             "data": {"collections": [PAGES, VERSIONS, COUNTERS, STYLES], "version": 2,
                      "indexes": [{"collection": PAGES, "field": "project"}, {"collection": PAGES, "field": "owner"}, {"collection": PAGES, "field": "parent"}, {"collection": VERSIONS, "field": "page"}]},
