@@ -34,9 +34,42 @@ async fn file(State(core): State<Core>, Path(id): Path<String>, headers: HeaderM
         .into_response())
 }
 
-/// Madar's extra routes for the `http` Projection: file downloads. Everything else is an Operation.
+/// A file of a shared page (ADR 0084): `/share-files/<share>/<file>`, with `?pin=` for a share that has one. The share must use the file. Tried without
+/// a credential first; a share for people who are signed in is tried again with the person's own.
+async fn shared_file(State(core): State<Core>, Path((share, file)): Path<(String, String)>, axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>, headers: HeaderMap) -> Result<Response, ApiError> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let mut input = json!({"id": share, "file": file});
+    if let Some(pin) = q.get("pin") {
+        input["pin"] = json!(pin);
+    }
+    let first = CallRequest { credential: None, op: "shares.file".into(), input: input.clone(), key: None, contract: None };
+    let (c1, i1) = (core.clone(), first);
+    let out = match blocking(move || c1.call(i1)).await? {
+        Ok(r) => r.output,
+        Err(e) if e.reason.as_deref() == Some("shares.sign_in") || e.reason.as_deref() == Some("shares.not_for_you") => {
+            let again = CallRequest { credential: credential(&headers), op: "shares.file_signed".into(), input, key: None, contract: None };
+            blocking(move || core.call(again)).await??.output
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let bytes = STANDARD.decode(out["data"].as_str().unwrap_or("")).map_err(|_| Error::internal("stored file is not valid base64"))?;
+    let ty = out["type"].as_str().unwrap_or("application/octet-stream").to_string();
+    let inline = ty.starts_with("image/");
+    Ok((
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_str(&ty).unwrap_or(HeaderValue::from_static("application/octet-stream"))),
+            (header::CONTENT_DISPOSITION, HeaderValue::from_static(if inline { "inline" } else { "attachment" })),
+            (header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=60")),
+            (header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("sandbox; default-src 'none'")),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+/// Madar's extra routes for the `http` Projection: file downloads and the files of shared pages. Everything else is an Operation.
 pub fn routes() -> impl Fn(Core) -> Router + Send + Sync + 'static {
-    move |core| Router::new().route("/files/{id}", get(file).with_state(core))
+    move |core| Router::new().route("/files/{id}", get(file).with_state(core.clone())).route("/share-files/{share}/{file}", get(shared_file).with_state(core))
 }
 
 /// The plugin that publishes the web Face (`./faces/madar/web`, under the faces directory).
@@ -95,8 +128,12 @@ impl nuah_shell::Product for Madar {
     fn starting_point(&self, home: &std::path::Path) -> Profile {
         let db = home.join("madar.db");
         let mut p = crate::profile_server(&db.to_string_lossy(), json!([]));
-        p.enabled.extend(["@nuah/http", "@madar/web", "@nuah/console", "@madar/features"].map(String::from));
+        p.enabled.extend(["@nuah/http", "@madar/web-react", "@nuah/console", "@madar/features"].map(String::from));
         p.grants.insert("@nuah/http".into(), vec!["serve".into()]);
+        // the app is the React Face, at `/`; `/share/<id>` opens the same Face in its reader (ADR 0084)
+        let http = p.settings.entry("@nuah/http".into()).or_insert_with(|| json!({}));
+        http["root"] = json!("web-react");
+        http["face_paths"] = json!({"/share": "web-react"});
         // the console changes the identity file (administrators only) and asks the shell to restart
         p.grants.insert("@nuah/console".into(), vec!["shell".into()]);
         // the Owner switches feature plugins from the app's settings (ADR 0080); the plugin refuses every platform plugin itself

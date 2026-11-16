@@ -464,3 +464,28 @@ fn link_previews_are_fetched_for_signed_in_people_and_never_from_private_address
     let c = off.sign_in("alice");
     assert_eq!(off.call("previews.get", json!({"url": "https://example.com/"}), &[("Authorization", &format!("Bearer {c}"))]).status, 404);
 }
+
+#[test]
+fn a_stranger_reads_a_shared_page_and_its_picture_without_signing_in_and_nothing_else() {
+    let s = start();
+    let ah = format!("Bearer {}", s.sign_in("alice"));
+    let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    let fid = s.call("files.upload", json!({"name": "dot.png", "data": png}), &[("Authorization", &ah)]).body["output"]["id"].as_str().unwrap().to_string();
+    let body = json!({"type": "doc", "content": [{"type": "image", "attrs": {"src": format!("/files/{fid}")}}]});
+    let page = s.call("pages.create", json!({"title": "Shared", "body": body}), &[("Authorization", &ah)]).body["output"]["id"].as_str().unwrap().to_string();
+    let other = s.call("files.upload", json!({"name": "other.png", "data": png}), &[("Authorization", &ah)]).body["output"]["id"].as_str().unwrap().to_string();
+    let share = s.call("shares.create_page", json!({"page": page}), &[("Authorization", &ah)]).body["output"]["id"].as_str().unwrap().to_string();
+    // no credential at all: the page opens, and so does the picture it shows
+    let opened = s.call("shares.open", json!({"id": share}), &[]);
+    assert_eq!((opened.status, opened.body["output"]["page"]["title"].clone()), (200, json!("Shared")));
+    let pic = agent().get(&format!("{}/share-files/{share}/{fid}", s.base)).call().unwrap();
+    assert_eq!(pic.status().as_u16(), 200);
+    assert_eq!(pic.headers().get("content-type").unwrap(), "image/png");
+    assert!(pic.headers().get("content-security-policy").unwrap().to_str().unwrap().starts_with("sandbox"));
+    // a picture the page does not show, and a share that is not there, are not served
+    assert_eq!(agent().get(&format!("{}/share-files/{share}/{other}", s.base)).call().unwrap().status().as_u16(), 404);
+    assert_eq!(agent().get(&format!("{}/share-files/nope/{fid}", s.base)).call().unwrap().status().as_u16(), 404);
+    // the rest of the app still needs a person, and the share's own files are not reachable by the app's route
+    assert_eq!(s.call("pages.get", json!({"id": page}), &[]).status, 401);
+    assert_eq!(agent().get(&format!("{}/files/{fid}", s.base)).call().unwrap().status().as_u16(), 401);
+}
