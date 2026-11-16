@@ -18,8 +18,15 @@ fn start(p: Profile) -> Core {
     Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|e| panic!("{e:#?}"))
 }
 
+fn admin() -> Identity {
+    Identity::new("root", "root", &["member", "admin"])
+}
+
+/// An instance with no accounts, where an Admin has allowed sharing (the way a person who knows what it means does).
 fn rig() -> Rig {
-    Rig { core: start(profile_test(&[("@madar/spaces", json!({}))])) }
+    let r = Rig { core: start(profile_test(&[("@madar/spaces", json!({}))])) };
+    r.ok(&admin(), "shares.acknowledge", json!({}));
+    r
 }
 
 fn who(n: &str) -> Identity {
@@ -265,6 +272,40 @@ fn a_file_is_served_only_when_the_shared_pages_use_it() {
     assert_eq!(got["type"], "image/png");
     assert!(got["data"].as_str().unwrap().len() > 10);
     assert_eq!(r.public("shares.file", json!({"id": id, "file": other})).unwrap_err().category, Category::NotFound, "a file the shared pages do not show stays private");
+}
+
+#[test]
+fn with_no_sign_in_sharing_waits_for_an_admin_and_stops_when_the_admin_withdraws() {
+    let r = Rig { core: start(profile_test(&[("@madar/spaces", json!({}))])) };
+    let al = who("alice");
+    let p = r.page(&al, "Mine", "private until allowed", None);
+    // the person is told why, and what to do, before anything is shared
+    let o = r.ok(&al, "shares.options", json!({}));
+    assert_eq!((o["accounts"].clone(), o["public_ok"].clone(), o["can_allow"].clone()), (json!(false), json!(false), json!(false)));
+    let e = r.err(&al, "shares.create_page", json!({"page": p}));
+    assert_eq!(e.reason.as_deref(), Some("shares.no_sign_in"), "{e}");
+    // the Owner (a member) cannot allow it: with no sign-in a stranger is the Owner too
+    assert_eq!(r.err(&al, "shares.acknowledge", json!({})).category, Category::Denied);
+    assert_eq!(r.ok(&admin(), "shares.options", json!({}))["can_allow"], true);
+    r.ok(&admin(), "shares.acknowledge", json!({}));
+    assert_eq!(r.ok(&al, "shares.options", json!({}))["public_ok"], true);
+    let id = r.ok(&al, "shares.create_page", json!({"page": p}))["id"].as_str().unwrap().to_string();
+    assert!(r.public("shares.open", json!({"id": id})).is_ok());
+    // withdrawing turns what was shared off at once, without deleting it; allowing again turns it back on
+    r.ok(&admin(), "shares.unacknowledge", json!({}));
+    assert_eq!(r.public("shares.open", json!({"id": id})).unwrap_err().category, Category::NotFound);
+    assert_eq!(r.err(&al, "shares.update", json!({"id": id, "mode": "live"})).reason.as_deref(), Some("shares.no_sign_in"));
+    r.ok(&admin(), "shares.acknowledge", json!({}));
+    assert!(r.public("shares.open", json!({"id": id})).is_ok(), "nothing was lost");
+}
+
+#[test]
+fn an_instance_with_accounts_needs_no_allowance() {
+    let (r, al, _, _) = accounts_rig();
+    let o = r.ok(&al, "shares.options", json!({}));
+    assert_eq!((o["accounts"].clone(), o["public_ok"].clone(), o["acknowledged"].clone()), (json!(true), json!(true), json!(false)));
+    let p = r.page(&al, "Open", "x", None);
+    r.ok(&al, "shares.create_page", json!({"page": p}));
 }
 
 #[test]

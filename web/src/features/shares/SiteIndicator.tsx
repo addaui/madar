@@ -15,6 +15,7 @@ import { PopupButton } from "../../ui/Popup";
 import { Select } from "../../ui/Select";
 import { useHasOp } from "../../api/session";
 import { cn } from "../../lib/cn";
+import { ExposureGate } from "./ExposureGate";
 
 type Site = Ops["shares.space"]["output"];
 const refresh = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries({ predicate: (q) => /^shares\./.test(String(q.queryKey[0])) });
@@ -58,9 +59,10 @@ function SitePanel({ space, name, site, admin }: { space: string; name: string; 
   const [audience, setAudience] = useState<"anyone" | "pin" | "accounts" | "people">("anyone");
   const run = async (fn: () => Promise<unknown>) => { try { setError(""); await fn(); await refresh(qc); } catch (e) { setError(e instanceof Error ? e.message : ""); } };
   const aud = options.accounts ? (["anyone", "pin", "accounts", "people"] as const) : (["anyone", "pin"] as const);
+  const gated = (node: React.ReactNode) => <ExposureGate options={options}>{node}</ExposureGate>;
   const address = (s: string) => `${location.protocol}//${s}.${options.base_domain ?? location.host}`;
   if (!site.share) {
-    return (
+    return gated(
       <div className="grid gap-3 p-1">
         <b>{t("siteMake")}</b>
         <TextField label={t("siteName")} description={t("siteNameRule")} value={sub} onChange={(v) => setSub(v.toLowerCase())} />

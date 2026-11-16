@@ -11,6 +11,7 @@ import { TextField } from "../../ui/Field";
 import { askConfirm } from "../../ui/overlays";
 import { Select } from "../../ui/Select";
 import { Window } from "../dialogs/Dialog";
+import { ExposureGate } from "./ExposureGate";
 
 type Share = Ops["shares.list"]["output"]["shares"][number];
 type Audience = "anyone" | "pin" | "accounts" | "people";
@@ -30,12 +31,14 @@ export function ShareDialog({ page, project, onClose }: { page: { id: string; ti
   return (
     <Window title={`${t("shareTitle")} · ${page.title}`} onClose={onClose} wide>
       <p className="m-0 mb-3 text-muted">{t("shareViewOnly")}</p>
+      <ExposureGate options={options}>
       <h3 className="mb-2 mt-0 text-[13px] font-semibold uppercase tracking-wide text-muted">{t("shareLinks")}</h3>
       {list.length === 0 && <p className="m-0 mb-3 text-muted">{t("shareNone")}</p>}
       <ul className="m-0 mb-4 grid list-none gap-3 p-0">
         {list.map((s) => <ShareRow key={s.id} s={s} accounts={options.accounts} run={run} />)}
       </ul>
       <CreateShare accounts={options.accounts} onCreate={(v) => run(() => link.call("shares.create_page", { page: page.id, ...(project ? { project } : {}), ...v }))} />
+      </ExposureGate>
       {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
     </Window>
   );

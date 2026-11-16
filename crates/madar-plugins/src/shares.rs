@@ -25,6 +25,9 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const SHARES: &str = "shares.shares";
 pub const RELEASES: &str = "shares.releases";
 pub const SNAPS: &str = "shares.snapshots";
+/// One document, `exposure`: an Admin allowed sharing from an instance with no sign-in (ADR 0085).
+pub const CONFIG: &str = "shares.config";
+const EXPOSURE: &str = "exposure";
 
 /// Pages one share may hold, and releases kept per share.
 const MAX_PAGES: usize = 2000;
@@ -32,6 +35,19 @@ const KEEP_RELEASES: i64 = 20;
 const AUDIENCES: [&str; 4] = ["anyone", "pin", "accounts", "people"];
 /// Names a Space's subdomain may not take.
 const RESERVED: [&str; 18] = ["www", "app", "api", "admin", "console", "share", "mail", "static", "assets", "files", "faces", "link", "pulse", "docs", "help", "status", "blog", "web"];
+
+/// Public sharing is safe when people sign in, or when an Admin has said the instance's address is for the owner alone (ADR 0085): with no sign-in
+/// whoever reaches the server is the Owner, and a shared address is the app's address.
+fn exposure_ok(tx: &Tx) -> Result<bool> {
+    Ok(tx.has_accounts() || tx.get(CONFIG, EXPOSURE)?.is_some())
+}
+
+fn need_exposure(tx: &Tx) -> Result<()> {
+    if exposure_ok(tx)? {
+        return Ok(());
+    }
+    Err(Error::reason(Category::Conflict, "shares.no_sign_in", "This instance has no sign-in. Anyone who can open its address can also use the whole app as you. Turn on sign-in, or ask an administrator to allow sharing anyway."))
+}
 
 fn rel_key(share: &str, n: i64) -> String {
     format!("{share}:{n}")
@@ -279,6 +295,10 @@ fn check_subdomain(tx: &Tx, sub: &str, except: &str) -> Result<()> {
 
 /// What a reader gets: the tree, and one page with its body.
 fn open_impl(tx: &mut Tx, i: &Value, signed: bool) -> Result<Value> {
+    // an instance that went back to no sign-in without anyone allowing it does not go on serving what was shared
+    if !exposure_ok(tx)? {
+        return Err(Error::not_found("share"));
+    }
     let share = find_share(tx, i)?;
     let who = signed.then(|| tx.who().subject.clone());
     check_access(tx, &share, who.as_deref(), i["pin"].as_str())?;
@@ -305,6 +325,9 @@ fn open_impl(tx: &mut Tx, i: &Value, signed: bool) -> Result<Value> {
 
 /// One uploaded file of a shared page, only when the shared pages use it.
 fn file_impl(tx: &mut Tx, i: &Value, signed: bool) -> Result<Value> {
+    if !exposure_ok(tx)? {
+        return Err(Error::not_found("share"));
+    }
     let share = find_share(tx, i)?;
     let who = signed.then(|| tx.who().subject.clone());
     check_access(tx, &share, who.as_deref(), i["pin"].as_str())?;
@@ -332,6 +355,7 @@ impl Plugin for Shares {
         let id = json!({"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false});
         let reasons = json!({
             "shares.no_accounts": "This instance has no accounts to sign in to; use a PIN instead",
+            "shares.no_sign_in": "This instance has no sign-in, so sharing must be allowed by an administrator first",
             "shares.no_such_person": "Nobody signs in under that name",
             "shares.bad_subdomain": "Use 3 to 40 lowercase letters, digits and hyphens; some names are kept",
             "shares.subdomain_taken": "Another site already uses that name",
@@ -350,13 +374,16 @@ impl Plugin for Shares {
             "settings_schema": {"type": "object", "additionalProperties": false, "properties": {
                 "base_domain": {"type": "string", "maxLength": 100, "title": "Base domain for Space sites", "x-tier": "owner", "x-apply": "live",
                     "description": "A Space site is shown at <name>.<this domain>. The operator points *.<this domain> at the server and allows it in the web server's host names."}}},
-            "data": {"collections": [SHARES, RELEASES, SNAPS], "reads": [PAGES, PROJECTS, FILES, spaces::SPACES, spaces::SPACE_MEMBERS], "version": 1,
+            "data": {"collections": [SHARES, RELEASES, SNAPS, CONFIG], "reads": [PAGES, PROJECTS, FILES, spaces::SPACES, spaces::SPACE_MEMBERS], "version": 1,
                      "indexes": [{"collection": SHARES, "field": "page"}, {"collection": SHARES, "field": "space"}, {"collection": SHARES, "field": "subdomain"},
                                  {"collection": RELEASES, "field": "share"}, {"collection": SNAPS, "field": "rel"}]},
             "permissions": {"shares.create": {"description": "Share pages and manage your shares", "default": ["admin", "member"]},
-                            "shares.read": {"description": "Read what was shared with the people who are signed in", "default": ["admin", "member", "viewer"]}},
+                            "shares.read": {"description": "Read what was shared with the people who are signed in", "default": ["admin", "member", "viewer"]},
+                            "shares.allow": {"description": "Allow or stop sharing from an instance that has no sign-in", "default": ["admin"]}},
             "operations": {
                 "shares.options": {"kind": "query", "permission": "shares.create", "description": "What this instance can offer: whether people have accounts, and the base domain of Space sites", "output": crate::schemas::share_options()},
+                "shares.acknowledge": {"kind": "command", "permission": "shares.allow", "description": "An Admin allows sharing from an instance with no sign-in, knowing that anyone who can open its address can use the whole app", "output": crate::schemas::done()},
+                "shares.unacknowledge": {"kind": "command", "permission": "shares.allow", "description": "Stop allowing it; what was shared answers 'not found' until it is allowed again or sign-in is on", "output": crate::schemas::done()},
                 "shares.list": {"kind": "query", "permission": "shares.create", "description": "The shares of a page you shared, or of a Space you administer",
                     "input": {"type":"object","properties":{"page":{"type":"string"},"space":{"type":"string"}},"additionalProperties":false}, "output": crate::schemas::shares()},
                 "shares.create_page": {"kind": "command", "permission": "shares.create", "description": "Share a page you can read, with or without the pages under it", "reasons": reasons,
@@ -384,7 +411,18 @@ impl Plugin for Shares {
     }
 
     fn bind(&self, b: &mut Bindings) {
-        b.op("shares.options", |tx, _| Ok(json!({"accounts": tx.has_accounts(), "base_domain": tx.settings().get("base_domain").cloned().filter(|v| v.as_str().is_some_and(|s| !s.is_empty())).unwrap_or(Value::Null)})));
+        b.op("shares.options", |tx, _| Ok(json!({"accounts": tx.has_accounts(), "public_ok": exposure_ok(tx)?, "acknowledged": tx.get(CONFIG, EXPOSURE)?.is_some(), "can_allow": tx.who().roles.iter().any(|r| r == "admin"), "base_domain": tx.settings().get("base_domain").cloned().filter(|v| v.as_str().is_some_and(|s| !s.is_empty())).unwrap_or(Value::Null)})));
+        b.op("shares.acknowledge", |tx, _| {
+            let (me, now) = (tx.who().subject.clone(), tx.now());
+            tx.put(CONFIG, EXPOSURE, json!({"by": me, "at": now}), Expect::Any)?;
+            Ok(json!({}))
+        });
+        b.op("shares.unacknowledge", |tx, _| {
+            if tx.get(CONFIG, EXPOSURE)?.is_some() {
+                tx.delete(CONFIG, EXPOSURE)?;
+            }
+            Ok(json!({}))
+        });
         b.op("shares.list", |tx, i| {
             let me = tx.who().subject.clone();
             let mut found = vec![];
@@ -398,6 +436,7 @@ impl Plugin for Shares {
             Ok(json!({"shares": found.iter().map(|d| view(d, true)).collect::<Vec<_>>()}))
         });
         b.op("shares.create_page", |tx, i| {
+            need_exposure(tx)?;
             let page = text(&i, "page");
             let project = i["project"].as_str();
             // the person must be able to read the page: the page operations ask the policy as they would for the person
@@ -414,6 +453,7 @@ impl Plugin for Shares {
             finish(tx, share)
         });
         b.op("shares.create_space", |tx, i| {
+            need_exposure(tx)?;
             let (space, me) = (text(&i, "space"), tx.who().subject.clone());
             if spaces::role_in_tx(tx, space, &me)?.as_deref() != Some("admin") {
                 return Err(Error::not_found("space"));
@@ -431,6 +471,7 @@ impl Plugin for Shares {
             finish(tx, share)
         });
         b.op("shares.update", |tx, i| {
+            need_exposure(tx)?;
             let share = manage(tx, &i)?;
             let mut body = share.body.clone();
             if i.get("audience").is_some() || i.get("pin").is_some() || i.get("people").is_some() {

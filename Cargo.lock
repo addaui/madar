@@ -1148,8 +1148,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-adapters"
-version = "0.13.0"
-source = "git+https://github.com/addaui/nuah?tag=v0.13.0#c462fc0cf77a1763213f9ccae7e2a7469b95afaf"
+version = "0.14.1"
+source = "git+https://github.com/addaui/nuah?tag=v0.14.1#93f4406b0077e7b24e2473f9c48e1eeedf5e0c58"
 dependencies = [
  "argon2",
  "nuah-kernel",
@@ -1169,8 +1169,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-appearance"
-version = "0.5.0"
-source = "git+https://github.com/addaui/nuah-plugins?tag=v0.5.0#fc2c2ca0ec74168f662545fe5d4bd64518d7e899"
+version = "0.6.1"
+source = "git+https://github.com/addaui/nuah-plugins?tag=v0.6.1#847e5b05d1b6c68d9c28b5eb5ae78c4d14b618a6"
 dependencies = [
  "nuah-kernel",
  "serde_json",
@@ -1178,17 +1178,18 @@ dependencies = [
 
 [[package]]
 name = "nuah-console"
-version = "0.13.0"
-source = "git+https://github.com/addaui/nuah?tag=v0.13.0#c462fc0cf77a1763213f9ccae7e2a7469b95afaf"
+version = "0.14.1"
+source = "git+https://github.com/addaui/nuah?tag=v0.14.1#93f4406b0077e7b24e2473f9c48e1eeedf5e0c58"
 dependencies = [
+ "nuah-adapters",
  "nuah-kernel",
  "serde_json",
 ]
 
 [[package]]
 name = "nuah-emoji"
-version = "0.5.0"
-source = "git+https://github.com/addaui/nuah-plugins?tag=v0.5.0#fc2c2ca0ec74168f662545fe5d4bd64518d7e899"
+version = "0.6.1"
+source = "git+https://github.com/addaui/nuah-plugins?tag=v0.6.1#847e5b05d1b6c68d9c28b5eb5ae78c4d14b618a6"
 dependencies = [
  "nuah-kernel",
  "serde_json",
@@ -1196,8 +1197,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-gifs"
-version = "0.5.0"
-source = "git+https://github.com/addaui/nuah-plugins?tag=v0.5.0#fc2c2ca0ec74168f662545fe5d4bd64518d7e899"
+version = "0.6.1"
+source = "git+https://github.com/addaui/nuah-plugins?tag=v0.6.1#847e5b05d1b6c68d9c28b5eb5ae78c4d14b618a6"
 dependencies = [
  "nuah-kernel",
  "serde_json",
@@ -1205,8 +1206,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-gifs-giphy"
-version = "0.5.0"
-source = "git+https://github.com/addaui/nuah-plugins?tag=v0.5.0#fc2c2ca0ec74168f662545fe5d4bd64518d7e899"
+version = "0.6.1"
+source = "git+https://github.com/addaui/nuah-plugins?tag=v0.6.1#847e5b05d1b6c68d9c28b5eb5ae78c4d14b618a6"
 dependencies = [
  "nuah-kernel",
  "serde_json",
@@ -1214,8 +1215,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-http"
-version = "0.13.0"
-source = "git+https://github.com/addaui/nuah?tag=v0.13.0#c462fc0cf77a1763213f9ccae7e2a7469b95afaf"
+version = "0.14.1"
+source = "git+https://github.com/addaui/nuah?tag=v0.14.1#93f4406b0077e7b24e2473f9c48e1eeedf5e0c58"
 dependencies = [
  "async-stream",
  "axum",
@@ -1228,8 +1229,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-kernel"
-version = "0.13.0"
-source = "git+https://github.com/addaui/nuah?tag=v0.13.0#c462fc0cf77a1763213f9ccae7e2a7469b95afaf"
+version = "0.14.1"
+source = "git+https://github.com/addaui/nuah?tag=v0.14.1#93f4406b0077e7b24e2473f9c48e1eeedf5e0c58"
 dependencies = [
  "serde",
  "serde_json",
@@ -1239,8 +1240,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-link-analyzer"
-version = "0.5.0"
-source = "git+https://github.com/addaui/nuah-plugins?tag=v0.5.0#fc2c2ca0ec74168f662545fe5d4bd64518d7e899"
+version = "0.6.1"
+source = "git+https://github.com/addaui/nuah-plugins?tag=v0.6.1#847e5b05d1b6c68d9c28b5eb5ae78c4d14b618a6"
 dependencies = [
  "base64 0.22.1",
  "nuah-kernel",
@@ -1251,8 +1252,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-metric-prometheus"
-version = "0.5.0"
-source = "git+https://github.com/addaui/nuah-plugins?tag=v0.5.0#fc2c2ca0ec74168f662545fe5d4bd64518d7e899"
+version = "0.6.1"
+source = "git+https://github.com/addaui/nuah-plugins?tag=v0.6.1#847e5b05d1b6c68d9c28b5eb5ae78c4d14b618a6"
 dependencies = [
  "nuah-kernel",
  "serde_json",
@@ -1260,8 +1261,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-prefs"
-version = "0.5.0"
-source = "git+https://github.com/addaui/nuah-plugins?tag=v0.5.0#fc2c2ca0ec74168f662545fe5d4bd64518d7e899"
+version = "0.6.1"
+source = "git+https://github.com/addaui/nuah-plugins?tag=v0.6.1#847e5b05d1b6c68d9c28b5eb5ae78c4d14b618a6"
 dependencies = [
  "nuah-kernel",
  "serde_json",
@@ -1269,8 +1270,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-setup-web"
-version = "0.13.0"
-source = "git+https://github.com/addaui/nuah?tag=v0.13.0#c462fc0cf77a1763213f9ccae7e2a7469b95afaf"
+version = "0.14.1"
+source = "git+https://github.com/addaui/nuah?tag=v0.14.1#93f4406b0077e7b24e2473f9c48e1eeedf5e0c58"
 dependencies = [
  "axum",
  "nuah-adapters",
@@ -1285,8 +1286,8 @@ dependencies = [
 
 [[package]]
 name = "nuah-shell"
-version = "0.13.0"
-source = "git+https://github.com/addaui/nuah?tag=v0.13.0#c462fc0cf77a1763213f9ccae7e2a7469b95afaf"
+version = "0.14.1"
+source = "git+https://github.com/addaui/nuah?tag=v0.14.1#93f4406b0077e7b24e2473f9c48e1eeedf5e0c58"
 dependencies = [
  "clap",
  "nuah-adapters",

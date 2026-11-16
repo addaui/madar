@@ -1,5 +1,5 @@
 {
-  "contract": "6a9f6671819958e3",
+  "contract": "1a7f296d79d452db",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -5375,6 +5375,23 @@
       "reasons": {},
       "resource": null
     },
+    "shares.acknowledge": {
+      "allowed": true,
+      "description": "An Admin allows sharing from an instance with no sign-in, knowing that anyone who can open its address can use the whole app",
+      "input": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": "shares.allow",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
     "shares.create_page": {
       "allowed": true,
       "description": "Share a page you can read, with or without the pages under it",
@@ -5525,6 +5542,7 @@
         "shares.bad_subdomain": "Use 3 to 40 lowercase letters, digits and hyphens; some names are kept",
         "shares.exists": "This Space already has a site",
         "shares.no_accounts": "This instance has no accounts to sign in to; use a PIN instead",
+        "shares.no_sign_in": "This instance has no sign-in, so sharing must be allowed by an administrator first",
         "shares.no_such_person": "Nobody signs in under that name",
         "shares.subdomain_taken": "Another site already uses that name"
       },
@@ -5679,6 +5697,7 @@
         "shares.bad_subdomain": "Use 3 to 40 lowercase letters, digits and hyphens; some names are kept",
         "shares.exists": "This Space already has a site",
         "shares.no_accounts": "This instance has no accounts to sign in to; use a PIN instead",
+        "shares.no_sign_in": "This instance has no sign-in, so sharing must be allowed by an administrator first",
         "shares.no_such_person": "Nobody signs in under that name",
         "shares.subdomain_taken": "Another site already uses that name"
       },
@@ -6256,15 +6275,27 @@
           "accounts": {
             "type": "boolean"
           },
+          "acknowledged": {
+            "type": "boolean"
+          },
           "base_domain": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "can_allow": {
+            "type": "boolean"
+          },
+          "public_ok": {
+            "type": "boolean"
           }
         },
         "required": [
-          "accounts"
+          "accounts",
+          "public_ok",
+          "acknowledged",
+          "can_allow"
         ],
         "type": "object"
       },
@@ -6644,6 +6675,23 @@
         "type": "spaces.space"
       }
     },
+    "shares.unacknowledge": {
+      "allowed": true,
+      "description": "Stop allowing it; what was shared answers 'not found' until it is allowed again or sign-in is on",
+      "input": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": "shares.allow",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
     "shares.update": {
       "allowed": true,
       "description": "Change who may read a share, whether it is pinned or live, or what it includes",
@@ -6795,6 +6843,7 @@
         "shares.bad_subdomain": "Use 3 to 40 lowercase letters, digits and hyphens; some names are kept",
         "shares.exists": "This Space already has a site",
         "shares.no_accounts": "This instance has no accounts to sign in to; use a PIN instead",
+        "shares.no_sign_in": "This instance has no sign-in, so sharing must be allowed by an administrator first",
         "shares.no_such_person": "Nobody signs in under that name",
         "shares.subdomain_taken": "Another site already uses that name"
       },

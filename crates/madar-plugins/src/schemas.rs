@@ -225,7 +225,7 @@ pub fn shares() -> Value {
 }
 
 pub fn share_options() -> Value {
-    obj(&["accounts"], json!({"accounts": boolean(), "base_domain": nullable(STR)}))
+    obj(&["accounts", "public_ok", "acknowledged", "can_allow"], json!({"accounts": boolean(), "public_ok": boolean(), "acknowledged": boolean(), "can_allow": boolean(), "base_domain": nullable(STR)}))
 }
 
 pub fn share_releases() -> Value {
