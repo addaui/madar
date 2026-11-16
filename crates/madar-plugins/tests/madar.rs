@@ -550,9 +550,9 @@ fn sign_in_gives_an_expiring_session() {
     let t2 = s2["token"].as_str().unwrap().to_string();
     call(Some(&t2), "auth.sign_out", json!({"token": t2})).unwrap();
     assert_eq!(call(Some(&t2), "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated, "signed out");
-    // the public description says how to sign in and nothing else
+    // the public description says how to sign in and how to read what was shared, and nothing else
     let public = core.describe_public();
-    assert!(public["operations"].as_object().unwrap().keys().all(|k| k == "auth.sign_in"));
+    assert!(public["operations"].as_object().unwrap().keys().all(|k| k == "auth.sign_in" || k == "shares.open" || k == "shares.file"));
 }
 
 // ---- the database file outlives the process (PRD criteria 6 and 9) -------------------------------
@@ -1023,7 +1023,7 @@ fn switching_pages_off_keeps_its_data_and_the_rest_runs() {
     let p = core.call_as(&al, "projects.create", json!({"name": "Home"}), None).unwrap().output["id"].as_str().unwrap().to_string();
     core.call_as(&al, "knowledge.create", json!({"project": p, "title": "Kept"}), None).unwrap();
     drop(core);
-    let core = start_file(&path, &["pages", "refs"]).unwrap_or_else(|p| panic!("{p:#?}"));
+    let core = start_file(&path, &["pages", "refs", "shares"]).unwrap_or_else(|p| panic!("{p:#?}"));
     assert!(core.call_as(&al, "knowledge.list", json!({"project": p}), None).is_err());
     core.call_as(&al, "tasks.create", json!({"project": p, "title": "still fine"}), None).unwrap();
     drop(core);
@@ -1624,7 +1624,7 @@ fn files_are_sniffed_limited_and_only_shown_to_who_may_see_them() {
 #[test]
 fn search_and_files_can_be_switched_off_without_touching_the_rest() {
     let mut p = profile_test(&[]);
-    p.enabled.retain(|e| e != "@madar/search" && e != "@madar/files" && e != "@madar/files-db");
+    p.enabled.retain(|e| e != "@madar/search" && e != "@madar/files" && e != "@madar/files-db" && e != "@madar/shares");
     p.grants.remove("search");
     p.grants.remove("files");
     let dist = distribution_with(p, vec![Arc::new(TestClock(FixedClock::at(1_700_000_000_000))), Arc::new(TestIds)]);

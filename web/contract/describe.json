@@ -1,5 +1,5 @@
 {
-  "contract": "12836b9ac3aeb688",
+  "contract": "b75bb7031c013dfa",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -5373,6 +5373,1419 @@
       "plugin": "@madar/search",
       "public": false,
       "reasons": {},
+      "resource": null
+    },
+    "shares.create_page": {
+      "allowed": true,
+      "description": "Share a page you can read, with or without the pages under it",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "enum": [
+              "anyone",
+              "pin",
+              "accounts",
+              "people"
+            ]
+          },
+          "include_children": {
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "pinned",
+              "live"
+            ]
+          },
+          "page": {
+            "type": "string"
+          },
+          "people": {
+            "description": "The names people sign in with",
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "pin": {
+            "maxLength": 64,
+            "minLength": 8,
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "audience": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "include_children": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "people": {
+            "items": {
+              "properties": {
+                "display": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "subject"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "pin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release": {
+            "type": "integer"
+          },
+          "space": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subdomain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "audience",
+          "mode",
+          "release",
+          "include_children"
+        ],
+        "type": "object"
+      },
+      "permission": "shares.create",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {
+        "shares.bad_subdomain": "Use 3 to 40 lowercase letters, digits and hyphens; some names are kept",
+        "shares.exists": "This Space already has a site",
+        "shares.no_accounts": "This instance has no accounts to sign in to; use a PIN instead",
+        "shares.no_such_person": "Nobody signs in under that name",
+        "shares.subdomain_taken": "Another site already uses that name"
+      },
+      "resource": null
+    },
+    "shares.create_space": {
+      "allowed": true,
+      "description": "Make a Space a website at a subdomain (a Space admin)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "enum": [
+              "anyone",
+              "pin",
+              "accounts",
+              "people"
+            ]
+          },
+          "mode": {
+            "enum": [
+              "pinned",
+              "live"
+            ]
+          },
+          "people": {
+            "description": "The names people sign in with",
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "pin": {
+            "maxLength": 64,
+            "minLength": 8,
+            "type": "string"
+          },
+          "space": {
+            "type": "string"
+          },
+          "subdomain": {
+            "maxLength": 40,
+            "type": "string"
+          }
+        },
+        "required": [
+          "space",
+          "subdomain"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "audience": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "include_children": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "people": {
+            "items": {
+              "properties": {
+                "display": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "subject"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "pin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release": {
+            "type": "integer"
+          },
+          "space": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subdomain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "audience",
+          "mode",
+          "release",
+          "include_children"
+        ],
+        "type": "object"
+      },
+      "permission": "shares.create",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {
+        "shares.bad_subdomain": "Use 3 to 40 lowercase letters, digits and hyphens; some names are kept",
+        "shares.exists": "This Space already has a site",
+        "shares.no_accounts": "This instance has no accounts to sign in to; use a PIN instead",
+        "shares.no_such_person": "Nobody signs in under that name",
+        "shares.subdomain_taken": "Another site already uses that name"
+      },
+      "resource": null
+    },
+    "shares.file": {
+      "allowed": true,
+      "description": "A file of a shared page, with its type (the server turns this into /share-files/...)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "pin": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "subdomain": {
+            "maxLength": 40,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "data"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/shares",
+      "public": true,
+      "reasons": {
+        "shares.bad_pin": "That PIN is not right",
+        "shares.not_for_you": "This was not shared with you",
+        "shares.pin_required": "This needs a PIN",
+        "shares.sign_in": "Sign in to read this"
+      },
+      "resource": null
+    },
+    "shares.file_signed": {
+      "allowed": true,
+      "description": "A file of a shared page, for a signed-in reader",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "pin": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "subdomain": {
+            "maxLength": 40,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "data"
+        ],
+        "type": "object"
+      },
+      "permission": "shares.read",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {
+        "shares.bad_pin": "That PIN is not right",
+        "shares.not_for_you": "This was not shared with you",
+        "shares.pin_required": "This needs a PIN",
+        "shares.sign_in": "Sign in to read this"
+      },
+      "resource": null
+    },
+    "shares.list": {
+      "allowed": true,
+      "description": "The shares of a page you shared, or of a Space you administer",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "page": {
+            "type": "string"
+          },
+          "space": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "shares": {
+            "items": {
+              "properties": {
+                "audience": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": "integer"
+                },
+                "created_by": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "include_children": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "page": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "people": {
+                  "items": {
+                    "properties": {
+                      "display": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "subject": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "subject"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "pin": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "project": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "release": {
+                  "type": "integer"
+                },
+                "space": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "subdomain": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "title",
+                "audience",
+                "mode",
+                "release",
+                "include_children"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "shares"
+        ],
+        "type": "object"
+      },
+      "permission": "shares.create",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "shares.open": {
+      "allowed": true,
+      "description": "What a reader sees of a share that needs no account",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "page": {
+            "type": "string"
+          },
+          "pin": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "subdomain": {
+            "maxLength": 40,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "page": {
+            "anyOf": [
+              {
+                "properties": {
+                  "body": {
+                    "type": "object"
+                  },
+                  "folder": {
+                    "type": "boolean"
+                  },
+                  "icon": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "settings": {
+                    "type": "object"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "share": {
+            "properties": {
+              "audience": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "title",
+              "audience",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "tree": {
+            "items": {
+              "properties": {
+                "folder": {
+                  "type": "boolean"
+                },
+                "group": {
+                  "type": "integer"
+                },
+                "group_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "icon": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "parent": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "position": {
+                  "type": "number"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "share",
+          "tree"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/shares",
+      "public": true,
+      "reasons": {
+        "shares.bad_pin": "That PIN is not right",
+        "shares.not_for_you": "This was not shared with you",
+        "shares.pin_required": "This needs a PIN",
+        "shares.sign_in": "Sign in to read this"
+      },
+      "resource": null
+    },
+    "shares.open_signed": {
+      "allowed": true,
+      "description": "What a signed-in reader sees of a share",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "page": {
+            "type": "string"
+          },
+          "pin": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "subdomain": {
+            "maxLength": 40,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "page": {
+            "anyOf": [
+              {
+                "properties": {
+                  "body": {
+                    "type": "object"
+                  },
+                  "folder": {
+                    "type": "boolean"
+                  },
+                  "icon": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "settings": {
+                    "type": "object"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "share": {
+            "properties": {
+              "audience": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "title",
+              "audience",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "tree": {
+            "items": {
+              "properties": {
+                "folder": {
+                  "type": "boolean"
+                },
+                "group": {
+                  "type": "integer"
+                },
+                "group_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "icon": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "parent": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "position": {
+                  "type": "number"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "share",
+          "tree"
+        ],
+        "type": "object"
+      },
+      "permission": "shares.read",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {
+        "shares.bad_pin": "That PIN is not right",
+        "shares.not_for_you": "This was not shared with you",
+        "shares.pin_required": "This needs a PIN",
+        "shares.sign_in": "Sign in to read this"
+      },
+      "resource": null
+    },
+    "shares.options": {
+      "allowed": true,
+      "description": "What this instance can offer: whether people have accounts, and the base domain of Space sites",
+      "input": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "accounts": {
+            "type": "boolean"
+          },
+          "base_domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "type": "object"
+      },
+      "permission": "shares.create",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "shares.publish": {
+      "allowed": true,
+      "description": "Pin a share to a new release made now, or to an earlier release",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "release": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "audience": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "include_children": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "people": {
+            "items": {
+              "properties": {
+                "display": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "subject"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "pin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release": {
+            "type": "integer"
+          },
+          "space": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subdomain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "audience",
+          "mode",
+          "release",
+          "include_children"
+        ],
+        "type": "object"
+      },
+      "permission": "shares.create",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "shares.releases": {
+      "allowed": true,
+      "description": "The releases of a share, newest first",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "releases": {
+            "items": {
+              "properties": {
+                "at": {
+                  "type": "integer"
+                },
+                "by": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                },
+                "current": {
+                  "type": "boolean"
+                },
+                "number": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "number",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "releases"
+        ],
+        "type": "object"
+      },
+      "permission": "shares.create",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "shares.revoke": {
+      "allowed": true,
+      "description": "Stop sharing: the link and its releases are gone",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": "shares.create",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "shares.space": {
+      "allowed": true,
+      "description": "A Space's site and whether what it shows is the Space as it is now",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "space": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "space"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "properties": {
+                  "audience": {
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "type": "integer"
+                  },
+                  "created_by": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "include_children": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "page": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "people": {
+                    "items": {
+                      "properties": {
+                        "display": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "subject": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "subject"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "pin": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "project": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "release": {
+                    "type": "integer"
+                  },
+                  "space": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "subdomain": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "title",
+                  "audience",
+                  "mode",
+                  "release",
+                  "include_children"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "properties": {
+                  "changed": {
+                    "type": "integer"
+                  },
+                  "current": {
+                    "type": "boolean"
+                  },
+                  "latest": {
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "release": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "release",
+                  "latest",
+                  "current",
+                  "changed"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "share",
+          "status"
+        ],
+        "type": "object"
+      },
+      "permission": "spaces.read",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {},
+      "resource": {
+        "id": "space",
+        "type": "spaces.space"
+      }
+    },
+    "shares.update": {
+      "allowed": true,
+      "description": "Change who may read a share, whether it is pinned or live, or what it includes",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "enum": [
+              "anyone",
+              "pin",
+              "accounts",
+              "people"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "include_children": {
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "pinned",
+              "live"
+            ]
+          },
+          "people": {
+            "description": "The names people sign in with",
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "pin": {
+            "maxLength": 64,
+            "minLength": 8,
+            "type": "string"
+          },
+          "subdomain": {
+            "maxLength": 40,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "audience": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "include_children": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "page": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "people": {
+            "items": {
+              "properties": {
+                "display": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "subject"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "pin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release": {
+            "type": "integer"
+          },
+          "space": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subdomain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "audience",
+          "mode",
+          "release",
+          "include_children"
+        ],
+        "type": "object"
+      },
+      "permission": "shares.create",
+      "plugin": "@madar/shares",
+      "public": false,
+      "reasons": {
+        "shares.bad_subdomain": "Use 3 to 40 lowercase letters, digits and hyphens; some names are kept",
+        "shares.exists": "This Space already has a site",
+        "shares.no_accounts": "This instance has no accounts to sign in to; use a PIN instead",
+        "shares.no_such_person": "Nobody signs in under that name",
+        "shares.subdomain_taken": "Another site already uses that name"
+      },
       "resource": null
     },
     "spaces.create": {

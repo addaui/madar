@@ -208,3 +208,49 @@ pub fn search_items() -> Value {
         json!({"items": list(obj(&["kind", "id", "title"], json!({"kind": s(), "id": s(), "title": s(), "snippet": s(), "score": num(), "project": nullable(STR), "project_name": nullable(STR), "space": nullable(STR), "tags": json!({"type": "array", "items": {"type": "string"}})})))}),
     )
 }
+
+pub fn share() -> Value {
+    obj(
+        &["id", "kind", "title", "audience", "mode", "release", "include_children"],
+        json!({
+            "id": s(), "kind": s(), "title": s(), "audience": s(), "mode": s(), "release": int(), "include_children": boolean(), "page": nullable(STR), "project": nullable(STR),
+            "space": nullable(STR), "subdomain": nullable(STR), "created_at": int(), "created_by": s(), "pin": nullable(STR),
+            "people": list(obj(&["subject"], json!({"subject": s(), "display": nullable(STR)}))),
+        }),
+    )
+}
+
+pub fn shares() -> Value {
+    obj(&["shares"], json!({"shares": list(share())}))
+}
+
+pub fn share_options() -> Value {
+    obj(&["accounts"], json!({"accounts": boolean(), "base_domain": nullable(STR)}))
+}
+
+pub fn share_releases() -> Value {
+    obj(&["releases"], json!({"releases": list(obj(&["number", "at"], json!({"number": int(), "at": int(), "by": s(), "count": int(), "current": boolean()})))}))
+}
+
+pub fn share_status() -> Value {
+    obj(&["mode", "release", "latest", "current", "changed"], json!({"mode": s(), "release": int(), "latest": int(), "current": boolean(), "changed": int()}))
+}
+
+pub fn share_site() -> Value {
+    obj(&["share", "status"], json!({"share": {"anyOf": [share(), {"type": "null"}]}, "status": {"anyOf": [share_status(), {"type": "null"}]}, "admin": boolean()}))
+}
+
+pub fn share_opened() -> Value {
+    obj(
+        &["share", "tree"],
+        json!({
+            "share": obj(&["id", "kind", "title", "audience", "mode"], json!({"id": s(), "kind": s(), "title": s(), "audience": s(), "mode": s()})),
+            "tree": list(obj(&["id", "title"], json!({"id": s(), "parent": nullable(STR), "title": s(), "icon": nullable(STR), "position": num(), "folder": boolean(), "group": int(), "group_name": nullable(STR)}))),
+            "page": {"anyOf": [obj(&["id", "title", "body"], json!({"id": s(), "title": s(), "icon": nullable(STR), "body": {"type": "object"}, "settings": {"type": "object"}, "folder": boolean()})), {"type": "null"}]},
+        }),
+    )
+}
+
+pub fn share_file() -> Value {
+    obj(&["name", "type", "data"], json!({"name": s(), "type": s(), "size": int(), "data": s()}))
+}

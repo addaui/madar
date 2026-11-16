@@ -195,7 +195,7 @@ fn the_class_of_every_plugin_in_the_catalog_is_the_one_written_down() {
     const FEATURE: &[&str] = &[
         "@madar/projects", "@madar/tasks", "@madar/discussion", "@madar/audit", "@nuah/prefs", "@nuah/appearance", "@madar/export", "@madar/notify", "@madar/notify-inbox",
         "@madar/editor", "@madar/editor-basic", "@madar/task-block", "@madar/refs", "@madar/pages", "@madar/timeline", "@madar/search", "@nuah/emoji", "@madar/files",
-        "@madar/files-db", "@nuah/gifs", "@nuah/gifs-giphy", "@madar/spaces",
+        "@madar/files-db", "@nuah/gifs", "@nuah/gifs-giphy", "@madar/spaces", "@madar/shares",
     ];
     for p in catalog().0 {
         let m = p.manifest();

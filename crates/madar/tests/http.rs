@@ -111,10 +111,10 @@ fn guards_refuse_what_a_browser_attack_would_send() {
 }
 
 #[test]
-fn before_sign_in_only_signing_in_is_visible_and_possible() {
+fn before_sign_in_only_signing_in_and_reading_what_was_shared_are_visible_and_possible() {
     let s = start();
     let d = s.get("/link/describe", &[]).body;
-    assert_eq!(d["operations"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["auth.sign_in"]);
+    assert_eq!(d["operations"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["auth.sign_in", "shares.file", "shares.open"], "the public Operations: signing in, and reading what someone shared (ADR 0084)");
     let r = s.call("projects.list", json!({}), &[]);
     assert_eq!((r.status, r.body["error"]["category"].clone()), (401, json!("unauthenticated")));
     assert_eq!(s.get("/link/openapi.json", &[]).status, 401, "the contract documents need sign-in");
