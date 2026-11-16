@@ -23,8 +23,8 @@ fn start_with(cfg: nuah_http::Config) -> Server {
 fn start_full(cfg: nuah_http::Config, previews: Option<bool>) -> Server {
     let hash = AuthPassword::hash_password("correct horse");
     let accounts = json!([
-        {"name": "alice", "password_hash": hash, "roles": ["member"]},
-        {"name": "bob", "password_hash": hash, "roles": ["member"]},
+        {"username": "alice", "password_hash": hash, "roles": ["member"]},
+        {"username": "bob", "password_hash": hash, "roles": ["member"]},
     ]);
     let mut profile = madar_plugins::profile_server(":memory:", accounts);
     let mut catalog = madar_plugins::catalog();
@@ -87,7 +87,7 @@ impl Server {
         read(req.call().unwrap())
     }
     fn sign_in(&self, name: &str) -> String {
-        let r = self.call("auth.sign_in", json!({"name": name, "password": "correct horse"}), &[]);
+        let r = self.call("auth.sign_in", json!({"username": name, "password": "correct horse"}), &[]);
         assert_eq!(r.status, 200, "{:?}", r.body);
         r.body["output"]["token"].as_str().unwrap().to_string()
     }
@@ -118,7 +118,7 @@ fn before_sign_in_only_signing_in_and_reading_what_was_shared_are_visible_and_po
     let r = s.call("projects.list", json!({}), &[]);
     assert_eq!((r.status, r.body["error"]["category"].clone()), (401, json!("unauthenticated")));
     assert_eq!(s.get("/link/openapi.json", &[]).status, 401, "the contract documents need sign-in");
-    let bad = s.call("auth.sign_in", json!({"name": "alice", "password": "wrong"}), &[]);
+    let bad = s.call("auth.sign_in", json!({"username": "alice", "password": "wrong"}), &[]);
     assert_eq!((bad.status, bad.body["error"]["reason"].clone()), (401, json!("auth.bad_credentials")));
     let unknown = s.call("nope.nothing", json!({}), &[]);
     assert_eq!(unknown.status, 404);
@@ -127,7 +127,7 @@ fn before_sign_in_only_signing_in_and_reading_what_was_shared_are_visible_and_po
 #[test]
 fn a_browser_session_lives_in_an_httponly_cookie_the_page_never_sees() {
     let s = start();
-    let r = s.call("auth.sign_in", json!({"name": "alice", "password": "correct horse"}), &[("X-Nuah-Session", "cookie")]);
+    let r = s.call("auth.sign_in", json!({"username": "alice", "password": "correct horse"}), &[("X-Nuah-Session", "cookie")]);
     assert_eq!(r.status, 200);
     assert!(r.body["output"].get("token").is_none(), "the token is not in the body: {:?}", r.body);
     let set = r.header("set-cookie").unwrap().to_string();
@@ -214,7 +214,7 @@ fn pulse_streams_only_what_the_person_may_see_and_resumes() {
     assert!(seen.contains("event:") || seen.contains("projects.created"));
     // bob is not a member, so he hears nothing; share, and he hears the sharing
     assert!(wait_for(&bob, "projects.created").is_none(), "an outsider hears nothing");
-    s.call("projects.share", json!({"project": p, "name": "bob", "level": "viewer"}), &[("Authorization", auth_a.as_str())]);
+    s.call("projects.share", json!({"project": p, "username": "bob", "level": "viewer"}), &[("Authorization", auth_a.as_str())]);
     assert!(wait_for(&bob, "projects.").is_some(), "after being shared in, bob hears the project's events");
     // a stream that starts from an old cursor replays what it missed
     let again = stream(&ta, Some("c0"));
@@ -265,7 +265,7 @@ fn faces_are_hosted_revalidated_and_the_root_shows_the_web_face() {
 fn failed_sign_ins_are_throttled_per_account_and_a_success_clears_them() {
     let s = start_with(nuah_http::Config { sign_in_failures_per_name: 3, sign_in_failures_overall: 6, ..Default::default() });
     let sign_in = |name: &str, pw: &str| {
-        let mut r = agent().post(&format!("{}/link/call/auth.sign_in", s.base)).header("X-Nuah-Face", "t").header("Content-Type", "application/json").send(serde_json::to_vec(&json!({"name": name, "password": pw})).unwrap()).unwrap();
+        let mut r = agent().post(&format!("{}/link/call/auth.sign_in", s.base)).header("X-Nuah-Face", "t").header("Content-Type", "application/json").send(serde_json::to_vec(&json!({"username": name, "password": pw})).unwrap()).unwrap();
         (r.status().as_u16(), r.headers().get("retry-after").is_some(), r.body_mut().read_json::<Value>().unwrap_or(Value::Null))
     };
     // Two failures, then a success: the count starts over.

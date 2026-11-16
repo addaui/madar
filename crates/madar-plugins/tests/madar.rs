@@ -520,19 +520,19 @@ fn the_time_a_task_was_made_comes_from_the_clock_port() {
 fn sign_in_gives_an_expiring_session() {
     let clock = FixedClock::at(1_700_000_000_000);
     let hash = AuthPassword::hash_password("correct horse");
-    let mut p = profile_server(":memory:", json!([{"name": "alice", "password_hash": hash, "roles": ["member"]}]));
+    let mut p = profile_server(":memory:", json!([{"username": "alice", "password_hash": hash, "roles": ["member"]}]));
     p.enabled.retain(|e| !["@nuah/db-sqlite", "@nuah/clock-system", "@nuah/ids-random"].contains(&e.as_str()));
     p.enabled.extend(["@nuah/db-memory", "@nuah/clock-fixed", "@nuah/ids-sequential"].map(String::from));
     p.settings.remove("db-sqlite");
-    p.settings.insert("@nuah/auth-password".into(), json!({"session_hours": 1, "accounts": [{"name": "alice", "password_hash": hash, "roles": ["member"]}]}));
+    p.settings.insert("@nuah/auth-password".into(), json!({"session_hours": 1, "accounts": [{"username": "alice", "password_hash": hash, "roles": ["member"]}]}));
     p.grants.insert("auth-password".into(), vec![]);
     let core = Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock.clone())), Arc::new(TestIds)])).unwrap_or_else(|p| panic!("{p:#?}"));
     let call = |cred: Option<&str>, op: &str, input: Value| core.call(CallRequest { credential: cred.map(String::from), op: op.into(), input, key: None, contract: None });
     assert_eq!(call(None, "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated, "no credential, no entry");
-    let bad = call(None, "auth.sign_in", json!({"name": "alice", "password": "wrong"})).unwrap_err();
+    let bad = call(None, "auth.sign_in", json!({"username": "alice", "password": "wrong"})).unwrap_err();
     assert_eq!((bad.category, bad.reason.as_deref()), (Category::Unauthenticated, Some("auth.bad_credentials")));
-    assert_eq!(call(None, "auth.sign_in", json!({"name": "nobody", "password": "x"})).unwrap_err().reason.as_deref(), Some("auth.bad_credentials"), "same answer for an unknown name");
-    let s = call(None, "auth.sign_in", json!({"name": "alice", "password": "correct horse"})).unwrap().output;
+    assert_eq!(call(None, "auth.sign_in", json!({"username": "nobody", "password": "x"})).unwrap_err().reason.as_deref(), Some("auth.bad_credentials"), "same answer for an unknown name");
+    let s = call(None, "auth.sign_in", json!({"username": "alice", "password": "correct horse"})).unwrap().output;
     let token = s["token"].as_str().unwrap().to_string();
     let who = call(Some(&token), "auth.who", json!({})).unwrap().output;
     assert_eq!(who["display"], "alice");
@@ -546,7 +546,7 @@ fn sign_in_gives_an_expiring_session() {
     assert!(call(Some(&token), "projects.list", json!({})).is_ok(), "refreshed, so still valid");
     clock.advance(2 * 60 * 60 * 1000);
     assert_eq!(call(Some(&token), "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated, "expired");
-    let s2 = call(None, "auth.sign_in", json!({"name": "alice", "password": "correct horse"})).unwrap().output;
+    let s2 = call(None, "auth.sign_in", json!({"username": "alice", "password": "correct horse"})).unwrap().output;
     let t2 = s2["token"].as_str().unwrap().to_string();
     call(Some(&t2), "auth.sign_out", json!({"token": t2})).unwrap();
     assert_eq!(call(Some(&t2), "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated, "signed out");

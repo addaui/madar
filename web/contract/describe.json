@@ -1,5 +1,5 @@
 {
-  "contract": "1a7f296d79d452db",
+  "contract": "6dc486d075ed6041",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -174,11 +174,6 @@
             "maxLength": 200,
             "type": "string"
           },
-          "name": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
           "password": {
             "maxLength": 1000,
             "minLength": 8,
@@ -189,10 +184,16 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "username": {
+            "description": "2 to 32 letters, numbers, dots, dashes or underscores",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
           }
         },
         "required": [
-          "name",
+          "username",
           "password"
         ],
         "type": "object"
@@ -208,7 +209,8 @@
       "plugin": "@nuah/auth-password",
       "public": false,
       "reasons": {
-        "auth.name_taken": "That name is already used"
+        "auth.bad_username": "A username is 2 to 32 letters, numbers, dots, dashes or underscores",
+        "auth.username_taken": "That username is already used"
       },
       "resource": null
     },
@@ -272,11 +274,6 @@
             "maxLength": 200,
             "type": "string"
           },
-          "name": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
           "roles": {
             "items": {
               "type": "string"
@@ -284,6 +281,12 @@
             "type": "array"
           },
           "subject": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "username": {
+            "description": "2 to 32 letters, numbers, dots, dashes or underscores",
+            "maxLength": 200,
             "minLength": 1,
             "type": "string"
           }
@@ -299,9 +302,45 @@
       "plugin": "@nuah/auth-password",
       "public": false,
       "reasons": {
+        "auth.bad_username": "A username is 2 to 32 letters, numbers, dots, dashes or underscores",
         "auth.last_admin": "At least one enabled administrator must remain",
-        "auth.name_taken": "That name is already used",
-        "auth.no_account": "There is no such account"
+        "auth.no_account": "There is no such account",
+        "auth.username_taken": "That username is already used"
+      },
+      "resource": null
+    },
+    "auth.password.change": {
+      "allowed": true,
+      "description": "Change your own password by giving the current one",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "new": {
+            "maxLength": 1000,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "current",
+          "new"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/auth-password",
+      "public": false,
+      "reasons": {
+        "auth.bad_credentials": "The current password is wrong"
       },
       "resource": null
     },
@@ -336,23 +375,23 @@
     },
     "auth.sign_in": {
       "allowed": true,
-      "description": "Exchange a name and password for a session",
+      "description": "Exchange a username and password for a session",
       "input": {
         "additionalProperties": false,
         "properties": {
-          "name": {
-            "maxLength": 200,
+          "password": {
+            "maxLength": 1000,
             "minLength": 1,
             "type": "string"
           },
-          "password": {
-            "maxLength": 1000,
+          "username": {
+            "maxLength": 200,
             "minLength": 1,
             "type": "string"
           }
         },
         "required": [
-          "name",
+          "username",
           "password"
         ],
         "type": "object"
@@ -370,7 +409,7 @@
       "plugin": "@nuah/auth-password",
       "public": true,
       "reasons": {
-        "auth.bad_credentials": "The name or password is wrong"
+        "auth.bad_credentials": "The username or password is wrong"
       },
       "resource": null
     },
@@ -4922,17 +4961,17 @@
               "viewer"
             ]
           },
-          "name": {
-            "description": "The name the person signs in with",
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
           "project": {
             "type": "string"
           },
           "subject": {
             "description": "Their stable id, when you already have it",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "username": {
+            "description": "The username the person signs in with",
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
@@ -4952,7 +4991,7 @@
       "plugin": "@madar/projects",
       "public": false,
       "reasons": {
-        "projects.no_such_person": "Nobody signs in under that name",
+        "projects.no_such_person": "Nobody signs in under that username",
         "projects.owner_fixed": "The owner's level cannot be changed"
       },
       "resource": {
@@ -5419,7 +5458,7 @@
             "type": "string"
           },
           "people": {
-            "description": "The names people sign in with",
+            "description": "The usernames people sign in with",
             "items": {
               "maxLength": 200,
               "minLength": 1,
@@ -5569,7 +5608,7 @@
             ]
           },
           "people": {
-            "description": "The names people sign in with",
+            "description": "The usernames people sign in with",
             "items": {
               "maxLength": 200,
               "minLength": 1,
@@ -6719,7 +6758,7 @@
             ]
           },
           "people": {
-            "description": "The names people sign in with",
+            "description": "The usernames people sign in with",
             "items": {
               "maxLength": 200,
               "minLength": 1,
@@ -6895,7 +6934,7 @@
       "public": false,
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
-        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.no_such_person": "Nobody signs in under that username",
         "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
@@ -6928,7 +6967,7 @@
       "public": false,
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
-        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.no_such_person": "Nobody signs in under that username",
         "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
@@ -7020,7 +7059,7 @@
       "public": false,
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
-        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.no_such_person": "Nobody signs in under that username",
         "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
@@ -7251,7 +7290,7 @@
       "public": false,
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
-        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.no_such_person": "Nobody signs in under that username",
         "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
@@ -7266,12 +7305,6 @@
       "input": {
         "additionalProperties": false,
         "properties": {
-          "name": {
-            "description": "The name the person signs in with",
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
           "role": {
             "enum": [
               "admin",
@@ -7284,6 +7317,12 @@
           },
           "subject": {
             "description": "Their stable id, when you already have it",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "username": {
+            "description": "The username the person signs in with",
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
@@ -7304,7 +7343,7 @@
       "public": false,
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
-        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.no_such_person": "Nobody signs in under that username",
         "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },
@@ -7341,7 +7380,7 @@
       "public": false,
       "reasons": {
         "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
-        "spaces.no_such_person": "Nobody signs in under that name",
+        "spaces.no_such_person": "Nobody signs in under that username",
         "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
         "spaces.too_many": "You have reached the number of Spaces one person may create"
       },

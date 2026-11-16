@@ -60,7 +60,7 @@ impl Wizard {
 }
 
 fn server_profile(hash: &str) -> Value {
-    let mut p = serde_json::to_value(madar_plugins::profile_server("data.db", json!([{"name": "alice", "password_hash": hash, "roles": ["admin"]}]))).unwrap();
+    let mut p = serde_json::to_value(madar_plugins::profile_server("data.db", json!([{"username": "alice", "password_hash": hash, "roles": ["admin"]}]))).unwrap();
     p["name"] = json!("server");
     p
 }
@@ -159,9 +159,9 @@ fn the_first_administrator_is_asked_for_and_stored_hashed_so_nobody_pastes_a_has
     let (_, checked) = w.post("/setup/check", &draft, Some(CODE));
     assert!(checked["problems"].as_array().unwrap().iter().any(|p| p["code"] == "first_account_missing"), "{checked}");
     assert_eq!(w.post("/setup/save", &draft, Some(CODE)).0, 422);
-    draft["first_account"] = json!({"name": "ada", "password": "short"});
+    draft["first_account"] = json!({"username": "ada", "password": "short"});
     assert_eq!(w.post("/setup/save", &draft, Some(CODE)).0, 422, "a short password is refused");
-    draft["first_account"] = json!({"name": "ada", "password": "correct horse"});
+    draft["first_account"] = json!({"username": "ada", "password": "correct horse"});
     let (status, body) = w.post("/setup/save", &draft, Some(CODE));
     assert_eq!(status, 200, "{body}");
     assert!(!body.to_string().contains("correct horse"));
@@ -170,7 +170,7 @@ fn the_first_administrator_is_asked_for_and_stored_hashed_so_nobody_pastes_a_has
     // and the saved file runs: she signs in, and is an administrator
     let core = nuah_kernel::Core::start(&nuah_kernel::Distribution { name: "madar".into(), catalog: madar_plugins::full_catalog(), profile: nuah_kernel::setup::profile_from_json(&saved).unwrap() }).unwrap_or_else(|p| panic!("{p:#?}"));
     let anon = nuah_kernel::Identity::new("", "", &[]);
-    let who = core.call_as(&anon, "auth.sign_in", json!({"name": "ada", "password": "correct horse"}), None).unwrap().output["who"].clone();
+    let who = core.call_as(&anon, "auth.sign_in", json!({"username": "ada", "password": "correct horse"}), None).unwrap().output["who"].clone();
     assert_eq!(who["roles"], json!(["admin"]));
     // once an account exists, setup does not ask again
     let (_, state) = w.get("/setup/state", Some(CODE));

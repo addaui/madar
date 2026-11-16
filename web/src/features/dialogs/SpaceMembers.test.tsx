@@ -30,13 +30,13 @@ function show() {
 beforeEach(() => { calls.length = 0; role = "admin"; spaceState.set("s1"); });
 
 describe("the Space members window", () => {
-  it("lists who is in the Space and lets an admin add someone by name with a role", async () => {
+  it("lists who is in the Space and lets an admin add someone by username with a role", async () => {
     show();
     expect(await screen.findByText("Bob")).toBeTruthy();
-    await userEvent.type(screen.getByLabelText("Person"), "carol");
+    await userEvent.type(screen.getByLabelText("Their username"), "carol");
     await userEvent.click(screen.getByRole("button", { name: "Share" }));
     await waitFor(() => expect(calls.some((c) => c.op === "spaces.share")).toBe(true));
-    expect(calls.find((c) => c.op === "spaces.share")!.input).toEqual({ space: "s1", name: "carol", role: "member" });
+    expect(calls.find((c) => c.op === "spaces.share")!.input).toEqual({ space: "s1", username: "carol", role: "member" });
   });
 
   it("an admin removes a person", async () => {

@@ -46,11 +46,11 @@ function Members({ id, name, admin, onClose, refresh }: { id: string; name: stri
       {admin && (
         <form className="mt-3 flex gap-2" onSubmit={async (e) => {
           e.preventDefault();
-          const f = new FormData(e.currentTarget), who = String(f.get("name") ?? "").trim();
+          const f = new FormData(e.currentTarget), who = String(f.get("username") ?? "").trim();
           if (!who) return;
-          try { await link.call("spaces.share", { space: id, name: who, role: String(f.get("role")) as Role }); e.currentTarget.reset(); setError(null); await refresh(); } catch (x) { fail(x); }
+          try { await link.call("spaces.share", { space: id, username: who, role: String(f.get("role")) as Role }); e.currentTarget.reset(); setError(null); await refresh(); } catch (x) { fail(x); }
         }}>
-          <TextField name="name" dir="auto" placeholder={t("person")} label={t("person")} className="min-w-0 grow" />
+          <TextField name="username" dir="auto" placeholder={t("theirUsername")} label={t("theirUsername")} className="min-w-0 grow" />
           <Select name="role" label={t("accessLevel")} defaultValue="member" options={(Object.keys(roleKey) as Role[]).map((r) => ({ value: r, label: t(roleKey[r]) }))} />
           <Button kind="primary" type="submit">{t("share")}</Button>
         </form>

@@ -188,8 +188,8 @@ impl Plugin for Projects {
                 "projects.delete": {"kind": "command", "output": {"type":"object"}, "description": "Delete a project and everything in it", "resource": {"type":"projects.project","id":"project"}, "permission": "projects.manage",
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"}},"additionalProperties":false}},
                 "projects.share": {"kind": "command", "output": {"type":"object"}, "description": "Give someone access to a project", "resource": {"type":"projects.project","id":"project"}, "permission": "projects.manage",
-                    "reasons": {"projects.owner_fixed": "The owner's level cannot be changed", "projects.no_such_person": "Nobody signs in under that name"},
-                    "input": {"type":"object","required":["project","level"],"properties":{"project":{"type":"string"},"name":{"type":"string","minLength":1,"maxLength":200,"description":"The name the person signs in with"},"subject":{"type":"string","minLength":1,"maxLength":200,"description":"Their stable id, when you already have it"},"level":{"enum":["editor","viewer"]}},"additionalProperties":false}},
+                    "reasons": {"projects.owner_fixed": "The owner's level cannot be changed", "projects.no_such_person": "Nobody signs in under that username"},
+                    "input": {"type":"object","required":["project","level"],"properties":{"project":{"type":"string"},"username":{"type":"string","minLength":1,"maxLength":200,"description":"The username the person signs in with"},"subject":{"type":"string","minLength":1,"maxLength":200,"description":"Their stable id, when you already have it"},"level":{"enum":["editor","viewer"]}},"additionalProperties":false}},
                 "projects.unshare": {"kind": "command", "output": {"type":"object"}, "description": "Take someone's access away", "resource": {"type":"projects.project","id":"project"}, "permission": "projects.manage",
                     "reasons": {"projects.owner_fixed": "The owner cannot be removed"},
                     "input": {"type":"object","required":["project","subject"],"properties":{"project":{"type":"string"},"subject":{"type":"string"}},"additionalProperties":false}},
@@ -358,13 +358,13 @@ impl Plugin for Projects {
         b.op("projects.share", |tx, i| {
             let (id, level) = (text(&i, "project"), text(&i, "level"));
             // The person is named by what they sign in with, or by the stable id the auth plugin gave them.
-            let (who, display) = match (i["name"].as_str(), i["subject"].as_str()) {
+            let (who, display) = match (i["username"].as_str(), i["subject"].as_str()) {
                 (Some(name), _) => {
-                    let p = tx.find_person(name)?.ok_or_else(|| Error::reason(Category::NotFound, "projects.no_such_person", "Nobody signs in under that name"))?;
+                    let p = tx.find_person(name)?.ok_or_else(|| Error::reason(Category::NotFound, "projects.no_such_person", "Nobody signs in under that username"))?;
                     (p.subject, Some(p.display))
                 }
                 (None, Some(subject)) => (subject.to_string(), None),
-                (None, None) => return Err(Error::invalid("name", "give the name of the person, or their subject")),
+                (None, None) => return Err(Error::invalid("username", "give the username of the person, or their subject")),
             };
             let who = who.as_str();
             let mid = member_id(id, who);

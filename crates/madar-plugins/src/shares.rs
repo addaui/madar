@@ -270,7 +270,7 @@ fn audience_fields(tx: &Tx, i: &Value, keep: Option<&Value>) -> Result<(String, 
         if let Some(names) = i["people"].as_array() {
             let mut out = vec![];
             for n in names.iter().filter_map(|n| n.as_str()) {
-                let p = tx.find_person(n)?.ok_or_else(|| Error::reason(Category::NotFound, "shares.no_such_person", &format!("Nobody signs in under {n}")))?;
+                let p = tx.find_person(n)?.ok_or_else(|| Error::reason(Category::NotFound, "shares.no_such_person", &format!("Nobody signs in under the username {n}")))?;
                 out.push(json!({"subject": p.subject, "display": p.display}));
             }
             json!(out)
@@ -350,7 +350,7 @@ impl Plugin for Shares {
     fn manifest(&self) -> Manifest {
         let audience = json!({"enum": AUDIENCES});
         let mode = json!({"enum": ["pinned", "live"]});
-        let people = json!({"type":"array","maxItems":50,"items":{"type":"string","minLength":1,"maxLength":200},"description":"The names people sign in with"});
+        let people = json!({"type":"array","maxItems":50,"items":{"type":"string","minLength":1,"maxLength":200},"description":"The usernames people sign in with"});
         let pin = json!({"type":"string","minLength":8,"maxLength":64});
         let id = json!({"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false});
         let reasons = json!({

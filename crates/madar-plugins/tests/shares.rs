@@ -152,11 +152,11 @@ fn accounts_rig() -> (Rig, Identity, Identity, Identity) {
     let mut p = profile_test(&[]);
     p.enabled.retain(|e| e != "@nuah/auth-local");
     p.enabled.push("@nuah/auth-password".into());
-    let acc = |n: &str| json!({"name": n, "password_hash": AuthPassword::hash_password("passw0rd-long"), "roles": ["member"]});
+    let acc = |n: &str| json!({"username": n, "password_hash": AuthPassword::hash_password("passw0rd-long"), "roles": ["member"]});
     p.settings.insert("@nuah/auth-password".into(), json!({"accounts": [acc("alice"), acc("bob"), acc("carol")]}));
     let core = start(p);
     let sign = |n: &str| -> Identity {
-        let out = core.call_as(&Identity::new("", "", &[]), "auth.sign_in", json!({"name": n, "password": "passw0rd-long"}), None).unwrap().output;
+        let out = core.call_as(&Identity::new("", "", &[]), "auth.sign_in", json!({"username": n, "password": "passw0rd-long"}), None).unwrap().output;
         serde_json::from_value(out["who"].clone()).unwrap()
     };
     let (a, b, c) = (sign("alice"), sign("bob"), sign("carol"));

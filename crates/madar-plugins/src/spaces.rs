@@ -113,7 +113,7 @@ impl Plugin for Spaces {
             "spaces.last_admin": "A Space keeps at least one admin; make someone else an admin first",
             "spaces.not_empty": "It still holds projects. Move them elsewhere, or delete the Space together with them",
             "spaces.too_many": "You have reached the number of Spaces one person may create",
-            "spaces.no_such_person": "Nobody signs in under that name"
+            "spaces.no_such_person": "Nobody signs in under that username"
         });
         manifest(json!({
             "id": "@madar/spaces", "version": "0.1.0", "name": "Spaces", "namespaces": ["spaces"],
@@ -152,7 +152,7 @@ impl Plugin for Spaces {
                 "spaces.members": {"kind": "query", "permission": "spaces.read", "resource": {"type":"spaces.space","id":"space"}, "description": "Who is in a Space, and their role",
                     "input": space, "output": crate::schemas::space_members()},
                 "spaces.share": {"kind": "command", "permission": "spaces.manage", "resource": {"type":"spaces.space","id":"space"}, "description": "Add someone to a Space, or change their role", "reasons": reasons,
-                    "input": {"type":"object","required":["space","role"],"properties":{"space":{"type":"string"},"name":{"type":"string","minLength":1,"maxLength":200,"description":"The name the person signs in with"},"subject":{"type":"string","minLength":1,"maxLength":200,"description":"Their stable id, when you already have it"},"role":role},"additionalProperties":false},
+                    "input": {"type":"object","required":["space","role"],"properties":{"space":{"type":"string"},"username":{"type":"string","minLength":1,"maxLength":200,"description":"The username the person signs in with"},"subject":{"type":"string","minLength":1,"maxLength":200,"description":"Their stable id, when you already have it"},"role":role},"additionalProperties":false},
                     "output": crate::schemas::done()},
                 "spaces.unshare": {"kind": "command", "permission": "spaces.manage", "resource": {"type":"spaces.space","id":"space"}, "description": "Take someone out of a Space", "reasons": reasons,
                     "input": {"type":"object","required":["space","subject"],"properties":{"space":{"type":"string"},"subject":{"type":"string"}},"additionalProperties":false}, "output": crate::schemas::done()},
@@ -240,13 +240,13 @@ impl Plugin for Spaces {
         b.op("spaces.share", |tx, i| {
             let (id, role) = (text(&i, "space"), text(&i, "role"));
             require_role(tx, id, &["admin"])?;
-            let (who, display) = match (i["name"].as_str(), i["subject"].as_str()) {
+            let (who, display) = match (i["username"].as_str(), i["subject"].as_str()) {
                 (Some(name), _) => {
-                    let p = tx.find_person(name)?.ok_or_else(|| Error::reason(Category::NotFound, "spaces.no_such_person", "Nobody signs in under that name"))?;
+                    let p = tx.find_person(name)?.ok_or_else(|| Error::reason(Category::NotFound, "spaces.no_such_person", "Nobody signs in under that username"))?;
                     (p.subject, Some(p.display))
                 }
                 (None, Some(subject)) => (subject.to_string(), None),
-                (None, None) => return Err(Error::invalid("name", "give the name of the person, or their subject")),
+                (None, None) => return Err(Error::invalid("username", "give the username of the person, or their subject")),
             };
             let mid = member_id(id, &who);
             let existing = tx.get(SPACE_MEMBERS, &mid)?;

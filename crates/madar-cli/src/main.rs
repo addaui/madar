@@ -106,7 +106,7 @@ fn run(a: &Args, path: &PathBuf, link: &dyn Link) -> Result<(), Error> {
     let rest = &a.rest;
     match a.command.as_str() {
         "login" => {
-            let name = rest.first().ok_or_else(|| Error::invalid("name", "usage: madar login NAME"))?;
+            let name = rest.first().ok_or_else(|| Error::invalid("name", "usage: madar login USERNAME"))?;
             let password = match std::env::var("MADAR_PASSWORD") {
                 Ok(p) => p,
                 Err(_) => {
@@ -115,7 +115,7 @@ fn run(a: &Args, path: &PathBuf, link: &dyn Link) -> Result<(), Error> {
                     s.lines().next().unwrap_or("").to_string()
                 }
             };
-            let out = link.call("auth.sign_in", json!({"name": name, "password": password}), None)?;
+            let out = link.call("auth.sign_in", json!({"username": name, "password": password}), None)?;
             let token = out["token"].as_str().ok_or_else(|| Error::internal("no session came back"))?;
             save_session(path, &a.server, token).map_err(|e| Error::internal(format!("cannot save the session: {e}")))?;
             println!("signed in as {}", out["who"]["display"].as_str().unwrap_or(name));

@@ -8,7 +8,7 @@ use std::sync::mpsc;
 
 fn server() -> String {
     let hash = AuthPassword::hash_password("pw");
-    let core = Core::start(&madar_plugins::distribution(madar_plugins::profile_server(":memory:", json!([{"name": "alice", "password_hash": hash, "roles": ["member"]}])))).unwrap();
+    let core = Core::start(&madar_plugins::distribution(madar_plugins::profile_server(":memory:", json!([{"username": "alice", "password_hash": hash, "roles": ["member"]}])))).unwrap();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         tokio::runtime::Runtime::new().unwrap().block_on(async move {

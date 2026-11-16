@@ -14,7 +14,7 @@ fn free_port() -> u16 {
 }
 
 fn accounts() -> Value {
-    json!([{"name": "alice", "password_hash": AuthPassword::hash_password("pw"), "roles": ["member"]}])
+    json!([{"username": "alice", "password_hash": AuthPassword::hash_password("pw"), "roles": ["member"]}])
 }
 
 /// What an identity file for a server says: the plugins it lists run, and nothing else.
@@ -67,7 +67,7 @@ fn stopping_does_not_wait_for_an_open_pulse_stream() {
         .post(&format!("{base}/link/call/auth.sign_in"))
         .header("Content-Type", "application/json")
         .header("X-Nuah-Face", "test")
-        .send(json!({"name": "alice", "password": "pw"}).to_string())
+        .send(json!({"username": "alice", "password": "pw"}).to_string())
         .unwrap()
         .body_mut()
         .read_json::<Value>()
@@ -136,7 +136,7 @@ fn madar_writes_its_log_to_a_file_and_prometheus_can_scrape_it() {
         .post(&format!("http://127.0.0.1:{port}/link/call/auth.sign_in"))
         .header("Content-Type", "application/json")
         .header("X-Nuah-Face", "test")
-        .send(json!({"name": "alice", "password": "pw"}).to_string())
+        .send(json!({"username": "alice", "password": "pw"}).to_string())
         .unwrap();
     assert_eq!(signed.status().as_u16(), 200);
     let me = nuah_kernel::Identity::new("alice", "alice", &["member"]);

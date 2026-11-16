@@ -32,10 +32,10 @@ export function Members({ project, manager, onClose }: { project: Project; manag
       </ul>
       {manager && (
         <form className="mt-3 flex gap-2" onSubmit={async (e) => {
-          e.preventDefault(); const f = new FormData(e.currentTarget), name = String(f.get("name") ?? "").trim(); if (!name) return;
-          try { await link.call("projects.share", { project: project.id, name, level: String(f.get("level")) as "editor" }); e.currentTarget.reset(); setError(null); await refreshAll(qc); } catch (x) { setError(x instanceof Error ? x.message : t("offline")); }
+          e.preventDefault(); const f = new FormData(e.currentTarget), username = String(f.get("username") ?? "").trim(); if (!username) return;
+          try { await link.call("projects.share", { project: project.id, username, level: String(f.get("level")) as "editor" }); e.currentTarget.reset(); setError(null); await refreshAll(qc); } catch (x) { setError(x instanceof Error ? x.message : t("offline")); }
         }}>
-          <TextField name="name" dir="auto" placeholder={t("person")} label={t("person")} className="min-w-0 grow" />
+          <TextField name="username" dir="auto" placeholder={t("theirUsername")} label={t("theirUsername")} className="min-w-0 grow" />
           <Select name="level" label={t("accessLevel")} defaultValue="editor" options={[{ value: "editor", label: t("editor") }, { value: "viewer", label: t("viewer") }]} />
           <Button kind="primary" type="submit">{t("share")}</Button>
         </form>

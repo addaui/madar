@@ -86,9 +86,9 @@ function SignInGate({ onDone }: { onDone: () => void }) {
     <form className="grid gap-3" onSubmit={async (e) => {
       e.preventDefault();
       const f = new FormData(e.currentTarget);
-      try { await link.call("auth.sign_in", { name: String(f.get("name") ?? ""), password: String(f.get("password") ?? "") }, { headers: { "X-Nuah-Session": "cookie" } }); setError(""); onDone(); } catch (x) { setError(x instanceof Error ? x.message : t("offline")); }
+      try { await link.call("auth.sign_in", { username: String(f.get("username") ?? ""), password: String(f.get("password") ?? "") }, { headers: { "X-Nuah-Session": "cookie" } }); setError(""); onDone(); } catch (x) { setError(x instanceof Error ? x.message : t("offline")); }
     }}>
-      <TextField name="name" label={t("name")} isRequired autoComplete="username" dir="auto" />
+      <TextField name="username" label={t("username")} placeholder={t("yourUsername")} isRequired autoComplete="username" dir="auto" />
       <TextField name="password" type="password" label={t("password")} isRequired autoComplete="current-password" />
       <p role="alert" className="m-0 min-h-[1.2em] text-danger">{error}</p>
       <Button kind="primary" type="submit">{t("signIn")}</Button>

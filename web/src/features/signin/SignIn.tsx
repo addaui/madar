@@ -13,7 +13,7 @@ export function SignIn() {
   const client = useQueryClient();
   const [error, submit, pending] = useActionState(async (_prev: string | null, form: FormData): Promise<string | null> => {
     try {
-      await link.call("auth.sign_in", { name: String(form.get("name") ?? ""), password: String(form.get("password") ?? "") }, { headers: { "X-Nuah-Session": "cookie" } });
+      await link.call("auth.sign_in", { username: String(form.get("username") ?? ""), password: String(form.get("password") ?? "") }, { headers: { "X-Nuah-Session": "cookie" } });
       await client.invalidateQueries({ queryKey: ["describe"] });
       return null;
     } catch (e) {
@@ -26,7 +26,7 @@ export function SignIn() {
       <form action={submit} className="grid w-[min(400px,100%)] gap-3.5 rounded-lg bg-surface p-8 shadow-2">
         <div className="flex items-center gap-2.5 text-[17px] font-bold"><Icon name="logo" className="size-[26px] text-accent" />Madar</div>
         <p className="m-0 text-muted">{t("signInHint")}</p>
-        <TextField name="name" label={t("name")} placeholder={t("name")} isRequired autoComplete="username" dir="auto" />
+        <TextField name="username" label={t("username")} placeholder={t("yourUsername")} isRequired autoComplete="username" dir="auto" />
         <TextField name="password" type="password" label={t("password")} placeholder={t("password")} isRequired autoComplete="current-password" />
         <p role="alert" className="m-0 min-h-[1.2em] text-danger">{error}</p>
         <Button kind="primary" type="submit" isDisabled={pending} className="justify-center">{t("signIn")}</Button>
