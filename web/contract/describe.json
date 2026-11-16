@@ -1,5 +1,5 @@
 {
-  "contract": "b75bb7031c013dfa",
+  "contract": "6a9f6671819958e3",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -5513,7 +5513,8 @@
           "audience",
           "mode",
           "release",
-          "include_children"
+          "include_children",
+          "people"
         ],
         "type": "object"
       },
@@ -5666,7 +5667,8 @@
           "audience",
           "mode",
           "release",
-          "include_children"
+          "include_children",
+          "people"
         ],
         "type": "object"
       },
@@ -5908,7 +5910,8 @@
                 "audience",
                 "mode",
                 "release",
-                "include_children"
+                "include_children",
+                "people"
               ],
               "type": "object"
             },
@@ -5952,6 +5955,9 @@
       "kind": "query",
       "output": {
         "properties": {
+          "blocks": {
+            "type": "array"
+          },
           "page": {
             "anyOf": [
               {
@@ -6106,6 +6112,9 @@
       "kind": "query",
       "output": {
         "properties": {
+          "blocks": {
+            "type": "array"
+          },
           "page": {
             "anyOf": [
               {
@@ -6372,7 +6381,8 @@
           "audience",
           "mode",
           "release",
-          "include_children"
+          "include_children",
+          "people"
         ],
         "type": "object"
       },
@@ -6574,7 +6584,8 @@
                   "audience",
                   "mode",
                   "release",
-                  "include_children"
+                  "include_children",
+                  "people"
                 ],
                 "type": "object"
               },
@@ -6772,7 +6783,8 @@
           "audience",
           "mode",
           "release",
-          "include_children"
+          "include_children",
+          "people"
         ],
         "type": "object"
       },

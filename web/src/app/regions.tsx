@@ -1,4 +1,4 @@
-import { createContext, use, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, lazy, Suspense, use, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n/i18n";
 import { cn } from "../lib/cn";
@@ -65,6 +65,8 @@ function useContextView() {
 
 /** The strip above the workspace. */
 /** `title` names the screen for the browser tab and for screen readers (the visible name is in the breadcrumbs). */
+const SiteIndicator = lazy(() => import("../features/shares/SiteIndicator").then((m) => ({ default: m.SiteIndicator })));
+
 export function Topbar({ title, crumbs, actions }: { title: string; crumbs: ReactNode; actions?: ReactNode }) {
   const t = useT();
   useEffect(() => { document.title = title ? title + " · Madar" : "Madar"; return () => { document.title = "Madar"; }; }, [title]);
@@ -79,6 +81,7 @@ export function Topbar({ title, crumbs, actions }: { title: string; crumbs: Reac
       <h1 className="sr-only">{title}</h1>
       <nav aria-label="breadcrumb" className="flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap text-[13px] text-muted">{crumbs}</nav>
       <span className="grow" />
+      <Suspense fallback={null}><SiteIndicator /></Suspense>
       {actions}
       <IconButton icon="focus" label={t("focusMode") + " (Ctrl+\\)"} className="size-[30px]" onPress={() => focusState.set("1")} />
       {ctx.info && <IconButton icon="side" label={t("toggleInfo")} className="size-[30px] -scale-x-100 rtl:scale-x-100" aria-pressed={ctx.open} onPress={ctx.toggle} />}

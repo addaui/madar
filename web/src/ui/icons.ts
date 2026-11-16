@@ -1,6 +1,7 @@
 // Icon shapes (24 by 24, stroke only), drawn from the first web Face; some follow the Lucide icons (ISC licence, see THIRD_PARTY_NOTICES.md).
 // The strings are static markup of this file, never user input.
 export const icons: Record<string, string> = {
+  "globe": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18\"/>",
   "wrap": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\" rx=\"2\"/><path d=\"M14 5h6M14 9h6M4 14h16M4 18h16\"/>",
   "sticker": "<path d=\"M5 5.5A2.5 2.5 0 0 1 7.5 3h9A2.5 2.5 0 0 1 19 5.5V13l-6 6H7.5A2.5 2.5 0 0 1 5 16.5z\"/><path d=\"M19 13h-3.5A2.5 2.5 0 0 0 13 15.5V19\"/><path d=\"M9 8.5v.5M14 8.5v.5M9 12.2c.7.8 1.7 1.2 2.5 1.2\"/>",
   "layers": "<path d=\"M12 4l8.5 4.5L12 13 3.5 8.5z\"/><path d=\"M3.5 12.5L12 17l8.5-4.5M3.5 16L12 20.5 20.5 16\"/>",

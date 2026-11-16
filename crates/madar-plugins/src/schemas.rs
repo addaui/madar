@@ -211,7 +211,7 @@ pub fn search_items() -> Value {
 
 pub fn share() -> Value {
     obj(
-        &["id", "kind", "title", "audience", "mode", "release", "include_children"],
+        &["id", "kind", "title", "audience", "mode", "release", "include_children", "people"],
         json!({
             "id": s(), "kind": s(), "title": s(), "audience": s(), "mode": s(), "release": int(), "include_children": boolean(), "page": nullable(STR), "project": nullable(STR),
             "space": nullable(STR), "subdomain": nullable(STR), "created_at": int(), "created_by": s(), "pin": nullable(STR),
@@ -246,6 +246,7 @@ pub fn share_opened() -> Value {
         json!({
             "share": obj(&["id", "kind", "title", "audience", "mode"], json!({"id": s(), "kind": s(), "title": s(), "audience": s(), "mode": s()})),
             "tree": list(obj(&["id", "title"], json!({"id": s(), "parent": nullable(STR), "title": s(), "icon": nullable(STR), "position": num(), "folder": boolean(), "group": int(), "group_name": nullable(STR)}))),
+            "blocks": {"type": "array"},
             "page": {"anyOf": [obj(&["id", "title", "body"], json!({"id": s(), "title": s(), "icon": nullable(STR), "body": {"type": "object"}, "settings": {"type": "object"}, "folder": boolean()})), {"type": "null"}]},
         }),
     )

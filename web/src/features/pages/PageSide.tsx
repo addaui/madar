@@ -1,7 +1,9 @@
 import { Suspense, useState } from "react";
 import { Skeleton } from "../../ui/Skeleton";
 import { useMaybeRead, useRead } from "../../api/hooks";
-import { useDescribe } from "../../api/session";
+import { useDescribe, useHasOp } from "../../api/session";
+import { Button } from "../../ui/Button";
+import { ShareDialog } from "../shares/ShareDialog";
 import { Avatar } from "../../ui/Avatar";
 import type { Page } from "../../api/types";
 import { useI18n, type Key } from "../../i18n/i18n";
@@ -28,12 +30,16 @@ export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
   const f = useDateFormat();
   const back = useMaybeRead(scope.project ? "refs.to" : "refs.mine", scope.project ? { project: scope.project, kind: "pages.page", id: page.id } as never : { kind: "pages.page", id: page.id });
   const links = (back.data as { links?: { from: { type: string; id: string }; title?: string }[] } | undefined)?.links ?? [];
+  const canShare = useHasOp("shares.create_page");
+  const [sharing, setSharing] = useState(false);
   return (
     <div className="flex h-full min-h-0 flex-col workspace:bg-transparent panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-surface panels:shadow-1">
       <Tabs variant="compact" label={t("toggleInfo")} selected={tab} onSelect={(k) => setTab(k as Tab)} items={[{ id: "info", label: t("infoTab") }, { id: "page", label: t("pageTab") }, { id: "element", label: t("elementTab") + (showKind && kind ? " · " + t(("node_" + kind) as Key) : "") }]}
         className="flex min-h-0 flex-1 flex-col" panelClassName="min-h-0 flex-1 overflow-auto p-4">
         {tab === "info" ? (
           <>
+            {canShare && <div className="mb-4"><Button icon="link" onPress={() => setSharing(true)}>{t("shareTitle")}</Button></div>}
+            {sharing && <Suspense fallback={null}><ShareDialog page={{ id: page.id, title: page.title }} project={scope.project} onClose={() => setSharing(false)} /></Suspense>}
             <dl className="m-0 grid gap-2.5 text-[13px]">
               {page.created_by ? <Prop icon="user" label={t("createdBy")}>{scope.project ? <Suspense fallback={<Skeleton className="h-4 w-24" />}><ProjectCreator project={scope.project} subject={page.created_by} /></Suspense> : <Person subject={page.created_by} name={undefined} />}</Prop> : null}
               <Prop icon="calendar" label={t("created")}>{f.time(page.created_at ?? 0)}</Prop>

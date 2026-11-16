@@ -199,7 +199,8 @@ const YouTube = Node.create({
 
 // A picture is drawn only from this server's files (ADR 0077): a saved page is not trusted, and a viewer's browser must not contact another site because the page said so.
 // One at another address stays in the data (the Face imports it when the page opens) and is drawn as an empty frame until then.
-const ownPicture = (u: any): u is string => typeof u === 'string' && /^\/files\/[\w.-]+$/.test(u)
+// a picture of this server: an uploaded file, or (in a shared page, ADR 0084) a file served through the share, with its PIN when it has one
+const ownPicture = (u: any): u is string => typeof u === 'string' && /^\/(files\/[\w.-]+|share-files\/[\w.-]+\/[\w.-]+(\?pin=[\w.%-]+)?)$/.test(u)
 const shortUrl = (u: string) => { const t = String(u).replace(/^https?:\/\//i, '').replace(/\/$/, ''); return t.length > 64 ? t.slice(0, 40) + '…' + t.slice(-20) : t }
 const ImageBlock = Node.create({
   name: 'image', group: 'block', atom: true, selectable: true, draggable: true,

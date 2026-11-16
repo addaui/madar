@@ -278,7 +278,7 @@ fn check_subdomain(tx: &Tx, sub: &str, except: &str) -> Result<()> {
 }
 
 /// What a reader gets: the tree, and one page with its body.
-fn open_impl(tx: &Tx, i: &Value, signed: bool) -> Result<Value> {
+fn open_impl(tx: &mut Tx, i: &Value, signed: bool) -> Result<Value> {
     let share = find_share(tx, i)?;
     let who = signed.then(|| tx.who().subject.clone());
     check_access(tx, &share, who.as_deref(), i["pin"].as_str())?;
@@ -300,7 +300,7 @@ fn open_impl(tx: &Tx, i: &Value, signed: bool) -> Result<Value> {
         None => None,
     };
     let page = chosen.map(|it| json!({"id": it["page"], "title": it["title"], "icon": it["icon"], "body": it["body"], "settings": it["settings"], "folder": it["folder"]}));
-    Ok(json!({"share": {"id": share.id, "kind": share.body["kind"], "title": share.body["title"], "audience": share.body["audience"], "mode": share.body["mode"]}, "tree": tree, "page": page}))
+    Ok(json!({"share": {"id": share.id, "kind": share.body["kind"], "title": share.body["title"], "audience": share.body["audience"], "mode": share.body["mode"]}, "tree": tree, "page": page, "blocks": blocks_of(tx)}))
 }
 
 /// One uploaded file of a shared page, only when the shared pages use it.
@@ -314,6 +314,11 @@ fn file_impl(tx: &mut Tx, i: &Value, signed: bool) -> Result<Value> {
     let meta = tx.get(FILES, id)?.filter(|_| used).ok_or_else(|| Error::not_found("file"))?;
     let got = tx.extension_call("files.store", json!({"action": "get", "id": id}))?;
     Ok(json!({"name": meta.body["name"], "type": meta.body["type"], "size": meta.body["size"], "data": got["data"]}))
+}
+
+/// What the editor needs to draw the blocks plugins add (a reader has no sign-in to ask for them with), and nothing else.
+fn blocks_of(tx: &mut Tx) -> Value {
+    tx.call("editor.blocks", json!({})).ok().and_then(|b| b.get("blocks").cloned()).unwrap_or_else(|| json!([]))
 }
 
 pub struct Shares;
