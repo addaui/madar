@@ -245,7 +245,10 @@ fn check_settings(v: &Value) -> Result<()> {
         && (richtext::file_id(u).is_some() || (u.starts_with("https://") && u.len() > 8)));
     for (k, x) in o {
         let ok = match k.as_str() {
-            "font" => matches!(x.as_str(), Some("default" | "serif" | "mono")),
+            // a font family of a font plugin by id (ADR 0090); `serif` and `mono` are the two choices pages had before families
+            "font" => x.as_str().is_some_and(|f| !f.is_empty() && f.len() <= 60 && f.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')),
+            // OpenType features the page switches on or off for its font: {"liga": false, "ss01": true}
+            "font_features" => x.as_object().is_some_and(|m| m.len() <= 24 && m.iter().all(|(t, v)| t.len() == 4 && t.bytes().all(|b| b.is_ascii_alphanumeric()) && v.is_boolean())),
             "width" => matches!(x.as_str(), Some("narrow" | "normal" | "wide")),
             "size" => x.as_f64().is_some_and(|n| (12.0..=24.0).contains(&n)),
             "page_color" | "bg_color" | "text_color" | "pattern_color" | "margin_line" | "bg_art_color" => hex(x),

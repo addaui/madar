@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import { currentFontLibrary, familyIdOf, pageFontStack, useFontLibrary } from "../../api/fonts";
 import { link } from "../../api/link";
 import { useDescribe } from "../../api/session";
 import type { Page } from "../../api/types";
@@ -11,8 +12,10 @@ import { ColorField } from "../../ui/ColorField";
 import { Segmented } from "../../ui/Segmented";
 import { Select } from "../../ui/Select";
 import { Slider } from "../../ui/Slider";
+import { ToggleChip } from "../../ui/Toggle";
 import { Window } from "../dialogs/Dialog";
 import { askConfirm, askImage, askText, toast } from "../../ui/overlays";
+import { FontPicker } from "./FontPicker";
 import { Opt, Section } from "./OptionRow";
 import { saverFor } from "./pageSaver";
 import { keyOf, type PageScope } from "./scope";
@@ -53,6 +56,8 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
     toast(t("styleSaved"));
   };
 
+  const fonts = useFontLibrary();
+  const family = eff.font && eff.font !== "default" ? fonts.family(familyIdOf(eff.font)) : undefined;
   const has = (k: keyof PageSettings) => st[k] !== undefined && st[k] !== false;
   const select = (k: keyof PageSettings, opts: [string, Key][], label: string) => (
     <Select plain label={label} isDisabled={!writer} value={String(eff[k] ?? "")} onChange={(v) => put(k, v || undefined)} className="max-w-[140px]" options={opts.map(([v, l]) => ({ value: v, label: t(l) }))} />
@@ -81,7 +86,15 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
       </Section>
 
       <Section title={t("secText")}>
-        <Opt icon="type" label={t("fontLbl")} set={has("font")} onRevert={() => put("font", undefined)} writer={writer} revert={t("revert")}>{select("font", [["", "fDefault"], ["serif", "fSerif"], ["mono", "fMono"]], t("fontLbl"))}</Opt>
+        <Opt icon="type" label={t("fontLbl")} set={has("font")} onRevert={() => putMany({ font: undefined, font_features: undefined })} writer={writer} revert={t("revert")}><FontPicker value={eff.font} onChange={(id) => putMany({ font: id, font_features: undefined })} isDisabled={!writer} /></Opt>
+        {family && family.features.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pb-2" role="group" aria-label={t("fontFeaturesFor")}>
+            {family.features.slice(0, 12).map((x) => (
+              <ToggleChip key={x.tag} isDisabled={!writer} isSelected={eff.font_features?.[x.tag] ?? x.default} className="px-2 py-0.5 text-xs"
+                onChange={(on) => put("font_features", { ...(st.font_features ?? {}), [x.tag]: on })}>{x.label}</ToggleChip>
+            ))}
+          </div>
+        )}
         <Opt icon="textSize" label={t("sizeLbl")} set={has("size")} onRevert={() => put("size", undefined)} writer={writer} revert={t("revert")}>{slider("size", 12, 24, 1, 16, "")}</Opt>
         <Opt icon="lineHeight" label={t("line_heightLbl")} set={has("line_height")} onRevert={() => put("line_height", undefined)} writer={writer} revert={t("revert")}>{slider("line_height", 100, 260, 5, 170, "%")}</Opt>
         <Opt icon="palette" label={t("text_colorLbl")} set={has("text_color")} onRevert={() => put("text_color", undefined)} writer={writer} revert={t("revert")}>{colour("text_color", "#222222")}</Opt>
@@ -146,7 +159,7 @@ function PresetTile({ label, settings, on, disabled, onClick }: { label: string;
         <div className="grid h-[28px] w-[70%] place-items-center rounded-sm text-[13px] font-bold" ref={(el) => {
           if (!el) return;
           el.style.background = s.page_color ?? "var(--surface)"; el.style.color = s.text_color ?? (s.page_color ? readableOn(s.page_color) : "var(--text)");
-          el.style.fontFamily = s.font === "mono" ? "var(--mono)" : s.font === "serif" ? "Fraunces, Georgia, serif" : "";
+          el.style.fontFamily = pageFontStack(currentFontLibrary(), s.font) ?? "";
           const line = s.pattern_color ?? "#999";
           el.style.backgroundImage = s.sheet_art === "autumn" ? autumnImage(0.95, "top-right") : s.pattern === "ruled" ? `linear-gradient(transparent 80%, ${line} 0)` : s.pattern === "grid" ? `linear-gradient(transparent 80%, ${line} 0), linear-gradient(90deg, transparent 80%, ${line} 0)` : "";
           el.style.backgroundSize = s.sheet_art === "autumn" ? "46px 46px" : s.pattern ? "100% 6px" : "";

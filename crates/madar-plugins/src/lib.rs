@@ -40,6 +40,10 @@ pub fn catalog() -> Catalog {
     for t in nuah_appearance::themes() {
         list.push(Arc::new(t));
     }
+    list.push(Arc::new(nuah_fonts::FontStore));
+    for f in nuah_fonts::font_sets() {
+        list.push(Arc::new(f));
+    }
     Catalog(list)
 }
 
@@ -49,12 +53,16 @@ fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     let mut enabled: Vec<String> = adapters.iter().map(|s| s.to_string()).collect();
     enabled.extend(FEATURES.iter().map(|s| s.to_string()));
     enabled.extend(nuah_appearance::theme_ids());
+    // fonts (ADR 0090): the store fetches a listed font once through the public-address net adapter and serves it, so a browser never contacts a font host
+    enabled.extend(["@nuah/net-public".to_string(), "@nuah/fonts".to_string()]);
+    enabled.extend(nuah_fonts::font_set_ids());
     let mut p = Profile { name: name.into(), enabled, ..Default::default() };
     p.grants.insert("@madar/projects".into(), vec!["emit".into()]);
     p.grants.insert("@madar/tasks".into(), vec!["emit".into(), "call".into()]);
     p.grants.insert("@madar/discussion".into(), vec!["emit".into(), "call".into()]);
     p.grants.insert("@nuah/prefs".into(), vec!["emit".into()]);
     p.grants.insert("@nuah/appearance".into(), vec!["emit".into()]);
+    p.grants.insert("@nuah/fonts".into(), vec!["net".into(), "call".into()]);
     p.grants.insert("@madar/pages".into(), vec!["emit".into(), "call".into()]);
     p.grants.insert("@madar/search".into(), vec!["call".into()]);
     p.grants.insert("@nuah/emoji".into(), vec!["call".into()]);

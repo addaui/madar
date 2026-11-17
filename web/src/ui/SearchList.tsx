@@ -9,16 +9,18 @@ export interface SearchItem { id: string; text: string }
  * A search field with its results listed under it, as one control: typing keeps the focus in the field while the arrow keys move through the results
  * (the field points at the active one with aria-activedescendant), and Enter or a click picks one. The results come from the caller (the Core searches); nothing is filtered here.
  */
-export function SearchList<T extends SearchItem>({ label, placeholder, value, onChange, items, onPick, render, empty, extra, className, listClassName }: {
+export function SearchList<T extends SearchItem>({ label, placeholder, value, onChange, items, onPick, render, empty, extra, className, listClassName, onActive }: {
   label: string; placeholder?: string; value: string; onChange: (v: string) => void; items: T[]; onPick: (item: T) => void; render: (item: T) => ReactNode;
   /** What to show when there are no results (a hint, or "nothing found"). */
   empty: ReactNode; extra?: ReactNode; className?: string; listClassName?: string;
+  /** Called with the row the arrow keys or the pointer are on (a panel beside the list can describe it). */
+  onActive?: (item: T) => void;
 }) {
   const base = useId();
   // The active row belongs to the list it was chosen in: a new list starts at its first row.
   const [pos, setPos] = useState<{ items: T[]; i: number }>({ items, i: 0 });
   const active = pos.items === items ? pos.i : 0;
-  const setActive = (i: number) => setPos({ items, i });
+  const setActive = (i: number) => { setPos({ items, i }); const it = items[i]; if (it) onActive?.(it); };
   const optionId = (i: number) => base + "-" + i;
   const key = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {

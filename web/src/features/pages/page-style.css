@@ -67,3 +67,5 @@ input.page-title:disabled { color:var(--text); opacity:1; }
 .page-col[data-sticker-preview="medium"] { max-inline-size:min(var(--page-w, 820px), 640px); }
 .page-col[data-sticker-preview="narrow"] { max-inline-size:min(var(--page-w, 820px), 380px); }
 .page-col[data-sticker-preview="wide"] { max-inline-size:var(--page-w, 820px); }
+/* the OpenType features a page switched on or off for its font (ADR 0090) */
+.page .ed-content, .page input.page-title { font-feature-settings:var(--page-font-features, normal); }

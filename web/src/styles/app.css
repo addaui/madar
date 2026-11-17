@@ -102,7 +102,9 @@
 
 @layer base {
   html { background: var(--bg); color-scheme: light dark; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--emoji-first, "MadarEmojiOff"), var(--font, ui-sans-serif, system-ui, sans-serif); font-size: var(--fs, 14.5px); line-height: 1.5; font-variant-numeric: tabular-nums; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--emoji-first, "MadarEmojiOff"), var(--font, ui-sans-serif, system-ui, sans-serif); font-size: var(--fs, 14.5px); line-height: 1.5; font-variant-numeric: tabular-nums; font-optical-sizing: auto; font-kerning: normal; }
+  /* headings and the page title get the slower, finer text shaping (kerning, ligatures); body text keeps the fast path */
+  h1, h2, h3, h4 { text-rendering: optimizeLegibility; }
   #root { min-block-size: 100dvh; }
   button, input, select, textarea { font: inherit; color: inherit; }
   ::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }

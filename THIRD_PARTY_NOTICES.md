@@ -16,9 +16,9 @@ Bundled in `faces/madar/web/fonts/`, each under the SIL Open Font License 1.1. T
 | Nunito | 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito) |
 | Space Grotesk | 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk) |
 
-## Arabic display font (licence needed before any paid product)
+## Fonts fetched at run time (ADR 0090)
 
-`web/src/styles/fonts/KOMedia-Black.otf` is KO Media Black, which is **free for personal use only**. It must be licensed (or replaced) before Madar is offered as a paid service.
+The interface and page fonts are not in this repository. The font plugins from nuah-plugins (`@nuah/fonts-google`, `@nuah/fonts-fontshare`) list them, and each instance fetches a font once from its source and serves it itself. Each family's licence and source are in the catalogue and shown in the font picker (the info mark). Most are SIL Open Font License; **Satoshi** (Indian Type Foundry) is under the Fontshare Free Font License, which allows personal and commercial use and self-hosting on your own servers for your own sites and applications, and is therefore never committed here or baked into an image.
 
 ## Emoji font and data (from `@nuah/emoji`)
 

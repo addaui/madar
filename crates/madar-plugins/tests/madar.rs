@@ -440,7 +440,7 @@ fn a_retried_create_runs_once() {
 fn prefs_default_and_change_and_tell_only_their_owner() {
     let a = app();
     let (al, bo) = (who("alice"), who("bob"));
-    assert_eq!(a.ok(&al, "prefs.get", json!({}))["theme"], "elevated");
+    assert_eq!(a.ok(&al, "prefs.get", json!({}))["theme"], "shadcn");
     assert_eq!(a.ok(&al, "prefs.get", json!({}))["scheme"], "auto");
     let (ca, cb) = (a.core.pulse_now().unwrap(), a.core.pulse_now().unwrap());
     a.ok(&al, "prefs.set", json!({"theme": "ink", "language": "ar"}));
@@ -500,7 +500,12 @@ fn a_viewer_role_sees_what_they_may_do_in_describe() {
     assert_eq!(kinds["@nuah/theme-phantom-onyx"], "theme");
     assert_eq!(kinds["@nuah/db-memory"], "adapter");
     assert_eq!(kinds["@madar/tasks"], "feature");
-    assert_eq!(d["themes"].as_array().unwrap().len(), 10);
+    assert_eq!(d["themes"].as_array().unwrap().len(), 11);
+    // fonts are data plugins too (ADR 0090): the open-licence families and Satoshi, with their faces
+    let sets: Vec<&str> = d["fonts"].as_array().unwrap().iter().map(|f| f["id"].as_str().unwrap()).collect();
+    assert_eq!(sets, ["@nuah/fonts-fontshare", "@nuah/fonts-google"]);
+    assert_eq!(kinds["@nuah/fonts-google"], "font");
+    assert_eq!(d["fonts"][0]["families"]["schema"], "fonts/1");
     let onyx = d["themes"].as_array().unwrap().iter().find(|t| t["id"] == "@nuah/theme-phantom-onyx").expect("the default preset is there");
     assert_eq!(onyx["tokens"]["schema"], "theme/1");
     assert_eq!(d["extension_points"]["notify.channel"]["providers"], json!(["@madar/notify-inbox"]));
@@ -552,7 +557,7 @@ fn sign_in_gives_an_expiring_session() {
     assert_eq!(call(Some(&t2), "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated, "signed out");
     // the public description says how to sign in and how to read what was shared, and nothing else
     let public = core.describe_public();
-    assert!(public["operations"].as_object().unwrap().keys().all(|k| k == "auth.sign_in" || k == "shares.open" || k == "shares.file"));
+    assert!(public["operations"].as_object().unwrap().keys().all(|k| k == "auth.sign_in" || k == "shares.open" || k == "shares.file" || k == "fonts.get"));
 }
 
 // ---- the database file outlives the process (PRD criteria 6 and 9) -------------------------------
@@ -1843,7 +1848,10 @@ fn a_page_remembers_how_it_is_shown_and_refuses_anything_else() {
     let out = a.ok(&al, "knowledge.update", json!({"project": p, "id": id, "settings": {"font": "serif", "size": 18, "width": "wide"}}));
     assert_eq!(out["settings"], json!({"font": "serif", "size": 18, "width": "wide"}));
     assert_eq!(a.ok(&al, "knowledge.get", json!({"project": p, "id": id}))["settings"]["size"], 18);
-    for bad in [json!({"font": "comic"}), json!({"size": 99}), json!({"width": "huge"}), json!({"colour": "red"}), json!("x")] {
+    // a font is a family id of a font plugin, with the features the page switches (ADR 0090)
+    let fam = a.ok(&al, "knowledge.update", json!({"project": p, "id": id, "settings": {"font": "eb-garamond", "font_features": {"liga": false, "ss01": true}}}));
+    assert_eq!(fam["settings"], json!({"font": "eb-garamond", "font_features": {"liga": false, "ss01": true}}));
+    for bad in [json!({"font": "Comic Sans"}), json!({"font": "../x"}), json!({"font": ""}), json!({"font_features": {"liga": 1}}), json!({"font_features": {"ligature": true}}), json!({"font_features": []}), json!({"size": 99}), json!({"width": "huge"}), json!({"colour": "red"}), json!("x")] {
         assert_eq!(a.err(&al, "knowledge.update", json!({"project": p, "id": id, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
     }
     // personal pages keep settings too
@@ -2079,7 +2087,7 @@ fn every_plugin_core() -> Core {
     p.enabled.retain(|e| e != "@nuah/auth-local");
     p.enabled.push("@nuah/auth-password".into());
     p.settings.insert("@nuah/auth-password".into(), json!({"accounts": []}));
-    for id in ["@nuah/net-public", "@nuah/link-analyzer", "@madar/previews", "@nuah/gifs", "@nuah/gifs-giphy", "@madar/features"] {
+    for id in ["@nuah/link-analyzer", "@madar/previews", "@nuah/gifs", "@nuah/gifs-giphy", "@madar/features"] {
         p.enabled.push(id.into());
     }
     p.grants.insert("@madar/features".into(), vec!["shell".into()]);
@@ -2110,7 +2118,7 @@ fn the_face_contract_snapshot_is_made_from_a_profile_with_every_plugin_on() {
     let core = every_plugin_core();
     let d = core.describe(&Identity::new("root", "root", &["admin"]));
     let ops = d["operations"].as_object().unwrap();
-    for must in ["auth.sign_in", "auth.account.create", "links.analyze", "links.fetch", "gifs.provider", "pages.tasks", "pages.set_task", "files.upload", "editor.blocks"] {
+    for must in ["auth.sign_in", "auth.account.create", "links.analyze", "links.fetch", "gifs.provider", "pages.tasks", "pages.set_task", "files.upload", "editor.blocks", "fonts.fetch", "fonts.status"] {
         assert!(ops.contains_key(must), "{must} is missing from the snapshot");
     }
     let got = serde_json::to_string_pretty(&json!({"contract": d["contract"], "operations": d["operations"]})).unwrap() + "\n";

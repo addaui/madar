@@ -190,7 +190,7 @@ fn the_class_of_every_plugin_in_the_catalog_is_the_one_written_down() {
     const PLATFORM: &[&str] = &[
         "@nuah/db-memory", "@nuah/db-sqlite", "@nuah/db-postgres", "@nuah/auth-local", "@nuah/auth-open", "@nuah/auth-password", "@nuah/policy-allow-all",
         "@nuah/policy-roles", "@nuah/clock-system", "@nuah/ids-random", "@nuah/metric-prometheus", "@nuah/log-console", "@nuah/log-file", "@nuah/net-public",
-        "@nuah/link-analyzer", "@madar/previews", "@madar/quota", "@madar/features",
+        "@nuah/link-analyzer", "@nuah/fonts", "@madar/previews", "@madar/quota", "@madar/features",
     ];
     const FEATURE: &[&str] = &[
         "@madar/projects", "@madar/tasks", "@madar/discussion", "@madar/audit", "@nuah/prefs", "@nuah/appearance", "@madar/export", "@madar/notify", "@madar/notify-inbox",
@@ -200,7 +200,7 @@ fn the_class_of_every_plugin_in_the_catalog_is_the_one_written_down() {
     for p in catalog().0 {
         let m = p.manifest();
         let c = m.class();
-        let want = if m.id.starts_with("@nuah/theme-") || FEATURE.contains(&m.id.as_str()) {
+        let want = if m.id.starts_with("@nuah/theme-") || m.id.starts_with("@nuah/fonts-") || FEATURE.contains(&m.id.as_str()) {
             PluginClass::Feature
         } else if PLATFORM.contains(&m.id.as_str()) {
             PluginClass::Platform

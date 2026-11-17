@@ -1,5 +1,5 @@
 {
-  "contract": "6dc486d075ed6041",
+  "contract": "08f9f9510134be0d",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -1333,6 +1333,180 @@
         "files.not_allowed": "You cannot add files to that project",
         "files.too_big": "That file is larger than 4 MiB"
       },
+      "resource": null
+    },
+    "fonts.fetch": {
+      "allowed": true,
+      "description": "Fetch a font file from an address a font plugin names, once, and keep it; says its key",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "maxLength": 1000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "kind": "outbound",
+      "output": {
+        "properties": {
+          "cached": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "cached"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/fonts",
+      "public": false,
+      "reasons": {
+        "fonts.not_a_font": "That file is not a font this can keep",
+        "fonts.not_listed": "That address is not a font of an enabled font plugin",
+        "fonts.unavailable": "That font could not be fetched"
+      },
+      "resource": null
+    },
+    "fonts.get": {
+      "allowed": true,
+      "description": "The bytes of a stored font file, base64 (the Projection serves them at /fonts/<key>.woff2)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "maxLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "type"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/fonts",
+      "public": true,
+      "reasons": {},
+      "resource": null
+    },
+    "fonts.status": {
+      "allowed": true,
+      "description": "Which of these font addresses the store holds, with the key each is served under (/fonts/<key>.woff2)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "urls": {
+            "items": {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            "maxItems": 500,
+            "type": "array"
+          }
+        },
+        "required": [
+          "urls"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "present": {
+            "items": {
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url",
+                "key"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "present"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/fonts",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "fonts.store": {
+      "allowed": false,
+      "description": "Keep a checked font file under the key of its address",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 1000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "data"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "permission": "fonts.store",
+      "plugin": "@nuah/fonts",
+      "public": false,
+      "reasons": {},
       "resource": null
     },
     "gifs.provider": {

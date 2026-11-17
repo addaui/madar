@@ -1,5 +1,7 @@
 import { leavesTile, sheetArt } from "./art";
-import { appScheme, effectiveSettings, hexRgb, lum, PAGE_FONTS, PAGE_WIDTHS, readableOn, type PageSettings } from "./settings";
+import { currentFontLibrary, familyIdOf, pageFontStack } from "../../../api/fonts";
+import { appScheme, effectiveSettings, hexRgb, lum, PAGE_WIDTHS, readableOn, type PageSettings } from "./settings";
+import { featureSettings } from "@nuah/font-engine";
 
 /**
  * Paints a page's look onto its elements through the CSSOM (the Content-Security-Policy forbids style attributes).
@@ -9,7 +11,12 @@ import { appScheme, effectiveSettings, hexRgb, lum, PAGE_FONTS, PAGE_WIDTHS, rea
 export function paintPage(root: HTMLElement, sheet: HTMLElement | null, parts: HTMLElement[], settings: PageSettings | null | undefined): void {
   const st = effectiveSettings(settings);
   const set = (k: string, v: string | undefined) => (v ? root.style.setProperty(k, v) : root.style.removeProperty(k));
-  set("--page-font", st.font ? PAGE_FONTS[st.font] : undefined); set("--page-size", st.size ? st.size + "px" : ""); set("--page-w", st.width ? PAGE_WIDTHS[st.width] : undefined);
+  const lib = currentFontLibrary();
+  set("--page-font", pageFontStack(lib, st.font));
+  set("--page-font-features", st.font_features ? featureSettings(st.font_features) : undefined);
+  // the family is fetched by the instance and loaded when the page asks for it; the browser redraws the text as its faces arrive
+  if (lib && st.font && st.font !== "default") void lib.ensure(familyIdOf(st.font));
+  set("--page-size", st.size ? st.size + "px" : ""); set("--page-w", st.width ? PAGE_WIDTHS[st.width] : undefined);
   const op = st.page_opacity ?? 100;
   set("--page-bg", st.page_color ? (op >= 100 ? st.page_color : `color-mix(in srgb, ${st.page_color} ${op}%, transparent)`) : "");
   set("--page-lh", st.line_height ? String(st.line_height / 100) : ""); set("--block-gap", st.block_gap !== undefined ? st.block_gap / 100 + "em" : "");

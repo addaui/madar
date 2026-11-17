@@ -19,6 +19,7 @@
     "@base-ui/react": "^1.9.0",
     "@internationalized/date": "3.12.4",
     "@nuah/link-client": "link:../../nuah-plugins/packages/link-client",
+    "@nuah/font-engine": "link:../../nuah-plugins/packages/font-engine",
     "@nuah/theme-engine": "link:../../nuah-plugins/packages/theme-engine",
     "@tanstack/react-query": "^5.107.1",
     "@tanstack/react-router": "^1.170.46",

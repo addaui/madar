@@ -1,6 +1,7 @@
 import { apply } from "@nuah/theme-engine";
 import { useEffect, useSyncExternalStore } from "react";
 import { themesOf, useDescribe, useOverrides, usePrefs } from "../api/session";
+import { applyUiFont, useFontLibrary } from "../api/fonts";
 import type { Lang } from "../i18n/i18n";
 
 export const DEFAULT_THEME = "shadcn";
@@ -22,6 +23,7 @@ export function useApplyAppearance(): void {
   const overrides = useOverrides();
   const lang = useLang();
   const dark = useSyncExternalStore(prefersDark.subscribe, prefersDark.get, () => false);
+  const fonts = useFontLibrary();
   const themes = themesOf(describe);
   const name = prefs.theme ?? DEFAULT_THEME;
   const preset = (themes.find((t) => t.id === "@nuah/theme-" + name || t.id === name) ?? themes.find((t) => t.id === "@nuah/theme-" + DEFAULT_THEME) ?? themes[0])?.tokens;
@@ -29,6 +31,9 @@ export function useApplyAppearance(): void {
   useEffect(() => {
     if (preset) apply(preset, overrides, prefs.scheme, lang === "ar");
   }, [preset, overrides, prefs.scheme, lang, dark]);
+
+  // the interface font of this language (ADR 0090): a family made of one face per script, which the theme's `font: ui` names
+  useEffect(() => { void applyUiFont(fonts, lang); }, [fonts, lang]);
 
   useEffect(() => {
     const root = document.documentElement;

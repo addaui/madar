@@ -17,6 +17,7 @@ nuah-adapters = { workspace = true }
 nuah-prefs = { workspace = true }
 nuah-appearance = { workspace = true }
 nuah-emoji = { workspace = true }
+nuah-fonts = { workspace = true }
 nuah-link-analyzer = { workspace = true }
 nuah-gifs = { workspace = true }
 nuah-gifs-giphy = { workspace = true }
