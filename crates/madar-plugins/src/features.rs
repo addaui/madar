@@ -186,12 +186,12 @@ impl Plugin for Features {
                     "reasons": {"features.no_shell": "This instance does not let the app change its configuration"},
                     "output": {"type":"object","required":["features","platform"],"properties":{
                         "features":{"type":"array","items":{"type":"object","required":["id","kind","name","description","enabled","needs","provides"],"properties":{
-                            "id":{"type":"string"},"kind":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"version":{"type":"string"},"enabled":{"type":"boolean"},
+                            "id":{"type":"string"},"kind":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"version":{"type":"string"},"enabled":{"type":"boolean"},"new":{"type":"boolean"},
                             "needs":{"type":"array","items":{"type":"string"}},"provides":{"type":"array","items":{"type":"string"}},
                             "defines":{"type":"array","items":{"type":"object","required":["name","policy"],"properties":{"name":{"type":"string"},"policy":{"type":"string"}}}},
                             "settings_schema":{"type":["object","null"]},"settings":{"type":["object","null"]}}}},
                         "platform":{"type":"array","items":{"type":"object","required":["id","name","enabled","reasons"],"properties":{
-                            "id":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"enabled":{"type":"boolean"},"reasons":{"type":"array","items":{"type":"string"}}}}}}}},
+                            "id":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"enabled":{"type":"boolean"},"new":{"type":"boolean"},"reasons":{"type":"array","items":{"type":"string"}}}}}}}},
                 "features.enable": {"kind": "outbound", "permission": "features.manage", "description": "Switch a feature plugin on.", "input": id, "reasons": reasons, "output": saved},
                 "features.disable": {"kind": "outbound", "permission": "features.manage", "description": "Switch a feature plugin off. When other features need it the call is refused and names them, unless it confirms with `cascade`, which switches them off too.",
                     "input": {"type":"object","required":["id"],"properties":{"id":{"type":"string"},"cascade":{"type":"boolean"}},"additionalProperties":false}, "reasons": reasons, "output": saved},
@@ -209,17 +209,19 @@ impl Plugin for Features {
         b.outbound("features.list", |cx, _| {
             let state = shell(cx)?.state().map_err(Error::internal)?;
             let enabled = |id: &str| state["profile"]["plugins"][id]["enabled"] == true;
+            // a plugin the saved file has never named came with a newer version of the product: the Owner is told, and decides
+            let is_new = |id: &str| state["profile"]["plugins"][id].is_null();
             let (mut features, mut platform) = (vec![], vec![]);
             for p in state["plugins"].as_array().cloned().unwrap_or_default() {
                 let id = p["id"].as_str().unwrap_or("");
                 if is_feature(&p) {
                     features.push(json!({
-                        "id": id, "kind": p["kind"], "name": p["name"], "description": p["description"], "version": p["version"], "enabled": enabled(id),
+                        "id": id, "kind": p["kind"], "name": p["name"], "description": p["description"], "version": p["version"], "enabled": enabled(id), "new": is_new(id),
                         "needs": p["requires"]["plugins"], "provides": p["provides"], "defines": p["defines"],
                         "settings_schema": p["settings_schema"], "settings": state["profile"]["plugins"][id]["settings"]
                     }));
                 } else {
-                    platform.push(json!({"id": id, "name": p["name"], "description": p["description"], "enabled": enabled(id), "reasons": p["class"]["reasons"]}));
+                    platform.push(json!({"id": id, "name": p["name"], "description": p["description"], "enabled": enabled(id), "new": is_new(id), "reasons": p["class"]["reasons"]}));
                 }
             }
             Ok(json!({"features": features, "platform": platform}))

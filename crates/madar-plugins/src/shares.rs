@@ -320,7 +320,10 @@ fn open_impl(tx: &mut Tx, i: &Value, signed: bool) -> Result<Value> {
         None => None,
     };
     let page = chosen.map(|it| json!({"id": it["page"], "title": it["title"], "icon": it["icon"], "body": it["body"], "settings": it["settings"], "folder": it["folder"]}));
-    Ok(json!({"share": {"id": share.id, "kind": share.body["kind"], "title": share.body["title"], "audience": share.body["audience"], "mode": share.body["mode"]}, "tree": tree, "page": page, "blocks": blocks_of(tx)}))
+    // the font the page chose, with its faces, so a reader who is not signed in can draw it (ADR 0090); a page of a deployment with no font plugin has none
+    let family = page.as_ref().and_then(|p| p["settings"]["font"].as_str()).map(|f| match f { "serif" => "fraunces", "mono" => "jetbrains-mono", other => other }.to_string());
+    let fonts = family.and_then(|f| tx.call("fonts.families", json!({"ids": [f]})).ok()).map(|o| o["families"].clone()).unwrap_or_else(|| json!([]));
+    Ok(json!({"share": {"id": share.id, "kind": share.body["kind"], "title": share.body["title"], "audience": share.body["audience"], "mode": share.body["mode"]}, "tree": tree, "page": page, "blocks": blocks_of(tx), "fonts": fonts}))
 }
 
 /// One uploaded file of a shared page, only when the shared pages use it.

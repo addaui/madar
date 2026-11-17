@@ -73,6 +73,10 @@ fn the_list_splits_the_catalog_by_the_class_the_core_worked_out() {
     assert_eq!(on["enabled"], true);
     let off = l["features"].as_array().unwrap().iter().find(|p| p["id"] == "@nuah/gifs").unwrap();
     assert_eq!(off["enabled"], false);
+    // a plugin the saved file never named came with a newer version: it is marked new, in both lists; one the file names (even switched off) is not
+    assert_eq!(on["new"], false);
+    let fresh = |l: &Value, group: &str, id: &str| l[group].as_array().unwrap().iter().find(|p| p["id"] == id).map(|p| p["new"].clone());
+    assert!(fresh(&l, "features", "@nuah/gifs").is_some());
 }
 
 #[test]

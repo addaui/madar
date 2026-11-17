@@ -557,7 +557,7 @@ fn sign_in_gives_an_expiring_session() {
     assert_eq!(call(Some(&t2), "projects.list", json!({})).unwrap_err().category, Category::Unauthenticated, "signed out");
     // the public description says how to sign in and how to read what was shared, and nothing else
     let public = core.describe_public();
-    assert!(public["operations"].as_object().unwrap().keys().all(|k| k == "auth.sign_in" || k == "shares.open" || k == "shares.file" || k == "fonts.get"));
+    assert!(public["operations"].as_object().unwrap().keys().all(|k| k == "auth.sign_in" || k == "shares.open" || k == "shares.file" || k == "fonts.get" || k == "fonts.families"));
 }
 
 // ---- the database file outlives the process (PRD criteria 6 and 9) -------------------------------

@@ -65,6 +65,10 @@ export function Features({ onClose }: { onClose: () => void }) {
 
   const data = list.data;
   const shown = (data?.features ?? []).filter((f) => f.kind !== "theme");
+  // what came with a newer version of the product and was never switched either way (features the Owner may turn on now; platform plugins wait for the operator)
+  const fresh = shown.filter((f) => f.new && !f.enabled);
+  const freshPlatform = (data?.platform ?? []).filter((p) => p.new && !p.enabled);
+  const turnOnNew = () => void run(async () => { for (const f of fresh) await link.call("features.enable", { id: f.id }); });
   return (
     <Window title={t("features")} onClose={onClose} wide>
       <p className="m-0 mb-3 text-muted-foreground">{t("featuresIntro")}</p>
@@ -83,6 +87,16 @@ export function Features({ onClose }: { onClose: () => void }) {
         <div role="status" className="mb-3 flex items-center justify-between gap-3 rounded-md border border-line bg-soft p-3">
           <span>{t("featuresSaved")}</span>
           <Button kind="primary" onPress={() => void apply()} isPending={pending}>{t("featuresApply")}</Button>
+        </div>
+      )}
+      {(fresh.length > 0 || freshPlatform.length > 0) && (
+        <div role="status" className="mb-3 grid gap-2 rounded-md border border-line bg-soft p-3">
+          <b>{t("featuresNewTitle")}</b>
+          {fresh.length > 0 && <>
+            <span className="text-muted-foreground">{fresh.map((f) => f.name || f.id).join(" · ")}</span>
+            <div><Button kind="primary" size="sm" onPress={turnOnNew} isPending={pending}>{t("featuresTurnOnNew")}</Button></div>
+          </>}
+          {freshPlatform.length > 0 && <span className="text-[12px] text-muted-foreground">{t("featuresNewPlatform", { names: freshPlatform.map((p) => p.name || p.id).join(", ") })}</span>}
         </div>
       )}
       {shown.map((f) => <FeatureCard key={f.id} f={f} busy={pending} onToggle={(on) => toggle(f, on)} onSave={(settings) => void run(async () => { await link.call("features.configure", { id: f.id, settings }); notify(t("saved")); })} />)}
@@ -114,7 +128,7 @@ function FeatureCard({ f, busy, onToggle, onSave }: { f: Feature; busy: boolean;
     <section className="mb-3 rounded-md border border-line p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="m-0 text-[15px] font-semibold">{f.name || f.id}</h2>
+          <h2 className="m-0 text-[15px] font-semibold">{f.name || f.id}{f.new && !f.enabled && <span className="ms-2 rounded-chip bg-brand px-1.5 text-[11px] font-medium text-brand-foreground">{t("featuresNewBadge")}</span>}</h2>
           {f.description && <p className="m-0 mt-0.5 text-muted-foreground">{f.description}</p>}
           {f.needs.length > 0 && <p className="m-0 mt-0.5 text-[12px] text-muted-foreground">{t("featuresNeeds")}: {f.needs.join(", ")}</p>}
         </div>

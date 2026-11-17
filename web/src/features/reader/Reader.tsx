@@ -1,6 +1,7 @@
 import { NuahError } from "@nuah/link-client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { fontLibrary } from "../../api/fonts";
 import { link } from "../../api/link";
 import type { Ops } from "../../api/contract";
 import { I18nProvider, useT, type Lang } from "../../i18n/i18n";
@@ -132,6 +133,11 @@ function Shown({ data, shareId, pin, page, go }: { data: Opened; shareId: string
   const handle = useRef<EditorHandle | null>(null);
   const [ready, setReady] = useState(0);
   const stickers = useStickers({ editable: false, handle: () => handle.current });
+  // the page's font comes with the page: a reader has no sign-in, so the share names the family and the faces the instance already keeps (ADR 0090)
+  const fonts = (data as { fonts?: unknown[] }).fonts;
+  useEffect(() => {
+    if (fonts?.length) fontLibrary([{ id: "shared", name: "shared", families: { schema: "fonts/1", families: fonts as never } }]);
+  }, [fonts]);
   useEffect(() => {
     if (!root.current) return;
     const body = sheet.current?.querySelector<HTMLElement>(".ed-body");
@@ -158,6 +164,9 @@ function Shown({ data, shareId, pin, page, go }: { data: Opened; shareId: string
           <div className="mx-auto max-w-[820px] pt-9"><h1 className="m-0 mb-4 text-[32px] font-bold">{data.share.title}</h1>{!many && <p className="text-muted-foreground">{t("readerUnavailable")}</p>}{many && <p className="text-muted-foreground">{t("readerPickPage")}</p>}</div>
         )}
         {stickers.view}
+        <footer className="mx-auto mt-16 max-w-[var(--page-w,820px)] border-t border-line pt-4 text-center text-xs text-muted-foreground">
+          {t("readerMadeWith")} <a href="https://docs.addaui.com/nuah/" target="_blank" rel="noopener noreferrer" className="underline hover:text-text">{t("readerBuiltWithNuah")}</a>
+        </footer>
       </main>
     </div>
     </div>

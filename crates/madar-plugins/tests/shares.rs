@@ -312,3 +312,22 @@ fn an_instance_with_accounts_needs_no_allowance() {
 fn the_class_and_the_settings_of_the_plugin_keep_it_a_feature() {
     assert_eq!(shares::Shares.manifest().class().class, PluginClass::Feature);
 }
+
+/// A page that chose a font is opened by a reader who is not signed in with that font's faces, so the reader can draw it (ADR 0090).
+#[test]
+fn a_shared_page_carries_the_faces_of_the_font_it_chose() {
+    let r = rig();
+    let al = who("alice");
+    let p = r.page(&al, "Letter", "dear reader", None);
+    let plain = r.ok(&al, "shares.create_page", json!({"page": p}));
+    assert_eq!(r.public("shares.open", json!({"id": plain["id"]})).unwrap()["fonts"], json!([]), "a page with no font of its own needs none");
+    r.ok(&al, "pages.update", json!({"id": p, "settings": {"font": "eb-garamond"}}));
+    let s = r.ok(&al, "shares.create_page", json!({"page": p}));
+    let opened = r.public("shares.open", json!({"id": s["id"]})).unwrap();
+    assert_eq!(opened["fonts"][0]["id"], "eb-garamond");
+    assert!(opened["fonts"][0]["faces"].as_array().unwrap().iter().all(|f| f["url"].as_str().unwrap().starts_with("https://")), "the faces are named; their keys appear once the instance stores them");
+    // what pages chose before families existed still resolves to a family
+    r.ok(&al, "pages.update", json!({"id": p, "settings": {"font": "serif"}}));
+    let old = r.ok(&al, "shares.create_page", json!({"page": p}));
+    assert_eq!(r.public("shares.open", json!({"id": old["id"]})).unwrap()["fonts"][0]["id"], "fraunces");
+}

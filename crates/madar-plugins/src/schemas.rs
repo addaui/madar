@@ -247,6 +247,7 @@ pub fn share_opened() -> Value {
             "share": obj(&["id", "kind", "title", "audience", "mode"], json!({"id": s(), "kind": s(), "title": s(), "audience": s(), "mode": s()})),
             "tree": list(obj(&["id", "title"], json!({"id": s(), "parent": nullable(STR), "title": s(), "icon": nullable(STR), "position": num(), "folder": boolean(), "group": int(), "group_name": nullable(STR)}))),
             "blocks": {"type": "array"},
+            "fonts": {"type": "array"},
             "page": {"anyOf": [obj(&["id", "title", "body"], json!({"id": s(), "title": s(), "icon": nullable(STR), "body": {"type": "object"}, "settings": {"type": "object"}, "folder": boolean()})), {"type": "null"}]},
         }),
     )

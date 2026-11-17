@@ -1,5 +1,5 @@
 {
-  "contract": "2f74fb7952e3a39a",
+  "contract": "7fef9f76b8b09eca",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -1020,6 +1020,9 @@
                   },
                   "type": "array"
                 },
+                "new": {
+                  "type": "boolean"
+                },
                 "provides": {
                   "items": {
                     "type": "string"
@@ -1069,6 +1072,9 @@
                 },
                 "name": {
                   "type": "string"
+                },
+                "new": {
+                  "type": "boolean"
                 },
                 "reasons": {
                   "items": {
@@ -1333,6 +1339,47 @@
         "files.not_allowed": "You cannot add files to that project",
         "files.too_big": "That file is larger than 4 MiB"
       },
+      "resource": null
+    },
+    "fonts.families": {
+      "allowed": true,
+      "description": "Families of the enabled font plugins by id, each face with the key it is served under when the store holds it: what a reader of a shared page needs to draw its font",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "maxLength": 60,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "families": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "families"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/fonts",
+      "public": true,
+      "reasons": {},
       "resource": null
     },
     "fonts.fetch": {
@@ -6186,6 +6233,9 @@
           "blocks": {
             "type": "array"
           },
+          "fonts": {
+            "type": "array"
+          },
           "page": {
             "anyOf": [
               {
@@ -6341,6 +6391,9 @@
       "output": {
         "properties": {
           "blocks": {
+            "type": "array"
+          },
+          "fonts": {
             "type": "array"
           },
           "page": {
