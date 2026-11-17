@@ -35,21 +35,21 @@ export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
   return (
     <div className="flex h-full min-h-0 flex-col workspace:bg-transparent panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-surface panels:shadow-1">
       <Tabs variant="compact" label={t("toggleInfo")} selected={tab} onSelect={(k) => setTab(k as Tab)} items={[{ id: "info", label: t("infoTab") }, { id: "page", label: t("pageTab") }, { id: "element", label: t("elementTab") + (showKind && kind ? " · " + t(("node_" + kind) as Key) : "") }]}
-        className="flex min-h-0 flex-1 flex-col" panelClassName="min-h-0 flex-1 overflow-auto p-4">
+        className="flex min-h-0 flex-1 flex-col" panelClassName="min-h-0 flex-1 overflow-auto p-5">
         {tab === "info" ? (
           <>
-            {canShare && <div className="mb-4"><Button icon="link" onPress={() => setSharing(true)}>{t("shareTitle")}</Button></div>}
+            {canShare && <div className="mb-6"><Button icon="link" onPress={() => setSharing(true)}>{t("shareTitle")}</Button></div>}
             {sharing && <Suspense fallback={null}><ShareDialog page={{ id: page.id, title: page.title }} project={scope.project} onClose={() => setSharing(false)} /></Suspense>}
-            <dl className="m-0 grid gap-2.5 text-[13px]">
+            <dl className="m-0 grid gap-3.5 text-[13px]">
               {page.created_by ? <Prop icon="user" label={t("createdBy")}>{scope.project ? <Suspense fallback={<Skeleton className="h-4 w-24" />}><ProjectCreator project={scope.project} subject={page.created_by} /></Suspense> : <Person subject={page.created_by} name={undefined} />}</Prop> : null}
               <Prop icon="calendar" label={t("created")}>{f.time(page.created_at ?? 0)}</Prop>
               <Prop icon="history" label={t("updatedAt")}>{f.time(page.updated_at ?? 0)}</Prop>
             </dl>
-            <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"><Icon name="tag" className="size-3.5" />{t("tags")}</h3>
+            <h3 className="mb-2.5 mt-8 flex items-center gap-2 text-[13px] font-semibold text-muted-foreground"><Icon name="tag" className="size-3.5" />{t("tags")}</h3>
             <Suspense fallback={<Skeleton className="h-7 w-full" />}><PageTags page={page} scope={scope} writer /></Suspense>
-            <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"><Icon name="link" className="size-3.5" />{t("linkedFrom")}</h3>
+            <h3 className="mb-2.5 mt-8 flex items-center gap-2 text-[13px] font-semibold text-muted-foreground"><Icon name="link" className="size-3.5" />{t("linkedFrom")}</h3>
             {links.length === 0 ? <p className="m-0 text-muted-foreground">{t("noLinks")}</p> : (
-              <ul className="m-0 grid list-none gap-1 p-0">{links.map((l) => <li key={l.from.id}><a href={`#/pages/${l.from.id}`} className="block rounded-sm px-2 py-1 hoverable">{l.title ?? l.from.id}</a></li>)}</ul>
+              <ul className="m-0 grid list-none gap-1.5 p-0">{links.map((l) => <li key={l.from.id}><a href={`#/pages/${l.from.id}`} className="block rounded-sm px-2.5 py-1.5 hoverable">{l.title ?? l.from.id}</a></li>)}</ul>
             )}
           </>
         ) : tab === "element" ? <ElementTab page={page} scope={scope} writer /> : <><StickerList /><PageStyleTab page={page} scope={scope} writer /><PageElementDefaults page={page} scope={scope} writer /></>}
@@ -59,7 +59,7 @@ export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
 }
 
 function Prop({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {
-  return <div className="grid grid-cols-[112px_1fr] items-center gap-2.5"><dt className="flex items-center gap-2 text-muted-foreground"><Icon name={icon} className="size-3.5" />{label}</dt><dd className="m-0">{children}</dd></div>;
+  return <div className="grid min-h-8 grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] items-center gap-3"><dt className="flex items-center gap-2 text-muted-foreground"><Icon name={icon} className="size-3.5" />{label}</dt><dd className="m-0">{children}</dd></div>;
 }
 
 /** The creator of a project page, named from the project's members. */

@@ -14,7 +14,7 @@ const tabs = tv({
   variants: {
     variant: {
       underline: { list: "gap-1 border-b border-line", tab: "border-b-2 border-transparent px-3 py-2 hover:text-text data-[active]:border-brand data-[active]:font-semibold data-[active]:text-text" },
-      compact: { list: "gap-0.5 border-b border-line px-3", tab: "border-b-2 border-transparent px-2.5 py-2.5 text-[13px] hover:text-text data-[active]:border-brand data-[active]:font-semibold data-[active]:text-text" },
+      compact: { list: "gap-1 border-b border-line px-4", tab: "border-b-2 border-transparent px-3 py-3 text-[13px] hover:text-text data-[active]:border-brand data-[active]:font-semibold data-[active]:text-text" },
       segmented: { list: "gap-0.5 rounded-sm bg-sunken p-[3px]", tab: "flex-1 justify-center rounded-inner px-2 py-1.5 text-[13px] hover:text-text data-[active]:bg-surface data-[active]:font-semibold data-[active]:text-text data-[active]:shadow-1" },
     },
   },

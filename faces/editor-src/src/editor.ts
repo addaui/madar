@@ -31,9 +31,26 @@ import { Decoration, DecorationSet } from 'prosemirror-view'
 type Json = any
 const safeUrl = (u: string) => /^(https?:\/\/|\/|#|mailto:)/i.test(u || '')
 
+/** Puts a floating box at `x` pixels from the host's left edge. Every offset here is measured on the screen from that edge, so it is set as `left`:
+ *  a logical inset (`inset-inline-start`) would count from the right edge in right-to-left and put the box on the wrong side. */
+function placeX(el: HTMLElement, x: number) {
+  el.style.insetInlineStart = 'auto'; el.style.insetInlineEnd = 'auto'
+  el.style.right = 'auto'; el.style.left = x + 'px'
+}
+
 // ---- text direction: every block decides its own (Arabic next to English) ----
+const DIR_BLOCKS = ['paragraph', 'heading', 'blockquote', 'codeBlock']
 const BlockDir = Extension.create({
   name: 'blockDir',
+  // `dir=auto` reads a block's first letter and has nothing to read in an empty block or one of only digits and signs (a "/" being typed), so those came out
+  // left to right on an Arabic page. Such a block takes the direction of the page until a letter is written in it.
+  addProseMirrorPlugins() {
+    return [new Plugin({ key: new PluginKey('blockDirDefault'), props: { decorations: (state) => {
+      const page = document.documentElement.dir === 'rtl' ? 'rtl' : 'ltr', out: Decoration[] = []
+      state.doc.descendants((node, pos) => { if (DIR_BLOCKS.includes(node.type.name) && !/\p{L}/u.test(node.textContent)) out.push(Decoration.node(pos, pos + node.nodeSize, { dir: page })); return node.type.name !== 'codeBlock' })
+      return DecorationSet.create(state.doc, out)
+    } } })]
+  },
   addGlobalAttributes() {
     return [{ types: ['paragraph', 'heading', 'blockquote'], attributes: { align: { default: null, rendered: true, parseHTML: (el: HTMLElement) => el.getAttribute('data-align'), renderHTML: (a: any) => (['start', 'center', 'end', 'justify'].includes(a.align) ? { 'data-align': a.align } : {}) } } }, { types: ['paragraph', 'heading', 'blockquote', 'codeBlock'], attributes: { dirAuto: { default: 'auto', rendered: true, renderHTML: () => ({ dir: 'auto' }), parseHTML: () => 'auto' } } }]
   },
@@ -546,7 +563,7 @@ function create(host: HTMLElement, o: Opts) {
     element: body, extensions: extensions(o.placeholder || '', (LBL[lang] || LBL.en).calloutTitle), editable,
     content: wrapUnknown(o.content && o.content.type === 'doc' ? o.content : EMPTY),
     editorProps: {
-      attributes: { dir: 'auto', class: 'ed-content', spellcheck: 'true' },
+      attributes: { dir: document.documentElement.dir === 'rtl' ? 'rtl' : 'ltr', class: 'ed-content', spellcheck: 'true' },   // the blocks decide their own direction; the page is only where a block with no letters starts
       handlePaste: (view, ev) => {
         const cd = ev.clipboardData
         if (!editable || !cd) return false
@@ -611,7 +628,7 @@ function create(host: HTMLElement, o: Opts) {
     if (!show) return
     const a = editor.view.coordsAtPos(sel.from), z = editor.view.coordsAtPos(sel.to), r = host.getBoundingClientRect()
     const mid = (Math.min(a.left, z.left) + Math.max(a.right, z.right)) / 2 - r.left, w = Math.min(bar.offsetWidth || 340, r.width)
-    bar.style.insetInlineStart = Math.max(0, Math.min(r.width - w, mid - w / 2)) + 'px'
+    placeX(bar, Math.max(0, Math.min(r.width - w, mid - w / 2)))
     // above the selection, or below it when the editor's top edge is too close (a small box such as a task's description)
     const above = Math.min(a.top, z.top) - r.top - bar.offsetHeight - 8
     bar.style.top = (above >= -2 ? above : Math.max(a.bottom, z.bottom) - r.top + 8) + 'px'
@@ -659,8 +676,7 @@ function create(host: HTMLElement, o: Opts) {
     if (row) {
       const rr = row.getBoundingClientRect(), mr = menu.getBoundingClientRect(), w = subMenu.offsetWidth || 190, rtl = getComputedStyle(host).direction === 'rtl'
       const wantRight = !rtl && mr.right + 4 + w <= window.innerWidth - 8 || rtl && mr.left - 4 - w < 8
-      subMenu.style.insetInlineStart = (wantRight ? mr.right - hr.left + 4 : mr.left - hr.left - w - 4) + 'px'
-      subMenu.style.insetInlineEnd = 'auto'
+      placeX(subMenu, wantRight ? mr.right - hr.left + 4 : mr.left - hr.left - w - 4)
       subMenu.style.top = Math.max(0, rr.top - hr.top - 6) + 'px'
     }
   }
@@ -696,7 +712,9 @@ function create(host: HTMLElement, o: Opts) {
     // it opens below the line, or above it when the page ends sooner than the menu does
     const box = (host.closest('.page-scroll') as HTMLElement | null)?.getBoundingClientRect(), mh = menu.offsetHeight
     const room = (box ? box.bottom : window.innerHeight) - c.bottom, over = c.top - (box ? box.top : 0)
-    menu.style.insetInlineStart = Math.max(0, c.left - r.left) + 'px'
+    // the menu starts where the caret is and grows the way the line reads: to the left of it in right-to-left, so the line's end and the menu's end meet
+    const rtlLine = getComputedStyle(host).direction === 'rtl', mw = menu.offsetWidth
+    placeX(menu, Math.max(0, Math.min(r.width - mw, rtlLine ? c.right - r.left - mw : c.left - r.left)))
     menu.style.top = (room < mh + 8 && over > room ? c.top - r.top - mh - 4 : c.bottom - r.top + 4) + 'px'
     if (sub) openSub(sub.parent)
   }

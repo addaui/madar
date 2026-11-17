@@ -16,6 +16,10 @@ Bundled in `faces/madar/web/fonts/`, each under the SIL Open Font License 1.1. T
 | Nunito | 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito) |
 | Space Grotesk | 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk) |
 
+## Arabic display font (licence needed before any paid product)
+
+`web/src/styles/fonts/KOMedia-Black.otf` is KO Media Black, which is **free for personal use only**. It must be licensed (or replaced) before Madar is offered as a paid service.
+
 ## Emoji font and data (from `@nuah/emoji`)
 
 Madar uses the `@nuah/emoji` plugin from the nuah-plugins repository, which ships the Twemoji font (artwork by Twitter, Inc. and other contributors, CC-BY 4.0; the COLR font build by Tilman Vatteroth with Mozilla's `twemoji-colr` tooling, SIL OFL 1.1) and emoji names and search words from Emojibase (Miles Johnson, MIT) and the Unicode CLDR (Unicode License v3). The full list with links and license texts is in nuah-plugins' `THIRD_PARTY_NOTICES.md`.

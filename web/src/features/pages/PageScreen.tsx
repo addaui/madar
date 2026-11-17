@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { lazy, startTransition, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { link } from "../../api/link";
 import { useRead } from "../../api/hooks";
 import { useHasOp } from "../../api/session";
@@ -9,18 +9,16 @@ import { useI18n } from "../../i18n/i18n";
 import { BottomBar, ContextSidebar, Topbar } from "../../app/regions";
 import { usePersistedValue, spaceState } from "../../app/ui-state";
 import { IconButton } from "../../ui/Button";
-import { TextField } from "../../ui/Field";
 import { TextLink } from "../../ui/Link";
-import { PageGlyph } from "../../ui/PageGlyph";
 import { askConfirm } from "../../ui/overlays";
-import { LegacyEditor, type EditorJson } from "./LegacyEditor";
+import { markFresh } from "./freshPage";
 import { PageSide } from "./PageSide";
 import { pathTo } from "./tree";
 import { PageBody } from "./PageBody";
 const History = lazy(() => import("./History"));
 import { inputOf, opOf, ownScope, type PageScope } from "./scope";
 
-/** The route of one page. `new` is a draft: it is saved only once something is written. */
+/** The route of one page. `new` makes a page at once and moves to it. */
 export function PageScreen({ id, parent }: { id: string; parent?: string }) {
   const navigate = useNavigate();
   const space = usePersistedValue(spaceState);
@@ -89,46 +87,23 @@ function StatusBar({ words, save }: { words: number; save: string }) {
   );
 }
 
-/** A page that does not exist yet: saved only once something is written. `onCreated` navigates to the saved page. */
-export function DraftPage({ parent, scope, onCreated, chrome = true }: { parent?: string; scope: PageScope; onCreated: (id: string) => void; chrome?: boolean }) {
-  const { t, lang } = useI18n();
+/**
+ * "New page": the page is made at once and shown as a saved page (side panel, style, history), so nothing waits for the first word.
+ * If it is left with nothing written it is deleted again (`PageBody` does that). `onCreated` navigates to the saved page.
+ */
+export function DraftPage({ parent, scope, onCreated }: { parent?: string; scope: PageScope; onCreated: (id: string) => void; chrome?: boolean }) {
+  const { t } = useI18n();
   const qc = useQueryClient();
-  const blocks = useRead("editor.blocks").data as { blocks: unknown[] };
-  const [title, setTitle] = useState("");
-  const creating = useRef(false);
-  const doc = useRef<EditorJson | null>(null);
-
-  const create = (extra: { title?: string; body?: EditorJson }) => {
-    if (creating.current) return;
-    creating.current = true;
-    startTransition(async () => {
-      const out = await link.call(opOf(scope, "create") as never, inputOf(scope, { title: extra.title?.trim() || t("untitled"), parent: parent ?? null, ...(scope.project ? {} : { space: scope.space }), ...(extra.body ? { body: extra.body } : {}) }) as never) as Page;
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void (async () => {
+      const out = await link.call(opOf(scope, "create") as never, inputOf(scope, { title: t("untitled"), parent: parent ?? null, ...(scope.project ? {} : { space: scope.space }) }) as never) as Page;
+      markFresh(out.id, out.title, out.rev);
       await qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\.list/.test(String(q.queryKey[0])) });
       onCreated(out.id);
-    });
-  };
-  const sheet = (
-    <div className="h-full overflow-auto px-[clamp(20px,5vw,72px)] pb-9 pt-6">
-        <div className="mx-auto flex min-h-full max-w-[var(--page-w,820px)] flex-col pt-7">
-          <div className="mb-2 flex items-center gap-2.5 pt-1.5">
-            <span className="grid size-10 shrink-0 place-items-center rounded-sm bg-surface text-[21px] shadow-[0_0_0_1px_color-mix(in_srgb,var(--text)_14%,transparent)]"><PageGlyph className="size-6 text-muted-foreground" /></span>
-            <TextField bare autoFocus value={title} onChange={setTitle} onBlur={() => { if (title.trim()) create({ title, body: doc.current ?? undefined }); }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} dir="auto" label={t("title")} placeholder={t("untitled")} maxLength={200} className="min-w-0 flex-1" inputClassName="py-1 text-[32px] font-bold leading-tight tracking-tight" />
-          </div>
-          <LegacyEditor doc={null} version={0} editable lang={lang} blocks={blocks.blocks} placeholder={t("writeHere")}
-            onChange={(d) => { doc.current = d; if (window.MadarEditor && window.MadarEditor.text(d).trim()) create({ title, body: d }); }} />
-        </div>
-      </div>
-  );
-  if (!chrome) return sheet;
-  return (
-    <>
-      <Topbar title={title || t("untitled")} crumbs={<Crumbs id={null} title={title} />} actions={
-        <>
-          <IconButton icon="filePlus" label={t("addSubpage") + " · " + t("draftHint")} isDisabled />
-          <IconButton icon="history" label={t("pageHistory") + " · " + t("draftHint")} isDisabled />
-          <IconButton icon="trash" label={t("delete") + " · " + t("draftHint")} isDisabled />
-        </>} />
-      {sheet}
-    </>
-  );
+    })();
+  }, [scope, parent, t, qc, onCreated]);
+  return <div className="h-full" aria-busy="true" />;
 }

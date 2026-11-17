@@ -13,6 +13,7 @@ import { useStickers } from "./stickers/useStickers";
 import { importerFor, localPreview, useImportPictures } from "./useImportPictures";
 import { elementStore, type ElementContext } from "./element/store";
 import { saverFor, useSaveState } from "./pageSaver";
+import { holdPage, isUntouched, leavePage } from "./freshPage";
 import { useBlockComments } from "./useBlockComments";
 import { inputOf, keyOf, opOf, type PageScope } from "./scope";
 import { paintPage } from "./style/paint";
@@ -32,7 +33,9 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
   const hasAnalyzer = useHasOp("links.analyze"), hasOldPreviews = useHasOp("previews.get"), hasPreviews = hasAnalyzer || hasOldPreviews;
   const saver = saverFor(qc, page, scope);
   const state = useSaveState(saver);
-  const [title, setTitle] = useState(page.title);
+  const [title, setTitle] = useState(isUntouched(page.id, page.title, page.rev) ? "" : page.title);   // a page just made shows its title field empty (its stored title is a stand-in)
+  const titleNow = useRef(title);
+  useEffect(() => { titleNow.current = title; }, [title]);
   const [version, setVersion] = useState(0);
   const [doc, setDoc] = useState(page.body as EditorJson);   // the document as last put into the editor from outside
   const latest = useRef(doc);                                   // the document as it is now, while typing
@@ -67,6 +70,24 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
   useEffect(() => { onSave(state === "saving" ? t("saving") : state === "saved" ? t("saved") : state === "offline" ? t("offline") : ""); }, [state, onSave, t]);
   useEffect(() => () => { clearTimeout(timer.current); }, []);
 
+  // a page made by "New page" that is left with nothing written is deleted again
+  const scopeNow = useRef(scope);
+  useEffect(() => { scopeNow.current = scope; });
+  useEffect(() => {
+    holdPage(page.id);
+    const scope = scopeNow.current;
+    return () => leavePage(page.id,
+      () => {
+        const stored = qc.getQueryData<Page>(keyOf(scope, "get", { id: page.id }));
+        const text = window.MadarEditor ? window.MadarEditor.text(latest.current) : "x";
+        return !saver.busy && !dirty.current && !titleNow.current.trim() && !text.trim() && !!stored && isUntouched(page.id, stored.title, stored.rev);
+      },
+      async () => {
+        await link.call(opOf(scope, "delete") as never, inputOf(scope, { id: page.id }) as never);
+        await qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\.list/.test(String(q.queryKey[0])) });
+      });
+  }, [page.id, qc, saver]);
+
   // the page's look: painted onto its elements whenever its settings, the editor or the app's light or dark change
   useEffect(() => {
     if (!root.current) return;
@@ -98,7 +119,7 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
         <div ref={sheet} className="page-col mx-auto flex min-h-full max-w-[var(--page-w,820px)] flex-col pt-7">
           <div ref={titlebar} className="page-titlebar mb-2 flex items-center gap-2.5 pt-1.5">
             <IconPicker icon={page.icon ?? null} onPick={(e) => { qc.setQueryData(keyOf(scope, "get", { id: page.id }), { ...page, icon: e }); void saver.save({ icon: e }); }} />
-            <TextField bare value={title} onChange={setTitle} onBlur={saveTitle} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} dir="auto" label={t("title")} maxLength={200}
+            <TextField bare value={title} onChange={setTitle} onBlur={saveTitle} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} dir="auto" label={t("title")} placeholder={t("untitled")} maxLength={200}
               className="min-w-0 flex-1" inputClassName="page-title py-1 text-[32px] font-bold leading-tight tracking-tight text-[var(--page-fg,var(--text))]" />
           </div>
           <LegacyEditor doc={doc} version={version} editable lang={lang} {...comments.editor} blocks={blocks.blocks} placeholder={t("writeHere")} onChange={onChange}

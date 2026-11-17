@@ -301,3 +301,20 @@ describe("the link card (ADR 0079)", () => {
     ed.destroy();
   });
 });
+
+describe("the direction of a block", () => {
+  const para = (text?: string) => ({ type: "doc", content: [{ type: "paragraph", ...(text ? { content: [{ type: "text", text }] } : {}) }] });
+  const dirOfFirst = (doc: any) => { const ed = open(doc); const p = document.body.querySelector(".ed-content p"); const d = p?.getAttribute("dir"); ed.destroy(); return d; };
+
+  it("an empty block, or one with no letter, starts on the page's side, and a block with letters reads its own text", () => {
+    document.documentElement.dir = "rtl";
+    expect(dirOfFirst(para())).toBe("rtl");
+    expect(dirOfFirst(para("/"))).toBe("rtl");
+    expect(dirOfFirst(para("123"))).toBe("rtl");
+    expect(dirOfFirst(para("hello"))).toBe("auto");
+    expect(dirOfFirst(para("مرحبا"))).toBe("auto");
+    document.documentElement.dir = "ltr";
+    expect(dirOfFirst(para())).toBe("ltr");
+    document.documentElement.dir = "";
+  });
+});

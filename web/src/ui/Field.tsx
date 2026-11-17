@@ -3,6 +3,7 @@ import { useId, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
 import { cn } from "../lib/cn";
 import { fieldError, fieldHint, fieldLabel, invalid } from "./base";
+import { hasStrong, pageDir, useAutoDir } from "../lib/dir";
 import { Icon } from "./Icon";
 
 /**
@@ -66,9 +67,10 @@ const common = (id: string, p: Pick<TextProps, "description" | "errorMessage" | 
 /** A line of text. */
 export function TextField({ label, showLabel, description, errorMessage, className, inputClassName, bare, placeholder, dir, maxLength, spellCheck, inputMode, onChange, isRequired, isDisabled, isReadOnly, type, ...rest }: TextProps) {
   const id = useId();
+  const auto = useAutoDir(dir, rest.value, rest.defaultValue);
   return (
     <Plain id={id} label={label} showLabel={showLabel} description={description} errorMessage={errorMessage} className={className}>
-      <input {...common(id, { description, errorMessage, isRequired, isDisabled, isReadOnly })} type={type ?? "text"} className={cn(bare ? "w-full min-w-0 border-0 bg-transparent p-0 outline-none" : "field w-full", invalid, "aria-invalid:border-danger", inputClassName)} placeholder={placeholder} dir={dir} maxLength={maxLength} spellCheck={spellCheck} inputMode={inputMode} onChange={(e) => onChange?.(e.target.value)} {...rest} />
+      <input {...common(id, { description, errorMessage, isRequired, isDisabled, isReadOnly })} type={type ?? "text"} className={cn(bare ? "w-full min-w-0 border-0 bg-transparent p-0 outline-none" : "field w-full", invalid, "aria-invalid:border-danger", inputClassName)} placeholder={placeholder} dir={auto.dir} maxLength={maxLength} spellCheck={spellCheck} inputMode={inputMode} onChange={(e) => { auto.track(e.target.value); onChange?.(e.target.value); }} {...rest} />
     </Plain>
   );
 }
@@ -76,9 +78,10 @@ export function TextField({ label, showLabel, description, errorMessage, classNa
 /** Several lines of text. */
 export function TextArea({ label, showLabel, description, errorMessage, className, inputClassName, placeholder, dir, maxLength, rows, spellCheck, onChange, isRequired, isDisabled, isReadOnly, ...rest }: Omit<TextProps, "inputMode" | "type"> & { rows?: number }) {
   const id = useId();
+  const auto = useAutoDir(dir, rest.value, rest.defaultValue);
   return (
     <Plain id={id} label={label} showLabel={showLabel} description={description} errorMessage={errorMessage} className={className}>
-      <textarea {...common(id, { description, errorMessage, isRequired, isDisabled, isReadOnly })} className={cn("field w-full resize-y", invalid, "aria-invalid:border-danger", inputClassName)} placeholder={placeholder} dir={dir} maxLength={maxLength} rows={rows} spellCheck={spellCheck} onChange={(e) => onChange?.(e.target.value)} {...rest} />
+      <textarea {...common(id, { description, errorMessage, isRequired, isDisabled, isReadOnly })} className={cn("field w-full resize-y", invalid, "aria-invalid:border-danger", inputClassName)} placeholder={placeholder} dir={auto.dir} maxLength={maxLength} rows={rows} spellCheck={spellCheck} onChange={(e) => { auto.track(e.target.value); onChange?.(e.target.value); }} {...rest} />
     </Plain>
   );
 }
@@ -94,7 +97,7 @@ export function SearchField({ label, showLabel, className, inputClassName, place
       <label htmlFor={id} className={showLabel ? fieldLabel : "sr-only"}>{label}</label>
       <span className="relative block">
         <Icon name="search" className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <input id={id} type="search" role="searchbox" value={text} autoFocus={autoFocus} disabled={isDisabled} className={cn("field w-full ps-8 pe-8 [&::-webkit-search-cancel-button]:hidden", inputClassName)} placeholder={placeholder} maxLength={maxLength} dir={dir} autoComplete="off" onChange={(e) => set(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") onSubmit?.(text); else if (e.key === "Escape" && text) { set(""); e.preventDefault(); } onKeyDown?.(e); }} />
+        <input id={id} type="search" role="searchbox" value={text} autoFocus={autoFocus} disabled={isDisabled} className={cn("field w-full ps-8 pe-8 [&::-webkit-search-cancel-button]:hidden", inputClassName)} placeholder={placeholder} maxLength={maxLength} dir={dir === "auto" && !hasStrong(text) ? pageDir() : dir} autoComplete="off" onChange={(e) => set(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") onSubmit?.(text); else if (e.key === "Escape" && text) { set(""); e.preventDefault(); } onKeyDown?.(e); }} />
         {text !== "" && !isDisabled && (
           <button type="button" aria-label="×" tabIndex={-1} onClick={() => set("")} className="absolute end-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground outline-none hoverable hover:text-text">
             <Icon name="close" className="size-3.5" />
