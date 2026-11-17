@@ -15,8 +15,8 @@ export function Tags({ label, tags, onRemove, removeLabel, href, className }: { 
               if (to instanceof HTMLElement) { e.preventDefault(); to.focus(); }
             }
           } : undefined}
-          className={cn("inline-flex items-center gap-1 rounded-chip bg-soft py-0.5 ps-2.5 pe-2.5 text-[12.5px] outline-none focus-visible:outline-2 focus-visible:outline-brand", onRemove && "pe-1")}>
-          <Icon name="tag" className="size-3 text-muted-foreground" />{href ? <TextLink href={href(tag)} className="rounded-sm"><span dir="auto">{tag}</span></TextLink> : <span dir="auto">{tag}</span>}
+          className={cn("inline-flex max-w-full min-w-0 items-center gap-1 rounded-chip bg-soft py-0.5 ps-2.5 pe-2.5 text-[12.5px] outline-none focus-visible:outline-2 focus-visible:outline-brand", onRemove && "pe-1")}>
+          <Icon name="tag" className="size-3 shrink-0 text-muted-foreground" />{href ? <TextLink href={href(tag)} className="min-w-0 rounded-sm"><span dir="auto" className="truncate">{tag}</span></TextLink> : <span dir="auto" className="truncate">{tag}</span>}
           {onRemove && <button type="button" tabIndex={-1} aria-label={(removeLabel ?? "×") + ": " + tag} onClick={() => onRemove(tag)} className="grid size-5 place-items-center rounded-full text-muted-foreground outline-none transition-transform duration-150 hoverable hover:text-text active:scale-90 motion-reduce:active:scale-100"><Icon name="close" className="size-3" /></button>}
         </li>
       ))}

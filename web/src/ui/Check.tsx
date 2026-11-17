@@ -17,7 +17,7 @@ export function Checkbox({ children, className, round, isSelected, defaultSelect
         defaultChecked={defaultSelected}
         onCheckedChange={(on) => onChange?.(on)}
         disabled={isDisabled}
-        className={cn("grid size-[18px] shrink-0 place-items-center border border-line-strong bg-surface text-brand-foreground outline-none transition-[background-color,border-color,transform] duration-150 active:not-data-[disabled]:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand motion-reduce:active:scale-100", round ? "rounded-full data-[checked]:border-ok data-[checked]:bg-ok" : "rounded-inner data-[checked]:border-brand data-[checked]:bg-brand")}
+        className={cn("grid size-[18px] shrink-0 place-items-center border border-muted-foreground bg-surface text-brand-foreground outline-none transition-[background-color,border-color,transform] duration-150 active:not-data-[disabled]:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand motion-reduce:active:scale-100", round ? "rounded-full data-[checked]:border-ok data-[checked]:bg-ok" : "rounded-inner data-[checked]:border-brand data-[checked]:bg-brand")}
         {...rest}
       >
         <CheckboxPrimitive.Indicator keepMounted={false} className="grid place-items-center"><Icon name="check" className="size-3" /></CheckboxPrimitive.Indicator>
@@ -36,7 +36,7 @@ export function Switch({ children, className, isSelected, defaultSelected, onCha
         defaultChecked={defaultSelected}
         onCheckedChange={(on) => onChange?.(on)}
         disabled={isDisabled}
-        className="relative inline-block h-5 w-9 shrink-0 rounded-full bg-line-strong outline-none transition-colors duration-150 data-[checked]:bg-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="relative inline-block h-5 w-9 shrink-0 rounded-full bg-[color-mix(in_srgb,var(--text)_30%,transparent)] outline-none transition-colors duration-150 data-[checked]:bg-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         {...rest}
       >
         <SwitchPrimitive.Thumb className="absolute start-0.5 top-0.5 size-4 rounded-full bg-surface shadow-1 transition-transform duration-150 ease-out data-[checked]:translate-x-4 rtl:data-[checked]:-translate-x-4 motion-reduce:transition-none" />

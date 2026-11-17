@@ -18,7 +18,7 @@ export function Select({ label, value, defaultValue, onChange, options, name, is
       <SelectPrimitive.Root items={options.map((o) => ({ value: o.value, label: o.label }))} value={value} defaultValue={defaultValue} onValueChange={(v) => onChange?.(v === null ? "" : String(v))} name={name} disabled={isDisabled}>
         <SelectPrimitive.Trigger aria-label={label} className={cn(plain ? "flex items-center gap-1 rounded-inner px-1.5 py-1 text-end text-[13px] hoverable" : "field flex items-center justify-between gap-2 text-start", "outline-none focus-visible:outline-2 focus-visible:outline-brand data-[disabled]:opacity-45", triggerClassName)}>
           <SelectPrimitive.Value className="truncate" />
-          <SelectPrimitive.Icon render={<Icon name="chevron" className="size-4 shrink-0 rotate-90 text-muted-foreground" />} />
+          <SelectPrimitive.Icon render={<Icon name="chevron" className="size-4 shrink-0 rotate-90 text-muted-foreground rtl:-rotate-90" />} />
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
           <SelectPrimitive.Positioner side="bottom" align="start" sideOffset={4} alignItemWithTrigger={false} className="z-[80]">

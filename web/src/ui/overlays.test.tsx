@@ -166,3 +166,13 @@ describe("the rest of the kit", () => {
     expect(onPress).toHaveBeenCalledOnce();
   });
 });
+
+describe("right to left", () => {
+  it("a select's chevron still points down when the page is mirrored", () => {
+    render(<Select label="C" value="a" options={[{ value: "a", label: "A" }]} />);
+    const chevron = screen.getByRole("combobox", { name: "C" }).querySelector("svg")!;
+    // The icon is mirrored in right-to-left (Icon), which would turn a quarter-turn into the opposite quarter-turn, so the turn is reversed there too.
+    expect(chevron.getAttribute("class")).toMatch(/rotate-90/);
+    expect(chevron.getAttribute("class")).toMatch(/rtl:-rotate-90/);
+  });
+});
