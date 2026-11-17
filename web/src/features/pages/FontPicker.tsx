@@ -68,20 +68,33 @@ function Row({ f, on }: { f: Family; on: boolean }) {
   );
 }
 
-function Details({ f }: { f: Family }) {
+/** What a family offers, in a column of a fixed size beside the list, so the list never moves when the family under the pointer changes. */
+function Details({ f }: { f: Family | undefined }) {
   const t = useT();
   return (
-    <div className="mt-2 grid gap-1.5 border-t border-line pt-2.5 text-[13px]" aria-live="polite">
-      <b>{f.name}</b>
-      <span className="text-muted-foreground">
-        {f.scripts.map((s) => t(("fontScript_" + s) as Key)).join(" · ")} · {t(("fontCat_" + f.category) as Key)} · {f.variable ? t("fontVariableRange", { from: f.weights[0], to: f.weights[1] }) : t("fontWeightsRange", { from: f.weights[0], to: f.weights[1] })}{f.italic ? " · " + t("fontItalic") : ""}
-      </span>
-      {f.features.length > 0
-        ? <span className="flex flex-wrap items-center gap-1"><span className="text-muted-foreground">{t("fontFeatures")}</span>{f.features.slice(0, 10).map((x) => <span key={x.tag} className="rounded-sm bg-sunken px-1.5 text-xs" dir="ltr">{x.label}</span>)}{f.features.length > 10 && <span className="text-xs text-muted-foreground">+{f.features.length - 10}</span>}</span>
-        : <span className="text-muted-foreground">{t("fontNoFeatures")}</span>}
-      <span className="text-muted-foreground">{t("fontLicence")}: <TextLink href={f.licence.url} target="_blank" rel="noopener noreferrer" className="underline">{f.licence.spdx}</TextLink>{f.licence.credit ? " · " + t("fontCreditNeeded") : ""} · {t("fontFrom")} <TextLink href={f.source.url} target="_blank" rel="noopener noreferrer" className="underline">{f.source.name}</TextLink></span>
-    </div>
+    <aside aria-live="polite" aria-label={t("fontDetails")} className="h-[26rem] w-56 shrink-0 overflow-auto border-e border-line pe-3 text-[13px] max-md:hidden">
+      {!f ? <p className="m-0 text-muted-foreground">{t("fontDetailsHint")}</p> : (
+        <div className="grid content-start gap-2.5">
+          <b className="text-[15px]">{f.name}</b>
+          <dl className="m-0 grid gap-2">
+            <Fact label={t("fontScriptFilter")}>{f.scripts.map((s) => t(("fontScript_" + s) as Key)).join(" · ")}</Fact>
+            <Fact label={t("fontCatFilter")}>{t(("fontCat_" + f.category) as Key)}</Fact>
+            <Fact label={t("fontWeights")}>{f.variable ? t("fontVariableRange", { from: f.weights[0], to: f.weights[1] }) : t("fontWeightsRange", { from: f.weights[0], to: f.weights[1] })}{f.italic ? " · " + t("fontItalic") : ""}</Fact>
+            <Fact label={t("fontFeatures")}>
+              {f.features.length > 0
+                ? <span className="flex flex-wrap gap-1">{f.features.map((x) => <span key={x.tag} className="rounded-sm bg-sunken px-1.5 text-xs" dir="ltr">{x.label}</span>)}</span>
+                : <span className="text-muted-foreground">{t("fontNoFeatures")}</span>}
+            </Fact>
+            <Fact label={t("fontLicence")}><TextLink href={f.licence.url} target="_blank" rel="noopener noreferrer" className="underline" dir="ltr">{f.licence.spdx}</TextLink>{f.licence.credit ? " · " + t("fontCreditNeeded") : ""}</Fact>
+            <Fact label={t("fontFrom")}><TextLink href={f.source.url} target="_blank" rel="noopener noreferrer" className="underline">{f.source.name}</TextLink></Fact>
+          </dl>
+        </div>
+      )}
+    </aside>
   );
+}
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="grid gap-0.5"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="m-0">{children}</dd></div>;
 }
 
 /** The font of a page: a short list of the most used families, Arabic and English, to filter by script and kind, with what a family offers beside it (ADR 0090). */
@@ -91,7 +104,7 @@ export function FontPicker({ value, onChange, isDisabled }: { value: string | un
   useFontChanges(lib);
   const chosen = value && value !== "default" ? lib.family(familyIdOf(value)) : undefined;
   return (
-    <PopupButton label={t("fontLbl")} width={400} buttonProps={{ isDisabled, className: "inline-flex max-w-[150px] items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 py-1 text-[13px] hoverable" }}
+    <PopupButton label={t("fontLbl")} width={680} buttonProps={{ isDisabled, className: "inline-flex max-w-[150px] items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 py-1 text-[13px] hoverable" }}
       trigger={<><span className="truncate" ref={(el) => { if (el) el.style.fontFamily = chosen ? `${lib.css(chosen)},var(--font-ui)` : ""; }}>{chosen ? chosen.name : t("fDefault")}</span><Icon name="chevron" className="size-3.5 shrink-0 rotate-90 text-muted-foreground" /></>}>
       {(close) => <List current={chosen?.id} onPick={(id) => { onChange(id); close(); }} />}
     </PopupButton>
@@ -111,18 +124,20 @@ function List({ current, onPick }: { current: string | undefined; onPick: (id: s
   const items = [{ id: "default", text: t("fDefault") }, ...shown.map((f) => ({ id: f.id, text: f.name }))];
   const detail = active && active !== "default" ? lib.family(active) : undefined;
   return (
-    <div className="grid gap-2.5">
-      <Segmented label={t("fontScriptFilter")} value={script} onChange={setScript} className="w-full" itemClassName="flex-1 text-center"
-        options={[{ value: "all", label: t("fontScriptAll") }, { value: "latin", label: t("fontScript_latin") }, { value: "arabic", label: t("fontScript_arabic") }]} />
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("fontCatFilter")}>
-        {CATEGORIES.map((c) => <ToggleChip key={c} isSelected={cat === c} onChange={(on) => setCat(on ? c : null)} className="px-2.5 py-1 text-xs">{t(("fontCat_" + c) as Key)}</ToggleChip>)}
+    <div className="flex gap-3">
+      <Details f={detail} />
+      <div className="grid min-w-0 flex-1 content-start gap-2.5">
+        <Segmented label={t("fontScriptFilter")} value={script} onChange={setScript} className="w-full" itemClassName="flex-1 text-center"
+          options={[{ value: "all", label: t("fontScriptAll") }, { value: "latin", label: t("fontScript_latin") }, { value: "arabic", label: t("fontScript_arabic") }]} />
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("fontCatFilter")}>
+          {CATEGORIES.map((c) => <ToggleChip key={c} isSelected={cat === c} onChange={(on) => setCat(on ? c : null)} className="px-2.5 py-1 text-xs">{t(("fontCat_" + c) as Key)}</ToggleChip>)}
+        </div>
+        <SearchList label={t("fontLbl")} placeholder={t("fontSearch")} value={q} onChange={setQ} items={items} listClassName="h-[17.5rem] max-h-none content-start" onActive={(i) => setActive(i.id)}
+          onPick={(i) => onPick(i.id === "default" ? undefined : i.id)} empty={t("fontNone")}
+          render={(i) => i.id === "default"
+            ? <span className="flex min-h-9 w-full items-center gap-2.5"><span className="size-2 shrink-0" /><span className={cn(current === undefined && "font-semibold")}>{i.text}</span></span>
+            : <Row f={lib.family(i.id)!} on={current === i.id} />} />
       </div>
-      <SearchList label={t("fontLbl")} placeholder={t("fontSearch")} value={q} onChange={setQ} items={items} listClassName="max-h-[40vh]" onActive={(i) => setActive(i.id)}
-        onPick={(i) => onPick(i.id === "default" ? undefined : i.id)} empty={t("fontNone")}
-        render={(i) => i.id === "default"
-          ? <span className="flex min-h-9 w-full items-center gap-2.5"><span className="size-2 shrink-0" /><span className={cn(current === undefined && "font-semibold")}>{i.text}</span></span>
-          : <Row f={lib.family(i.id)!} on={current === i.id} />} />
-      {detail && <Details f={detail} />}
     </div>
   );
 }

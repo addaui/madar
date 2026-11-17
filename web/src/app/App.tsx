@@ -4,7 +4,9 @@ import { ErrorBoundary } from "react-error-boundary";
 import { useDescribe } from "../api/session";
 import { SignIn } from "../features/signin/SignIn";
 import { I18nProvider } from "../i18n/i18n";
+import { CalendarProvider } from "../ui/DateField";
 import { TooltipProvider } from "../ui/Tooltip";
+import { usePrefs } from "../api/session";
 import { EmojiProvider } from "../ui/emoji";
 import { useLang } from "./appearance";
 import { lazy } from "react";
@@ -30,7 +32,8 @@ function Gate() {
 
 function Signed() {
   const lang = useLang();
-  return <I18nProvider lang={lang}><TooltipProvider><EmojiProvider><AppRouter /><Suspense fallback={null}><OverlayHost /></Suspense></EmojiProvider></TooltipProvider></I18nProvider>;
+  const calendar = usePrefs().calendar ?? "gregory";
+  return <I18nProvider lang={lang}><CalendarProvider calendar={calendar}><TooltipProvider><EmojiProvider><AppRouter /><Suspense fallback={null}><OverlayHost /></Suspense></EmojiProvider></TooltipProvider></CalendarProvider></I18nProvider>;
 }
 
 /** A Space's website lives at its own subdomain. Ask whether this host is one; if it is not, this is the app. */

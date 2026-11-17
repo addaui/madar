@@ -8,6 +8,7 @@ import { NumberField, TextField } from "./Field";
 import { Segmented } from "./Segmented";
 import { Select } from "./Select";
 import { Tabs } from "./Tabs";
+import { I18nProvider } from "../i18n/i18n";
 
 const entries = (form: HTMLFormElement) => Object.fromEntries([...new FormData(form).entries()].map(([k, v]) => [k, String(v)]));
 
@@ -65,5 +66,22 @@ describe("the combo box", () => {
     await userEvent.type(input, "new{Enter}");
     expect(added).toContain("new");
     await vi.waitFor(() => expect(input).toHaveValue(""));
+  });
+});
+
+describe("the date field follows the app, not the browser", () => {
+  it("shows the date in the app's language and picks from a month grid", async () => {
+    const onChange = vi.fn();
+    render(<I18nProvider lang="ar"><DateField label="Due" value="2026-11-20" onChange={onChange} /></I18nProvider>);
+    const trigger = screen.getByRole("button", { name: "Due" });
+    await userEvent.click(trigger);
+    expect(await screen.findByText(/نوفمبر/)).toBeTruthy();   // the month is named in Arabic, whatever the browser's language is
+    await userEvent.click(screen.getByRole("button", { name: /(25|٢٥)/ }));
+    expect(onChange).toHaveBeenCalledWith("2026-11-25");
+  });
+  it("says there is no date, and clears", async () => {
+    const onChange = vi.fn();
+    render(<I18nProvider lang="en"><DateField label="Due" value="" onChange={onChange} /></I18nProvider>);
+    expect(screen.getByRole("button", { name: "Due" }).textContent).toBe("No date");
   });
 });

@@ -1,5 +1,8 @@
 // The English words of the Face. Extracted from the first web Face; new words are added here first.
 export const en = {
+  "noDate": "No date",
+  "prevMonth": "Previous month",
+  "nextMonth": "Next month",
   "today": "Today",
   "inbox": "Inbox",
   "projects": "Projects",
@@ -278,6 +281,9 @@ export const en = {
   "fontState_ready": "Ready",
   "fontState_failed": "Could not be loaded",
   "fontFeaturesFor": "Features of this font",
+  "fontDetails": "About this font",
+  "fontDetailsHint": "Point at a font to see what it offers.",
+  "fontWeights": "Weights",
   "fontLbl": "Font",
   "sizeLbl": "Size",
   "widthLbl": "Page width",

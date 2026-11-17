@@ -30,6 +30,9 @@ export class PageSaver {
   get busy() { return this.#pending > 0; }
   #set(s: SaveState) { this.#state = s; this.#listeners.forEach((l) => l()); }
 
+  /** The id the page is stored under: its own, or (for a draft that has no content yet) the one it gets when stored now. */
+  ensureStored(): Promise<string> { return Promise.resolve(this.id); }
+
   save(patch: PagePatch): Promise<unknown> {
     this.#pending++;
     this.#queue = this.#queue.then(() => this.#send(patch)).finally(() => { this.#pending--; });
@@ -65,6 +68,9 @@ export function saverFor(qc: QueryClient, page: Page, scope: PageScope): PageSav
   else if (!s.busy && page.rev > s.rev) s.rev = page.rev;
   return s;
 }
+
+/** Make `saver` the one that `saverFor` finds for this page id (a draft page has its own until it is stored). */
+export function registerSaver(s: PageSaver) { savers.set(s.id, s); }
 
 export function useSaveState(s: PageSaver): SaveState {
   return useSyncExternalStore(s.subscribe, s.getState, () => "idle");

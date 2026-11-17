@@ -1,5 +1,5 @@
 {
-  "contract": "08f9f9510134be0d",
+  "contract": "2f74fb7952e3a39a",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -1647,7 +1647,6 @@
           },
           "title": {
             "maxLength": 200,
-            "minLength": 1,
             "type": "string"
           }
         },
@@ -2569,7 +2568,6 @@
           },
           "title": {
             "maxLength": 200,
-            "minLength": 1,
             "type": "string"
           }
         },
@@ -2978,7 +2976,6 @@
           },
           "title": {
             "maxLength": 200,
-            "minLength": 1,
             "type": "string"
           }
         },
@@ -4149,7 +4146,6 @@
           },
           "title": {
             "maxLength": 200,
-            "minLength": 1,
             "type": "string"
           }
         },

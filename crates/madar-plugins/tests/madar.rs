@@ -1854,6 +1854,11 @@ fn a_page_remembers_how_it_is_shown_and_refuses_anything_else() {
     for bad in [json!({"font": "Comic Sans"}), json!({"font": "../x"}), json!({"font": ""}), json!({"font_features": {"liga": 1}}), json!({"font_features": {"ligature": true}}), json!({"font_features": []}), json!({"size": 99}), json!({"width": "huge"}), json!({"colour": "red"}), json!("x")] {
         assert_eq!(a.err(&al, "knowledge.update", json!({"project": p, "id": id, "settings": bad.clone()})).category, Category::Invalid, "{bad}");
     }
+    // a page may have no title yet: the Face shows "Untitled", and no stand-in word is stored
+    let blank = a.ok(&al, "knowledge.create", json!({"project": p, "title": ""}));
+    assert_eq!(blank["title"], "");
+    assert_eq!(a.ok(&al, "knowledge.update", json!({"project": p, "id": blank["id"], "title": "   "}))["title"], "");
+    assert_eq!(a.err(&al, "knowledge.update", json!({"project": p, "id": blank["id"], "title": "x".repeat(201)})).category, Category::Invalid);
     // personal pages keep settings too
     let n = a.ok(&al, "pages.create", json!({"title": "mine"}));
     assert_eq!(a.ok(&al, "pages.update", json!({"id": n["id"], "settings": {"font": "mono"}}))["settings"]["font"], "mono");

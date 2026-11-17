@@ -2,6 +2,9 @@
 import type { en } from "./en";
 
 export const ar: Record<keyof typeof en, string> = {
+  "noDate": "بلا تاريخ",
+  "prevMonth": "الشهر السابق",
+  "nextMonth": "الشهر التالي",
   "today": "اليوم",
   "inbox": "الوارد",
   "projects": "المشاريع",
@@ -280,6 +283,9 @@ export const ar: Record<keyof typeof en, string> = {
   "fontState_ready": "جاهز",
   "fontState_failed": "تعذّر تحميله",
   "fontFeaturesFor": "ميزات هذا الخط",
+  "fontDetails": "عن هذا الخط",
+  "fontDetailsHint": "مرّر المؤشر على خط لترى ما يقدّمه.",
+  "fontWeights": "الأوزان",
   "fontLbl": "الخط",
   "sizeLbl": "حجم النص",
   "widthLbl": "عرض الصفحة",

@@ -15,6 +15,7 @@ import { ElementTab } from "./element/ElementTab";
 import { PageElementDefaults } from "./element/PageElementDefaults";
 import { useElementKind } from "./element/store";
 import { usePrefs } from "../../api/session";
+import { isDraftId } from "./draft";
 import { StickerList } from "./stickers/StickerList";
 import { PageTags } from "./PageTags";
 import type { PageScope } from "./scope";
@@ -28,9 +29,10 @@ export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
   // the tab can name the kind of element in it (a preference under Appearance)
   const kind = useElementKind(), showKind = !!(usePrefs() as Record<string, unknown>)["editor.element_type_in_tab"];
   const f = useDateFormat();
-  const back = useMaybeRead(scope.project ? "refs.to" : "refs.mine", scope.project ? { project: scope.project, kind: "pages.page", id: page.id } as never : { kind: "pages.page", id: page.id });
+  const draft = isDraftId(page.id);   // a page not stored yet has no links to it and cannot be shared
+  const back = useMaybeRead(scope.project ? "refs.to" : "refs.mine", scope.project ? { project: scope.project, kind: "pages.page", id: page.id } as never : { kind: "pages.page", id: page.id }, !draft);
   const links = (back.data as { links?: { from: { type: string; id: string }; title?: string }[] } | undefined)?.links ?? [];
-  const canShare = useHasOp("shares.create_page");
+  const canShare = useHasOp("shares.create_page") && !draft;
   const [sharing, setSharing] = useState(false);
   return (
     <div className="flex h-full min-h-0 flex-col workspace:bg-transparent panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-surface panels:shadow-1 flush:bg-surface">

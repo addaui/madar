@@ -119,8 +119,9 @@ fn height(tx: &Tx, s: &Scope, root: &Doc) -> Result<usize> {
     Ok(h)
 }
 
+/// A title is at most 200 characters and may be empty: a page nobody has named is shown as "Untitled" by the Face, so no stand-in word is stored.
 fn title_ok(v: &Value) -> Result<()> {
-    if v.as_str().is_some_and(|s| !s.trim().is_empty() && s.len() <= 200) { Ok(()) } else { Err(Error::invalid("title", "must be 1 to 200 characters")) }
+    if v.as_str().is_some_and(|s| s.trim().len() <= 200) { Ok(()) } else { Err(Error::invalid("title", "must be at most 200 characters")) }
 }
 
 /// A page's icon is one emoji, never a sentence: at most 14 code points (a family or a flag with its joiners fits) and no spaces.
@@ -686,7 +687,7 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
         op["input"] = json!({"type": "object", "required": req, "properties": props, "additionalProperties": false});
         m.insert(format!("{prefix}.{name}"), op);
     };
-    let title = json!({"type":"string","minLength":1,"maxLength":200});
+    let title = json!({"type":"string","maxLength":200});
     let doc = json!({"type":"object"});
     let id = json!({"type":"string"});
     let nullable = json!({"type":["string","null"]});
