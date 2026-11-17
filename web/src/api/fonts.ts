@@ -53,7 +53,7 @@ export function pageFontStack(lib: FontLibrary | null, id: string | undefined): 
   if (!id || id === "default") return undefined;
   const f = lib?.family(familyIdOf(id));
   if (!f) return id === "serif" ? 'Georgia,"Times New Roman",serif' : id === "mono" ? "var(--mono)" : undefined;
-  return `${lib!.css(f)},var(--font-ui,${SYSTEM}),${FALLBACK[f.category]}`;
+  return `${lib!.stack(f)},var(--font-ui,${SYSTEM}),${FALLBACK[f.category]}`;
 }
 
 /**
@@ -70,6 +70,7 @@ export async function applyUiFont(lib: FontLibrary, lang: string): Promise<void>
     const missing = other.scripts.filter((s) => !main.scripts.includes(s));
     if (missing.length) parts.push({ id: other.id, scripts: missing });
   }
-  document.documentElement.style.setProperty("--font-ui", `"${name}",${SYSTEM}`);
+  const fallback = lib.fallback(main, name);   // the system face sized like the font, so the text does not jump when it arrives
+  document.documentElement.style.setProperty("--font-ui", `"${name}",${fallback ? `"${fallback}",` : ""}${SYSTEM}`);
   await lib.composite(name, parts);
 }

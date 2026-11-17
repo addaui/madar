@@ -16,7 +16,7 @@ describe("page fonts (ADR 0090)", () => {
     expect(familyIdOf("serif")).toBe("fraunces");
     expect(familyIdOf("mono")).toBe("jetbrains-mono");
     expect(familyIdOf("lora")).toBe("lora");
-    expect(pageFontStack(lib, "serif")).toMatch(/^"Fraunces",var\(--font-ui/);
+    expect(pageFontStack(lib, "serif")).toMatch(/^"Fraunces","Fraunces Fallback",var\(--font-ui/);
   });
   it("puts the interface font after the family so the other script still draws, and system fonts last", () => {
     const s = pageFontStack(lib, "eb-garamond")!;
