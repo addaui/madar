@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Tab, TabList, TabPanel, Tabs as AriaTabs } from "react-aria-components";
+import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { tv } from "tailwind-variants";
 import { cn } from "../lib/cn";
 import { Icon } from "./Icon";
@@ -9,20 +9,20 @@ export interface TabItem { id: string; label: string; icon?: string }
 const tabs = tv({
   slots: {
     list: "flex",
-    tab: "inline-flex cursor-pointer items-center gap-1.5 text-muted-foreground outline-none transition-colors data-[focus-visible]:outline-2 data-[focus-visible]:outline-brand data-[disabled]:opacity-45",
+    tab: "inline-flex cursor-pointer items-center gap-1.5 text-muted-foreground outline-none transition-colors focus-visible:outline-2 focus-visible:outline-brand data-[disabled]:opacity-45",
   },
   variants: {
     variant: {
-      underline: { list: "gap-1 border-b border-line", tab: "border-b-2 border-transparent px-3 py-2 hover:text-text data-[selected]:border-brand data-[selected]:font-semibold data-[selected]:text-text" },
-      compact: { list: "gap-0.5 border-b border-line px-3", tab: "border-b-2 border-transparent px-2.5 py-2.5 text-[13px] hover:text-text data-[selected]:border-brand data-[selected]:font-semibold data-[selected]:text-text" },
-      segmented: { list: "gap-0.5 rounded-sm bg-sunken p-[3px]", tab: "flex-1 justify-center rounded-inner px-2 py-1.5 text-[13px] hover:text-text data-[selected]:bg-surface data-[selected]:font-semibold data-[selected]:text-text data-[selected]:shadow-1" },
+      underline: { list: "gap-1 border-b border-line", tab: "border-b-2 border-transparent px-3 py-2 hover:text-text data-[active]:border-brand data-[active]:font-semibold data-[active]:text-text" },
+      compact: { list: "gap-0.5 border-b border-line px-3", tab: "border-b-2 border-transparent px-2.5 py-2.5 text-[13px] hover:text-text data-[active]:border-brand data-[active]:font-semibold data-[active]:text-text" },
+      segmented: { list: "gap-0.5 rounded-sm bg-sunken p-[3px]", tab: "flex-1 justify-center rounded-inner px-2 py-1.5 text-[13px] hover:text-text data-[active]:bg-surface data-[active]:font-semibold data-[active]:text-text data-[active]:shadow-1" },
     },
   },
   defaultVariants: { variant: "underline" },
 });
 
 /**
- * Tabs (React Aria): arrow keys move between them, the panel is tied to its tab for assistive technology. `children` is what the selected tab shows
+ * Tabs (Base UI): arrow keys move between them, the panel is tied to its tab for assistive technology. `children` is what the selected tab shows
  * (the screen keeps its own state, so only that one is rendered). `variant` is the look: an underline, a compact underline, or a pill group.
  */
 export function Tabs({ label, items, selected, onSelect, variant, className, listClassName, panelClassName, panels, children }: {
@@ -32,16 +32,16 @@ export function Tabs({ label, items, selected, onSelect, variant, className, lis
 }) {
   const s = tabs({ variant });
   return (
-    <AriaTabs selectedKey={selected} onSelectionChange={(k) => onSelect(String(k))} className={className}>
-      <TabList aria-label={label} className={s.list({ className: listClassName })}>
+    <TabsPrimitive.Root value={selected} onValueChange={(k) => onSelect(String(k))} className={className}>
+      <TabsPrimitive.List activateOnFocus aria-label={label} className={s.list({ className: listClassName })}>
         {items.map((it) => (
-          <Tab key={it.id} id={it.id} className={s.tab()}>
+          <TabsPrimitive.Tab key={it.id} value={it.id} className={s.tab()}>
             {it.icon && <Icon name={it.icon} className="size-4" />}<span>{it.label}</span>
-          </Tab>
+          </TabsPrimitive.Tab>
         ))}
-      </TabList>
-      {panels ? items.map((it) => <TabPanel key={it.id} id={it.id} shouldForceMount className={cn("outline-none", panelClassName)}>{panels[it.id]}</TabPanel>)
-        : children !== undefined && <TabPanel id={selected} className={cn("outline-none", panelClassName)}>{children}</TabPanel>}
-    </AriaTabs>
+      </TabsPrimitive.List>
+      {panels ? items.map((it) => <TabsPrimitive.Panel key={it.id} value={it.id} keepMounted className={cn("outline-none", panelClassName)}>{panels[it.id]}</TabsPrimitive.Panel>)
+        : children !== undefined && <TabsPrimitive.Panel value={selected} className={cn("outline-none", panelClassName)}>{children}</TabsPrimitive.Panel>}
+    </TabsPrimitive.Root>
   );
 }
