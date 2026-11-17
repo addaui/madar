@@ -44,13 +44,13 @@ describe("the Space features window", () => {
   it("a feature the instance does not allow cannot be switched on, and a member can change nothing", async () => {
     show();
     const audit = await screen.findByRole("switch", { name: "History" });
-    expect((audit as HTMLInputElement).disabled).toBe(true);
+    expect(audit).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("Not allowed on this instance")).toBeTruthy();
   });
 
   it("someone who is not an admin sees the switches but cannot use them", async () => {
     role = "member";
     show();
-    expect(((await screen.findByRole("switch", { name: "Tasks" })) as HTMLInputElement).disabled).toBe(true);
+    expect(await screen.findByRole("switch", { name: "Tasks" })).toHaveAttribute("aria-disabled", "true");
   });
 });
