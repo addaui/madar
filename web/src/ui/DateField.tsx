@@ -12,9 +12,9 @@ export function DateField({ label, value, onChange, isDisabled, name, className 
     <DatePicker aria-label={label} value={asDate(value)} onChange={(d) => onChange(d ? d.toString() : "")} isDisabled={isDisabled} name={name} granularity="day" className={cn("grid gap-1", className)}>
       <Group className="field flex items-center gap-1 data-[disabled]:opacity-60">
         <DateInput className="flex grow items-center gap-0.5">
-          {(segment) => <DateSegment segment={segment} className="rounded-sm px-0.5 tabular-nums outline-none data-[placeholder]:text-muted data-[focused]:bg-accent data-[focused]:text-on-accent" />}
+          {(segment) => <DateSegment segment={segment} className="rounded-sm px-0.5 tabular-nums outline-none data-[placeholder]:text-muted-foreground data-[focused]:bg-brand data-[focused]:text-brand-foreground" />}
         </DateInput>
-        <AriaButton aria-label={label} className="grid size-6 place-items-center rounded-sm text-muted outline-none hoverable hover:text-text data-[disabled]:opacity-45"><Icon name="calendar" className="size-4" /></AriaButton>
+        <AriaButton aria-label={label} className="grid size-6 place-items-center rounded-sm text-muted-foreground outline-none hoverable hover:text-text data-[disabled]:opacity-45"><Icon name="calendar" className="size-4" /></AriaButton>
       </Group>
       <Popover className={cn(popup, "p-3")} placement="bottom start" offset={4}>
         <Dialog className="outline-none">
@@ -25,9 +25,9 @@ export function DateField({ label, value, onChange, isDisabled, name, className 
               <AriaButton slot="next" aria-label="›" className="grid size-8 place-items-center rounded-sm outline-none hoverable"><Icon name="chevron" className="size-4 rtl:rotate-180" /></AriaButton>
             </header>
             <CalendarGrid className="border-separate border-spacing-0.5">
-              <CalendarGridHeader>{(day) => <CalendarHeaderCell className="size-8 text-center text-[12px] font-medium text-muted">{day}</CalendarHeaderCell>}</CalendarGridHeader>
+              <CalendarGridHeader>{(day) => <CalendarHeaderCell className="size-8 text-center text-[12px] font-medium text-muted-foreground">{day}</CalendarHeaderCell>}</CalendarGridHeader>
               <CalendarGridBody>
-                {(date) => <CalendarCell date={date} className="grid size-8 cursor-pointer place-items-center rounded-sm text-[13px] tabular-nums outline-none hoverable data-[outside-month]:text-muted data-[outside-month]:opacity-50 data-[selected]:bg-accent data-[selected]:text-on-accent data-[today]:font-bold data-[focus-visible]:outline-2 data-[focus-visible]:outline-accent data-[disabled]:opacity-30" />}
+                {(date) => <CalendarCell date={date} className="grid size-8 cursor-pointer place-items-center rounded-sm text-[13px] tabular-nums outline-none hoverable data-[outside-month]:text-muted-foreground data-[outside-month]:opacity-50 data-[selected]:bg-brand data-[selected]:text-brand-foreground data-[today]:font-bold data-[focus-visible]:outline-2 data-[focus-visible]:outline-brand data-[disabled]:opacity-30" />}
               </CalendarGridBody>
             </CalendarGrid>
           </Calendar>

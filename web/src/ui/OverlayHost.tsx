@@ -41,7 +41,7 @@ function Request({ req, close }: { req: Exclude<OverlayRequest, { kind: "toast" 
     return (
       <ModalFrame label={req.label} role="alertdialog" onClose={() => { req.resolve(false); close(); }}>
         <ModalTitle className="mb-1.5 text-base">{t("sureTitle")}</ModalTitle>
-        <p className="m-0 mb-4 text-muted" dir="auto">{req.label}</p>
+        <p className="m-0 mb-4 text-muted-foreground" dir="auto">{req.label}</p>
         <div className="flex justify-end gap-2">
           <Button autoFocus onPress={() => { req.resolve(false); close(); }}>{req.cancel ?? t("cancel")}</Button>
           <Button kind={req.danger ? "danger" : "primary"} onPress={() => { req.resolve(true); close(); }}>{req.action ?? t("delete")}</Button>
@@ -72,7 +72,7 @@ function Countdown({ label, seconds, done }: { label: string; seconds: number; d
   return (
     <ModalFrame label={label} role="alertdialog" onClose={() => done(false)}>
       <ModalTitle className="mb-1.5 text-base">{t("deletingIn", { n: left })}</ModalTitle>
-      <p className="m-0 mb-3 text-muted" dir="auto">{label}</p>
+      <p className="m-0 mb-3 text-muted-foreground" dir="auto">{label}</p>
       <ProgressBar label={t("deletingIn", { n: left })} value={100 - (elapsed / (seconds * 1000)) * 100} className="mb-4" />
       <div className="flex justify-end"><Button autoFocus onPress={() => done(false)}>{t("stop")}</Button></div>
     </ModalFrame>

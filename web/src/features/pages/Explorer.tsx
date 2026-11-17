@@ -79,7 +79,7 @@ export function Explorer({ scope, nav }: { scope: PageScope; nav: ExplorerNav })
       {childrenOf(list, null).map((p) => <Row key={p.id} pg={p} depth={0} ctx={ctx} />)}
       {edit?.mode === "folder" && edit.parent === null && <FolderRow depth={0} onDone={(v) => { setEdit(null); if (v) void createFolder(null, v); }} />}
       {draft && !nav.draftParent && <DraftRow depth={0} label={t("untitled")} />}
-      {list.length === 0 && !draft && <p className="px-2.5 py-2 text-[13px] text-muted">{scope.project ? t("noPagesHint") : t("noPages")}</p>}
+      {list.length === 0 && !draft && <p className="px-2.5 py-2 text-[13px] text-muted-foreground">{scope.project ? t("noPagesHint") : t("noPages")}</p>}
     </div>
   );
 
@@ -116,7 +116,7 @@ function Row({ pg, depth, ctx }: { pg: PageItem; depth: number; ctx: Ctx }) {
         style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }}
         className={cn("group/row flex min-h-[var(--row)] cursor-pointer items-center gap-1 rounded-sm pe-1 hoverable", cur && "bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]")}>
         {kids.length || pg.folder ? (
-          <BaseButton excludeFromTabOrder aria-label={isOpen ? t("collapse") : t("expand")} onPress={() => collapsed.toggle(pg.id)} className="grid size-5 place-items-center text-muted">
+          <BaseButton excludeFromTabOrder aria-label={isOpen ? t("collapse") : t("expand")} onPress={() => collapsed.toggle(pg.id)} className="grid size-5 place-items-center text-muted-foreground">
             <Icon name="chevron" className={cn("size-3.5 transition-transform", isOpen && "rotate-90 rtl:-rotate-90")} />
           </BaseButton>
         ) : <span className="size-5" />}
@@ -143,7 +143,7 @@ function DraftRow({ depth, label }: { depth: number; label: string }) {
   const t = useT();
   return (
     <div role="treeitem" aria-selected aria-current="page" title={t("notSavedYet")} style={{ paddingInlineStart: 4 + Math.min(depth, 6) * 12 }} className="flex min-h-[var(--row)] items-center gap-1 rounded-sm bg-surface font-semibold shadow-[0_1px_2px_rgba(0,0,0,.08)]">
-      <span className="size-5" /><span aria-hidden="true" className="grid w-5 place-items-center"><PageGlyph /></span><span className="truncate text-muted">{label}</span>
+      <span className="size-5" /><span aria-hidden="true" className="grid w-5 place-items-center"><PageGlyph /></span><span className="truncate text-muted-foreground">{label}</span>
     </div>
   );
 }

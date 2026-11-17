@@ -63,8 +63,8 @@ export function Settings({ project, onClose }: { project: Project; onClose: () =
   };
   return (
     <Window title={t("projectSettings")} onClose={onClose} wide>
-      <h3 className="mb-1 text-[13px] font-semibold uppercase text-muted">{t("columns")}</h3>
-      <p className="mb-2 mt-0 text-muted">{t("doneNote")}</p>
+      <h3 className="mb-1 text-[13px] font-semibold uppercase text-muted-foreground">{t("columns")}</h3>
+      <p className="mb-2 mt-0 text-muted-foreground">{t("doneNote")}</p>
       {cols.map((c, i) => (
         <div key={c.id} className="mb-1 flex items-center gap-1.5">
           <TextField value={c.name} maxLength={60} label={t("columnName")} onChange={(v) => setCols((all) => all.map((x, k) => (k === i ? { ...x, name: v } : x)))} className="min-w-0 grow" />
@@ -76,7 +76,7 @@ export function Settings({ project, onClose }: { project: Project; onClose: () =
       <form className="mb-4 mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); const n = String(new FormData(e.currentTarget).get("name") ?? "").trim(); if (!n || cols.length >= 12) return; setCols((all) => [...all.slice(0, -1), { id: unique(n), name: n }, all[all.length - 1]!]); e.currentTarget.reset(); }}>
         <TextField name="name" maxLength={60} placeholder={t("columnName")} label={t("columnName")} className="min-w-0 grow" /><Button type="submit">{t("addColumn")}</Button>
       </form>
-      <h3 className="mb-2 text-[13px] font-semibold uppercase text-muted">{t("attributes")}</h3>
+      <h3 className="mb-2 text-[13px] font-semibold uppercase text-muted-foreground">{t("attributes")}</h3>
       {attrs.map((a, i) => (
         <div key={i} className="mb-1 flex flex-wrap items-center gap-1.5">
           <TextField value={a.label} maxLength={60} placeholder={t("fieldLabel")} label={t("fieldLabel")} onChange={(v) => setAttrs((all) => all.map((x, k) => (k === i ? { ...x, label: v } : x)))} className="min-w-0 grow" />
@@ -100,7 +100,7 @@ export function Archived({ project, writer, onClose }: { project: Project; write
   const tasks = data?.tasks ?? [];
   return (
     <Window title={t("archived")} onClose={onClose}>
-      {tasks.length === 0 ? <p className="m-0 text-muted">{t("noArchived")}</p> : <ul className="m-0 grid list-none gap-1 p-0">{tasks.map((x) => (
+      {tasks.length === 0 ? <p className="m-0 text-muted-foreground">{t("noArchived")}</p> : <ul className="m-0 grid list-none gap-1 p-0">{tasks.map((x) => (
         <li key={x.id} className="flex items-center gap-2 rounded-md px-2 py-1.5"><span className="min-w-0 grow truncate" dir="auto">{x.title}</span>{writer && <Button size="sm" onPress={async () => { await link.call("tasks.update", { project: project.id, id: x.id, archived: false }); await refreshAll(qc); }}>{t("restore")}</Button>}</li>
       ))}</ul>}
     </Window>
@@ -126,7 +126,7 @@ export function History({ project, onClose }: { project: Project; onClose: () =>
   return (
     <Window title={t("audit")} onClose={onClose} wide>
       <ul className="m-0 grid max-h-[60vh] list-none gap-1 overflow-auto p-0">
-        {(data?.entries ?? []).map((e) => <li key={e.id} className="flex gap-3 rounded-md px-2 py-1.5"><span className="grow" dir="auto">{sentence(e)}</span><span className="shrink-0 text-xs text-muted">{f.time(e.at)}</span></li>)}
+        {(data?.entries ?? []).map((e) => <li key={e.id} className="flex gap-3 rounded-md px-2 py-1.5"><span className="grow" dir="auto">{sentence(e)}</span><span className="shrink-0 text-xs text-muted-foreground">{f.time(e.at)}</span></li>)}
       </ul>
     </Window>
   );

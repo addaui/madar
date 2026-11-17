@@ -30,10 +30,10 @@ export function ShareDialog({ page, project, onClose }: { page: { id: string; ti
   const run = async (f: () => Promise<unknown>) => { try { setError(""); await f(); await refresh(qc); } catch (e) { setError(errorOf(e)); } };
   return (
     <Window title={`${t("shareTitle")} · ${page.title}`} onClose={onClose} wide>
-      <p className="m-0 mb-3 text-muted">{t("shareViewOnly")}</p>
+      <p className="m-0 mb-3 text-muted-foreground">{t("shareViewOnly")}</p>
       <ExposureGate options={options}>
-      <h3 className="mb-2 mt-0 text-[13px] font-semibold uppercase tracking-wide text-muted">{t("shareLinks")}</h3>
-      {list.length === 0 && <p className="m-0 mb-3 text-muted">{t("shareNone")}</p>}
+      <h3 className="mb-2 mt-0 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">{t("shareLinks")}</h3>
+      {list.length === 0 && <p className="m-0 mb-3 text-muted-foreground">{t("shareNone")}</p>}
       <ul className="m-0 mb-4 grid list-none gap-3 p-0">
         {list.map((s) => <ShareRow key={s.id} s={s} accounts={options.accounts} run={run} />)}
       </ul>
@@ -61,7 +61,7 @@ function ShareRow({ s, accounts, run }: { s: Share; accounts: boolean; run: (f: 
           options={[{ value: "pinned", label: t("shareVersionPinned") }, { value: "live", label: t("shareVersionLive") }]} />
         <Checkbox isSelected={s.include_children} onChange={(c) => void run(() => link.call("shares.update", { id: s.id, include_children: c }))}>{t("shareSubpages")}</Checkbox>
       </div>
-      <p className="m-0 text-[12px] text-muted">{s.mode === "pinned" ? t("shareVersionPinnedHint") : t("shareVersionLiveHint")} {s.include_children && t("shareSubpagesHint")}</p>
+      <p className="m-0 text-[12px] text-muted-foreground">{s.mode === "pinned" ? t("shareVersionPinnedHint") : t("shareVersionLiveHint")} {s.include_children && t("shareSubpagesHint")}</p>
       {s.audience === "pin" && s.pin && <p className="m-0 text-[13px]"><b>{t("sharePin")}:</b> <code>{s.pin}</code></p>}
       {s.audience === "people" && (
         <div className="flex items-end gap-2"><TextField label={t("sharePeople")} value={people} onChange={setPeople} className="min-w-0 grow" />
@@ -87,12 +87,12 @@ function CreateShare({ accounts, onCreate }: { accounts: boolean; onCreate: (v: 
         <Select label={t("shareWho")} value={audience} onChange={(a) => setAudience(a as Audience)} options={audiences(accounts).map((a) => ({ value: a, label: t(("aud_" + a) as Key) }))} />
         <Select label={t("shareVersion")} value={mode} onChange={(m) => setMode(m as Mode)} options={[{ value: "pinned", label: t("shareVersionPinned") }, { value: "live", label: t("shareVersionLive") }]} />
       </div>
-      <p className="m-0 text-[12px] text-muted">{mode === "pinned" ? t("shareVersionPinnedHint") : t("shareVersionLiveHint")}</p>
-      {!accounts && <p className="m-0 text-[12px] text-muted">{t("shareNoAccounts")}</p>}
+      <p className="m-0 text-[12px] text-muted-foreground">{mode === "pinned" ? t("shareVersionPinnedHint") : t("shareVersionLiveHint")}</p>
+      {!accounts && <p className="m-0 text-[12px] text-muted-foreground">{t("shareNoAccounts")}</p>}
       {audience === "people" && <TextField label={t("sharePeople")} value={people} onChange={setPeople} />}
       <div className="grid gap-0.5">
         <Checkbox isSelected={sub} onChange={setSub}>{t("shareSubpages")}</Checkbox>
-        {sub && <span className="ps-[26px] text-[12px] text-muted">{t("shareSubpagesHint")}</span>}
+        {sub && <span className="ps-[26px] text-[12px] text-muted-foreground">{t("shareSubpagesHint")}</span>}
       </div>
       <div><Button kind="primary" onPress={() => void onCreate({ audience, mode, include_children: sub, ...(audience === "people" ? { people: people.split(",").map((n) => n.trim()).filter(Boolean) } : {}) })}>{t("shareCreate")}</Button></div>
     </section>

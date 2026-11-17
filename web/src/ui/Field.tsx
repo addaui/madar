@@ -84,7 +84,7 @@ export function SearchField({ label, showLabel, className, inputClassName, place
     <AriaSearchField className={cn("group relative grid gap-1", className)} autoFocus={autoFocus} value={value} defaultValue={defaultValue} onChange={onChange} onSubmit={onSubmit} onKeyDown={onKeyDown} isDisabled={isDisabled}>
       <Label className={showLabel ? fieldLabel : "sr-only"}>{label}</Label>
       <span className="relative block">
-        <Icon name="search" className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+        <Icon name="search" className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input className={cn("field w-full ps-8 pe-8 [&::-webkit-search-cancel-button]:hidden", inputClassName)} placeholder={placeholder} maxLength={maxLength} dir={dir} autoComplete="off" />
         <ClearButton />
       </span>
@@ -94,7 +94,7 @@ export function SearchField({ label, showLabel, className, inputClassName, place
 
 function ClearButton() {
   return (
-    <AriaButton aria-label="×" className="absolute end-1.5 top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-full text-muted outline-none hoverable hover:text-text group-data-[empty=false]:grid">
+    <AriaButton aria-label="×" className="absolute end-1.5 top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground outline-none hoverable hover:text-text group-data-[empty=false]:grid">
       <Icon name="close" className="size-3.5" />
     </AriaButton>
   );

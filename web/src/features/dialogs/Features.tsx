@@ -67,7 +67,7 @@ export function Features({ onClose }: { onClose: () => void }) {
   const shown = (data?.features ?? []).filter((f) => f.kind !== "theme");
   return (
     <Window title={t("features")} onClose={onClose} wide>
-      <p className="m-0 mb-3 text-muted">{t("featuresIntro")}</p>
+      <p className="m-0 mb-3 text-muted-foreground">{t("featuresIntro")}</p>
       {list.error && <p role="alert" className="text-danger">{errorOf(list.error).message}</p>}
       {error && <p role="alert" className="text-danger">{error}</p>}
       {confirm && (
@@ -88,12 +88,12 @@ export function Features({ onClose }: { onClose: () => void }) {
       {shown.map((f) => <FeatureCard key={f.id} f={f} busy={pending} onToggle={(on) => toggle(f, on)} onSave={(settings) => void run(async () => { await link.call("features.configure", { id: f.id, settings }); notify(t("saved")); })} />)}
       {data && data.platform.length > 0 && (
         <Disclosure title={t("featuresPlatform")} className="mt-4">
-          <p className="m-0 mb-2 text-muted">{t("featuresPlatformNote")}</p>
+          <p className="m-0 mb-2 text-muted-foreground">{t("featuresPlatformNote")}</p>
           <ul className="m-0 list-none p-0">
             {data.platform.map((p) => (
               <li key={p.id} className="flex flex-wrap items-baseline justify-between gap-2 border-t border-line py-1.5">
-                <span><b>{p.name || p.id}</b> <span className="text-muted">{p.enabled ? t("featuresOn") : t("featuresOff")}</span></span>
-                <span className="text-[12px] text-muted">{p.reasons.join("; ")}</span>
+                <span><b>{p.name || p.id}</b> <span className="text-muted-foreground">{p.enabled ? t("featuresOn") : t("featuresOff")}</span></span>
+                <span className="text-[12px] text-muted-foreground">{p.reasons.join("; ")}</span>
               </li>
             ))}
           </ul>
@@ -115,8 +115,8 @@ function FeatureCard({ f, busy, onToggle, onSave }: { f: Feature; busy: boolean;
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="m-0 text-[15px] font-semibold">{f.name || f.id}</h2>
-          {f.description && <p className="m-0 mt-0.5 text-muted">{f.description}</p>}
-          {f.needs.length > 0 && <p className="m-0 mt-0.5 text-[12px] text-muted">{t("featuresNeeds")}: {f.needs.join(", ")}</p>}
+          {f.description && <p className="m-0 mt-0.5 text-muted-foreground">{f.description}</p>}
+          {f.needs.length > 0 && <p className="m-0 mt-0.5 text-[12px] text-muted-foreground">{t("featuresNeeds")}: {f.needs.join(", ")}</p>}
         </div>
         <Switch aria-label={f.name || f.id} isSelected={f.enabled} isDisabled={busy} onChange={onToggle} />
       </div>
@@ -131,7 +131,7 @@ function FeatureCard({ f, busy, onToggle, onSave }: { f: Feature; busy: boolean;
               return (
                 <fieldset key={k} className="m-0 grid gap-1 border-0 p-0">
                   <legend className="mb-1 font-medium">{label}</legend>
-                  {p.description && <span className="text-[12px] text-muted">{p.description}</span>}
+                  {p.description && <span className="text-[12px] text-muted-foreground">{p.description}</span>}
                   {p.items.enum.map((e) => <Checkbox key={e} isSelected={chosen.includes(e)} onChange={(on) => set(k, on ? [...chosen, e] : chosen.filter((x) => x !== e))}>{e}</Checkbox>)}
                 </fieldset>
               );

@@ -26,7 +26,7 @@ export function KnowledgeTab({ project, search, go }: { project: Project; search
       </div>
       <div className="panel min-h-0 overflow-hidden">
         <Suspense fallback={<div aria-busy="true" />}>
-          {!id ? <div className="mx-auto mt-[8vh] grid max-w-md place-items-center gap-1 text-center text-muted"><b className="text-text">{t("pickPage")}</b><span>{t("pickPageHint")}</span></div>
+          {!id ? <div className="mx-auto mt-[8vh] grid max-w-md place-items-center gap-1 text-center text-muted-foreground"><b className="text-text">{t("pickPage")}</b><span>{t("pickPageHint")}</span></div>
             : id === "new" ? <DraftPage parent={search.parent} scope={scope} chrome={false} onCreated={(pid) => go({ tab: "knowledge", page: pid })} />
             : <KnowledgePage key={id} project={project} id={id} />}
         </Suspense>

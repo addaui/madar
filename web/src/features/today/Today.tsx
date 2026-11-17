@@ -15,7 +15,7 @@ import { TaskRow } from "../tasks/TaskRow";
 import type { MyTask } from "../../api/types";
 
 const Panel = ({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) => (
-  <section className={cn("mb-4 panel p-3", className)}><h2 className="m-0 mb-1.5 px-1 text-[13px] font-semibold uppercase tracking-wide text-muted">{title}</h2>{children}</section>
+  <section className={cn("mb-4 panel p-3", className)}><h2 className="m-0 mb-1.5 px-1 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>{children}</section>
 );
 
 export function Today() {
@@ -35,16 +35,16 @@ export function Today() {
   return (
     <div className="mx-auto max-w-[900px] px-1">
       <h1 className="m-0 text-[28px] font-bold" dir="auto">{greeting}, {who.display || who.subject}</h1>
-      <p className="mt-1 text-muted">{f.date(mine.today)}</p>
+      <p className="mt-1 text-muted-foreground">{f.date(mine.today)}</p>
       {any && (
         <div className="my-4 grid grid-cols-4 gap-2.5">
           {[["open", String(mine.tasks.length), t("openN")], ["overdue", String(count("overdue")), t("overdue")], ["today", String(count("today")), t("todayB")], ["soon", String(count("upcoming")), t("soon")]].map(([k, n, label]) => (
-            <div key={k} className={cn("panel p-3", k === "overdue" && n !== "0" && "border-danger text-danger")}><b className="block text-2xl">{n}</b><span className="text-[13px] text-muted">{label}</span></div>
+            <div key={k} className={cn("panel p-3", k === "overdue" && n !== "0" && "border-danger text-danger")}><b className="block text-2xl">{n}</b><span className="text-[13px] text-muted-foreground">{label}</span></div>
           ))}
         </div>
       )}
       {!any && pageTasks.length === 0 && (
-        <div className="grid place-items-center gap-1 py-16 text-center text-muted"><Icon name="sparkle" className="size-7" /><b>{t("nothingOpen")}</b><span>{t("nothingOpenHint")}</span></div>
+        <div className="grid place-items-center gap-1 py-16 text-center text-muted-foreground"><Icon name="sparkle" className="size-7" /><b>{t("nothingOpen")}</b><span>{t("nothingOpenHint")}</span></div>
       )}
       {focus.start.length > 0 && <Panel title={t("startHere")}>{focus.start.map((x) => <TaskRow key={x.id} task={x} today={mine.today} />)}</Panel>}
       {focus.also.length > 0 && <Panel title={t("alsoOpen")}>{focus.also.map((x) => <TaskRow key={x.id} task={x} today={mine.today} />)}</Panel>}
@@ -53,7 +53,7 @@ export function Today() {
         <Disclosure title={t("assignedAll")} className="mb-4 panel p-3">
                   {groups.map(([k, label]) => {
             const items = mine.tasks.filter((x) => x.bucket === k);
-            return items.length ? <div key={k}><div className="px-1 pb-1 pt-3 text-xs font-semibold uppercase text-muted">{label}</div>{items.map((x: MyTask) => <TaskRow key={x.id} task={x} today={mine.today} />)}</div> : null;
+            return items.length ? <div key={k}><div className="px-1 pb-1 pt-3 text-xs font-semibold uppercase text-muted-foreground">{label}</div>{items.map((x: MyTask) => <TaskRow key={x.id} task={x} today={mine.today} />)}</div> : null;
           })}
         </Disclosure>
       )}
@@ -75,11 +75,11 @@ function PageTaskRow({ item }: { item: { page: string; title?: string; icon?: st
   return (
     <div className="flex min-h-[42px] items-center gap-2.5 rounded-md px-2.5 py-1.5 hoverable">
       <Checkbox isDisabled={!item.block} aria-label={item.block ? item.text : item.text + " — " + t("saveToTick")} onChange={tick} />
-      <span className="grid min-w-0 grow"><span className="truncate" dir="auto">{item.text}</span>{item.notes && <span className="truncate text-xs text-muted" dir="auto">{item.notes}</span>}</span>
+      <span className="grid min-w-0 grow"><span className="truncate" dir="auto">{item.text}</span>{item.notes && <span className="truncate text-xs text-muted-foreground" dir="auto">{item.notes}</span>}</span>
       {item.priority && <span className={cn("rounded-chip border border-line px-2 py-0.5 text-xs", item.priority === "high" && "text-danger")}>{t(("pri_" + item.priority) as Key)}</span>}
       {item.due && <span className={cn("rounded-chip border border-line px-2 py-0.5 text-xs", item.due < todayLocal() && "text-danger")}>{item.due}</span>}
       <TextLink href={item.project ? `#/p/${item.project}?tab=knowledge&page=${item.page}` : `#/pages/${item.page}`}
-        className="inline-flex items-center gap-1 rounded-chip border border-line px-2 py-0.5 text-xs"><PageGlyph icon={item.icon} className="size-3.5 text-muted" /><span dir="auto">{item.title || t("untitled")}</span></TextLink>
+        className="inline-flex items-center gap-1 rounded-chip border border-line px-2 py-0.5 text-xs"><PageGlyph icon={item.icon} className="size-3.5 text-muted-foreground" /><span dir="auto">{item.title || t("untitled")}</span></TextLink>
       {item.project_name && <span className="rounded-chip border border-line px-2 py-0.5 text-xs" dir="auto">{item.project_name}</span>}
     </div>
   );

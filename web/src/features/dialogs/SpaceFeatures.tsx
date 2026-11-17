@@ -15,7 +15,7 @@ export function SpaceFeatures({ onClose }: { onClose: () => void }) {
   const space = usePersistedValue(spaceState);
   const spaces = useRead("spaces.list").data.spaces;
   const cur = spaces.find((s) => s.id === space && !s.builtin);
-  if (!cur) return <Window title={t("spaceFeatures")} onClose={onClose}><p className="m-0 text-muted">{t("personalSpaceNote")}</p></Window>;
+  if (!cur) return <Window title={t("spaceFeatures")} onClose={onClose}><p className="m-0 text-muted-foreground">{t("personalSpaceNote")}</p></Window>;
   return <Features id={cur.id} name={cur.name} admin={cur.role === "admin"} onClose={onClose} />;
 }
 
@@ -30,11 +30,11 @@ function Features({ id, name, admin, onClose }: { id: string; name: string; admi
   };
   return (
     <Window title={`${t("spaceFeatures")} · ${name}`} onClose={onClose}>
-      <p className="m-0 mb-3 text-muted">{t("spaceFeaturesIntro")}</p>
+      <p className="m-0 mb-3 text-muted-foreground">{t("spaceFeaturesIntro")}</p>
       <ul className="m-0 grid list-none gap-2 p-0">
         {list.map((f) => (
           <li key={f.id} className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2">
-            <span>{t(label(f.id))}{!f.allowed && <span className="ms-2 text-[12px] text-muted">{t("spaceFeatureNotAllowed")}</span>}</span>
+            <span>{t(label(f.id))}{!f.allowed && <span className="ms-2 text-[12px] text-muted-foreground">{t("spaceFeatureNotAllowed")}</span>}</span>
             <Switch aria-label={t(label(f.id))} isSelected={f.enabled} isDisabled={!admin || !f.allowed} onChange={(on) => void change(f.id, on)} />
           </li>
         ))}

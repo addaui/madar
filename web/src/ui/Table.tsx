@@ -11,11 +11,11 @@ export function DataTable<T extends { id: Key }>({ label, columns, rows, cell, o
   return (
     <AriaTable aria-label={label} onRowAction={onOpen ? (k) => onOpen(String(k)) : undefined} className={cn("w-full border-separate border-spacing-0 text-start", className)}>
       <TableHeader>
-        {columns.map((c) => <Column key={c.id} id={c.id} isRowHeader={c.isRowHeader} className={cn("border-b border-line px-3 py-2 text-start text-[12.5px] font-medium text-muted", c.className)}>{c.label}</Column>)}
+        {columns.map((c) => <Column key={c.id} id={c.id} isRowHeader={c.isRowHeader} className={cn("border-b border-line px-3 py-2 text-start text-[12.5px] font-medium text-muted-foreground", c.className)}>{c.label}</Column>)}
       </TableHeader>
-      <TableBody items={rows} renderEmptyState={() => <span className="block px-3 py-6 text-center text-muted">{empty}</span>}>
+      <TableBody items={rows} renderEmptyState={() => <span className="block px-3 py-6 text-center text-muted-foreground">{empty}</span>}>
         {(row) => (
-          <Row id={row.id} columns={columns} className="cursor-pointer outline-none data-[focus-visible]:outline-2 data-[focus-visible]:-outline-offset-2 data-[focus-visible]:outline-accent data-[hovered]:bg-hover">
+          <Row id={row.id} columns={columns} className="cursor-pointer outline-none data-[focus-visible]:outline-2 data-[focus-visible]:-outline-offset-2 data-[focus-visible]:outline-brand data-[hovered]:bg-hover">
             {(c) => <Cell className="border-b border-line px-3 py-2">{cell(row, c.id)}</Cell>}
           </Row>
         )}

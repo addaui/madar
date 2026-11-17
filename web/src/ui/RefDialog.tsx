@@ -21,7 +21,7 @@ export function RefDialog({ onDone }: { onDone: (v: { kind: string; id: string; 
       <ModalTitle className="mb-3">{t("pickItem")}</ModalTitle>
       <SearchList label={t("searchItems")} placeholder={t("searchItems")} value={q} onChange={setQ} items={items.map((h) => ({ id: h.kind + ":" + h.id, text: h.title || t("untitled"), hit: h }))} onPick={(it) => pick(it.hit)}
         empty={query.length < 2 ? t("searchHint") : t("noResults")} listClassName="max-h-[40vh]"
-        render={({ hit: h }) => (<><Icon name={h.kind === "task" ? "task" : "page"} className="text-muted" /><span className="truncate" dir="auto">{h.title || t("untitled")}</span></>)} />
+        render={({ hit: h }) => (<><Icon name={h.kind === "task" ? "task" : "page"} className="text-muted-foreground" /><span className="truncate" dir="auto">{h.title || t("untitled")}</span></>)} />
     </ModalFrame>
   );
 }

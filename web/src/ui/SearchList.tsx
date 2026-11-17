@@ -21,14 +21,14 @@ export function SearchList<T extends SearchItem>({ label, placeholder, value, on
         <SearchField autoFocus aria-label={label} className="group relative grow">
           <Label className="sr-only">{label}</Label>
           <span className="relative block">
-            <Icon name="search" className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+            <Icon name="search" className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input className="field w-full ps-8 [&::-webkit-search-cancel-button]:hidden" placeholder={placeholder} dir="auto" />
           </span>
         </SearchField>
         {extra}
       </div>
       <ListBox aria-label={label} items={items} onAction={(k) => { const it = items.find((x) => x.id === String(k)); if (it) onPick(it); }}
-        renderEmptyState={() => <div className="px-3 py-4 text-muted">{empty}</div>} className={cn("m-0 mt-3 grid max-h-[50vh] gap-0.5 overflow-auto outline-none", listClassName)}>
+        renderEmptyState={() => <div className="px-3 py-4 text-muted-foreground">{empty}</div>} className={cn("m-0 mt-3 grid max-h-[50vh] gap-0.5 overflow-auto outline-none", listClassName)}>
         {(item) => <ListBoxItem id={item.id} textValue={item.text} className={cn(popupItem, "items-start")}>{render(item)}</ListBoxItem>}
       </ListBox>
     </Autocomplete>

@@ -15,7 +15,7 @@ function Failed({ error, resetErrorBoundary }: FallbackProps) {
   const t = useT();
   return (
     <div role="alert" className="grid h-full place-items-center p-8 text-center">
-      <div className="grid gap-3"><b>{t("offline")}</b><p className="m-0 text-muted">{error instanceof Error ? error.message : String(error)}</p><Button onPress={resetErrorBoundary}>{t("retry")}</Button></div>
+      <div className="grid gap-3"><b>{t("offline")}</b><p className="m-0 text-muted-foreground">{error instanceof Error ? error.message : String(error)}</p><Button onPress={resetErrorBoundary}>{t("retry")}</Button></div>
     </div>
   );
 }

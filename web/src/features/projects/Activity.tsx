@@ -23,7 +23,7 @@ export function Activity({ project, target, writer }: { project: string; target:
   const textOf = (b: unknown): string => (window.MadarEditor ? window.MadarEditor.text(b) : "");
   return (
     <div>
-      <h3 className="mb-2 text-[13px] font-semibold text-muted">{t("timeline")}</h3>
+      <h3 className="mb-2 text-[13px] font-semibold text-muted-foreground">{t("timeline")}</h3>
       {writer && (
         <form onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget, v = String(new FormData(form).get("c") ?? "").trim(); if (v) { add(v); form.reset(); } }} className="mb-3 grid gap-2">
           <TextArea name="c" rows={2} dir="auto" placeholder={t("write")} label={t("comments")} />
@@ -33,11 +33,11 @@ export function Activity({ project, target, writer }: { project: string; target:
       <ul className="m-0 grid list-none gap-2 p-0">
         {feed.items.map((it) => (
           <li key={it.id} className="rounded-md border border-line p-2.5 text-[13px]">
-            <div className="mb-0.5 flex items-center gap-2 text-muted"><b className="text-text">{it.author_display ?? it.actor ?? ""}</b><span>{f.time(it.at)}</span></div>
+            <div className="mb-0.5 flex items-center gap-2 text-muted-foreground"><b className="text-text">{it.author_display ?? it.actor ?? ""}</b><span>{f.time(it.at)}</span></div>
             <div dir="auto">{it.body ? textOf(it.body) : it.text ?? it.kind}</div>
           </li>
         ))}
-        {feed.items.length === 0 && <li className="text-muted">{t("none")}</li>}
+        {feed.items.length === 0 && <li className="text-muted-foreground">{t("none")}</li>}
       </ul>
     </div>
   );

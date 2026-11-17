@@ -23,7 +23,7 @@ const button = tv({
     kind: {
       default: "rounded-btn border-line-strong bg-surface text-text hoverable",
       primary: "rounded-btn border-primary bg-primary text-on-primary hover:bg-[color-mix(in_srgb,var(--primary)_88%,var(--text))] active:bg-[color-mix(in_srgb,var(--primary)_80%,var(--text))]",
-      ghost: "rounded-btn border-transparent bg-transparent text-muted hoverable hover:text-text",
+      ghost: "rounded-btn border-transparent bg-transparent text-muted-foreground hoverable hover:text-text",
       danger: "rounded-btn border-[color-mix(in_srgb,var(--danger)_40%,transparent)] text-danger hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]",
     },
     size: { md: "", sm: "min-h-[var(--hit-sm)] px-2.5 text-[13px]" },
@@ -45,7 +45,7 @@ export function Button({ kind, size, icon, className, children, isPending, ...re
 }
 
 const iconButton = tv({
-  base: "inline-grid size-[var(--hit)] shrink-0 place-items-center rounded-sm border-0 bg-transparent text-muted transition-colors duration-150 hoverable hover:text-text aria-expanded:bg-soft aria-expanded:text-accent aria-pressed:bg-soft aria-pressed:text-accent [@media(pointer:coarse)]:size-10",
+  base: "inline-grid size-[var(--hit)] shrink-0 place-items-center rounded-sm border-0 bg-transparent text-muted-foreground transition-colors duration-150 hoverable hover:text-text aria-expanded:bg-soft aria-expanded:text-brand aria-pressed:bg-soft aria-pressed:text-brand [@media(pointer:coarse)]:size-10",
   variants: { size: { md: "", sm: "size-[var(--hit-sm)]" }, tone: { default: "", danger: "hover:text-danger" } },
   defaultVariants: { size: "md", tone: "default" },
 });

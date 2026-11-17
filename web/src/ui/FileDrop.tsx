@@ -13,7 +13,7 @@ export function FileDrop({ accept, onFile, label, isDisabled, children, classNam
     <DropZone isDisabled={isDisabled} aria-label={label}
       getDropOperation={(types) => (accept.some((a) => types.has(a)) ? "copy" : "cancel")}
       onDrop={async (e) => { const item = e.items.find((i) => i.kind === "file"); if (item && item.kind === "file") take(await item.getFile()); }}
-      className={cn("grid rounded-md border-2 border-dashed border-line-strong text-muted data-[drop-target]:border-accent data-[drop-target]:bg-soft data-[focus-visible]:outline-2 data-[focus-visible]:outline-accent", className)}>
+      className={cn("grid rounded-md border-2 border-dashed border-line-strong text-muted-foreground data-[drop-target]:border-brand data-[drop-target]:bg-soft data-[focus-visible]:outline-2 data-[focus-visible]:outline-brand", className)}>
       <FileTrigger acceptedFileTypes={accept} onSelect={(files) => take(files?.[0])}>
         <BaseButton isDisabled={isDisabled} className="grid place-items-center gap-1.5 rounded-md px-4 py-6 text-center hoverable">{children}</BaseButton>
       </FileTrigger>

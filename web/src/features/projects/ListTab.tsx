@@ -47,7 +47,7 @@ export function ListTab({ project, members, today, onOpen }: { project: Project;
         <Select label={t("assignee")} value={assignee} onChange={setAssignee} options={[{ value: "", label: t("all") + " · " + t("assignee") }, { value: "-", label: t("nobody") }, ...members.map((m) => ({ value: m.subject, label: m.display ?? m.subject }))]} />
         <Select label={t("sortBy")} value={sort} onChange={setSort} options={sorts.map(([v, l]) => ({ value: v, label: t("sortBy") + ": " + l }))} />
         <IconButton icon={desc ? "down" : "up"} label={desc ? t("descending") : t("ascending")} onPress={() => setDesc(!desc)} />
-        <span className="text-muted">{t("total")}: {data?.total ?? rows.length}</span>
+        <span className="text-muted-foreground">{t("total")}: {data?.total ?? rows.length}</span>
       </div>
       <div className="overflow-auto rounded-md border border-line">
         <DataTable label={t("tasksTab")} columns={columns} rows={rows} cell={cell} onOpen={onOpen} empty={<><Icon name="search" className="mx-auto mb-1 size-6" /><b>{t("none")}</b></>} />

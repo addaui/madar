@@ -8,7 +8,7 @@ export function ToastHost() {
   return (
     <ToastRegion queue={queue} aria-label="Notifications" className="pointer-events-none fixed inset-x-0 bottom-5 z-[90] grid justify-center gap-2 outline-none">
       {({ toast }) => (
-        <Toast toast={toast} className="pointer-events-auto rounded-btn bg-text px-3.5 py-2 text-[13px] text-bg shadow-2 outline-none data-[focus-visible]:outline-2 data-[focus-visible]:outline-accent">
+        <Toast toast={toast} className="pointer-events-auto rounded-btn bg-text px-3.5 py-2 text-[13px] text-bg shadow-2 outline-none data-[focus-visible]:outline-2 data-[focus-visible]:outline-brand">
           <ToastContent><Text slot="title">{toast.content.text}</Text></ToastContent>
         </Toast>
       )}

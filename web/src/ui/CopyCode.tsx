@@ -15,7 +15,7 @@ export function CopyCode({ code, className }: { code: string; className?: string
   return (
     <Tooltip label={t("copyId")}>
       <BaseButton aria-label={t("copyId") + ": " + code} onPress={() => void copyText(code, t("copied"))}
-        className={cn("hit rounded-chip border border-line px-1.5 text-[11px] text-muted hoverable hover:text-text", className)}><span dir="ltr" translate="no">{code}</span></BaseButton>
+        className={cn("hit rounded-chip border border-line px-1.5 text-[11px] text-muted-foreground hoverable hover:text-text", className)}><span dir="ltr" translate="no">{code}</span></BaseButton>
     </Tooltip>
   );
 }

@@ -15,5 +15,5 @@ export const popupItem = "flex cursor-pointer items-center gap-2.5 rounded-inner
 /** A control that is wrong, and the line that says how. */
 export const invalid = "data-[invalid]:border-danger";
 export const fieldError = "text-[12.5px] text-danger";
-export const fieldHint = "text-[12.5px] text-muted";
+export const fieldHint = "text-[12.5px] text-muted-foreground";
 export const fieldLabel = "text-[13px] font-medium text-text";

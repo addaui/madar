@@ -45,10 +45,10 @@ export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
               <Prop icon="calendar" label={t("created")}>{f.time(page.created_at ?? 0)}</Prop>
               <Prop icon="history" label={t("updatedAt")}>{f.time(page.updated_at ?? 0)}</Prop>
             </dl>
-            <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted"><Icon name="tag" className="size-3.5" />{t("tags")}</h3>
+            <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"><Icon name="tag" className="size-3.5" />{t("tags")}</h3>
             <Suspense fallback={<Skeleton className="h-7 w-full" />}><PageTags page={page} scope={scope} writer /></Suspense>
-            <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted"><Icon name="link" className="size-3.5" />{t("linkedFrom")}</h3>
-            {links.length === 0 ? <p className="m-0 text-muted">{t("noLinks")}</p> : (
+            <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"><Icon name="link" className="size-3.5" />{t("linkedFrom")}</h3>
+            {links.length === 0 ? <p className="m-0 text-muted-foreground">{t("noLinks")}</p> : (
               <ul className="m-0 grid list-none gap-1 p-0">{links.map((l) => <li key={l.from.id}><a href={`#/pages/${l.from.id}`} className="block rounded-sm px-2 py-1 hoverable">{l.title ?? l.from.id}</a></li>)}</ul>
             )}
           </>
@@ -59,7 +59,7 @@ export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
 }
 
 function Prop({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {
-  return <div className="grid grid-cols-[112px_1fr] items-center gap-2.5"><dt className="flex items-center gap-2 text-muted"><Icon name={icon} className="size-3.5" />{label}</dt><dd className="m-0">{children}</dd></div>;
+  return <div className="grid grid-cols-[112px_1fr] items-center gap-2.5"><dt className="flex items-center gap-2 text-muted-foreground"><Icon name={icon} className="size-3.5" />{label}</dt><dd className="m-0">{children}</dd></div>;
 }
 
 /** The creator of a project page, named from the project's members. */

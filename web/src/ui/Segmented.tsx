@@ -14,7 +14,7 @@ export function Segmented({ label, value, onChange, options, isDisabled, classNa
       {options.map((o) => {
         const item = (
           <Radio key={o.value} value={o.value} aria-label={o.text}
-            className={cn("cursor-pointer rounded-inner px-2.5 py-1 text-[13px] text-muted outline-none transition-colors hoverable data-[selected]:bg-surface data-[selected]:font-semibold data-[selected]:text-text data-[selected]:shadow-1 data-[focus-visible]:outline-2 data-[focus-visible]:outline-accent data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45", itemClassName, o.className)}>
+            className={cn("cursor-pointer rounded-inner px-2.5 py-1 text-[13px] text-muted-foreground outline-none transition-colors hoverable data-[selected]:bg-surface data-[selected]:font-semibold data-[selected]:text-text data-[selected]:shadow-1 data-[focus-visible]:outline-2 data-[focus-visible]:outline-brand data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45", itemClassName, o.className)}>
             {o.label}
           </Radio>
         );

@@ -42,7 +42,7 @@ function PagesIndex() {
   return (
     <>
       <Topbar title={t("pages")} crumbs={<span aria-current="page" className="px-1.5 font-semibold text-text">{t("pages")}</span>} />
-      <div className="mx-auto mt-[8vh] grid max-w-md place-items-center gap-1 text-center text-muted"><b className="text-text">{t("pickPage")}</b><span>{t("pickPageHint")}</span></div>
+      <div className="mx-auto mt-[8vh] grid max-w-md place-items-center gap-1 text-center text-muted-foreground"><b className="text-text">{t("pickPage")}</b><span>{t("pickPageHint")}</span></div>
     </>
   );
 }

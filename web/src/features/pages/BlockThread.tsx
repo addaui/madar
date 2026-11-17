@@ -37,7 +37,7 @@ export default function BlockThread({ project, page, block, manager, onClose }: 
   const remove = async (c: Comment) => { if (await askConfirm(t("sure"))) { await link.call("discussion.remove", { project, id: c.id } as never); await refresh(); } };
   const one = (c: Comment, reply: boolean) => (
     <div key={c.id} className={cn("rounded-md border border-line p-2.5 text-[13px]", reply && "ms-6")}>
-      <div className="mb-1 flex items-center gap-2"><Avatar subject={c.author} name={c.author_display ?? c.author} size="sm" /><b dir="auto">{c.author_display ?? c.author}</b><small className="text-muted">{f.time(c.at)}</small></div>
+      <div className="mb-1 flex items-center gap-2"><Avatar subject={c.author} name={c.author_display ?? c.author} size="sm" /><b dir="auto">{c.author_display ?? c.author}</b><small className="text-muted-foreground">{f.time(c.at)}</small></div>
       <div className="whitespace-pre-wrap" dir="auto">{textOf(c.body)}</div>
       <div className="mt-1 flex gap-1">
         {!reply && <Button size="sm" kind="ghost" onPress={() => setReplyTo(c)}>{t("reply")}</Button>}
@@ -49,10 +49,10 @@ export default function BlockThread({ project, page, block, manager, onClose }: 
   return (
     <Window title={t("blockComments")} onClose={onClose}>
       <div className="grid max-h-[50vh] gap-2 overflow-auto">
-        {roots.length === 0 ? <p className="m-0 text-muted">{t("noThread")}</p> : roots.flatMap((c) => [one(c, false), ...rows.filter((x) => x.parent === c.id).map((x) => one(x, true))])}
+        {roots.length === 0 ? <p className="m-0 text-muted-foreground">{t("noThread")}</p> : roots.flatMap((c) => [one(c, false), ...rows.filter((x) => x.parent === c.id).map((x) => one(x, true))])}
       </div>
       <form onSubmit={(e) => void add(e)} className="mt-3 grid gap-2">
-        {replyTo && <div className="text-muted">{t("replyingTo")} {replyTo.author_display ?? replyTo.author} · <Button size="sm" kind="ghost" onPress={() => setReplyTo(null)}>{t("cancelReply")}</Button></div>}
+        {replyTo && <div className="text-muted-foreground">{t("replyingTo")} {replyTo.author_display ?? replyTo.author} · <Button size="sm" kind="ghost" onPress={() => setReplyTo(null)}>{t("cancelReply")}</Button></div>}
         <TextArea name="body" rows={3} dir="auto" autoFocus placeholder={t("write")} label={t("write")} />
         <div><Button kind="primary" type="submit">{t("post")}</Button></div>
       </form>

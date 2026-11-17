@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /*
  * Tokens (ADR 0060). The appearance plugin's token set is turned into the CSS variables below at run time (the theme
@@ -14,9 +15,30 @@
   --color-raised: var(--raised);
   --color-sunken: var(--sunken);
   --color-text: var(--text);
-  --color-muted: var(--muted);
-  --color-accent: var(--accent);
-  --color-on-accent: var(--on-accent);
+  /* the brand colour: shadcn's `accent` is the hover surface, so the theme's accent is called brand here */
+  --color-brand: var(--accent);
+  --color-brand-foreground: var(--on-accent);
+  /*
+   * shadcn's vocabulary, mapped from the theme engine's tokens so a theme reaches every shadcn component (ADR 0086). Where the two
+   * used a word for different things, shadcn's meaning wins: `muted` is a quiet background, `muted-foreground` the quiet text colour.
+   */
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary-foreground: var(--on-primary);
+  --color-secondary: var(--sunken);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--sunken);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--hover);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-border: var(--line);
+  --color-input: var(--line-strong);
+  --color-ring: var(--focus);
   --color-primary: var(--primary);
   --color-on-primary: var(--on-primary);
   --color-danger: var(--danger);

@@ -74,11 +74,11 @@ function Column({ project, status, color, items, tasks, today, writer, selected,
 
   return (
     <section ref={ref} aria-label={status.name} data-status={status.id}
-      className={cn("flex max-h-full w-[300px] shrink-0 flex-col rounded-lg bg-sunken p-2.5 max-md:w-[84%] max-md:snap-center", over && "outline outline-2 outline-accent")}>
+      className={cn("flex max-h-full w-[300px] shrink-0 flex-col rounded-lg bg-sunken p-2.5 max-md:w-[84%] max-md:snap-center", over && "outline outline-2 outline-brand")}>
       <div className="mb-2 flex items-center gap-2 px-1">
         <span aria-hidden="true" className="size-2.5 rounded-full" ref={(el) => { if (el) el.style.background = color; }} />
         <span className="font-semibold" dir="auto">{status.name}</span>
-        <span className="text-[13px] text-muted">{items.length}</span>
+        <span className="text-[13px] text-muted-foreground">{items.length}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {items.map((task) => (

@@ -53,7 +53,7 @@ export function Sidebar() {
     >
       <div className="flex items-center gap-2.5 px-3 pb-1.5 pt-2.5 group-data-[rail=true]/side:flex-col group-data-[rail=true]/side:px-2">
         <div className="flex items-center gap-[9px] text-[17px] font-bold tracking-tight">
-          <Icon name="logo" className="size-[26px] text-accent" />
+          <Icon name="logo" className="size-[26px] text-brand" />
           <span className="group-data-[rail=true]/side:hidden">Madar</span>
         </div>
         <span className="grow group-data-[rail=true]/side:hidden" />
@@ -76,7 +76,7 @@ function NavLink({ href, icon, label, items }: { href: string; icon: string; lab
     <div className="contents" onContextMenu={items ? (e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, items()); } : undefined}>
     <TextLink href={href} aria-current={active ? "page" : undefined} aria-label={label}
       className="flex min-h-[var(--row)] w-full items-center gap-2.5 rounded-sm px-2.5 text-text hoverable aria-[current=page]:bg-surface aria-[current=page]:font-semibold aria-[current=page]:shadow-[0_1px_2px_rgba(0,0,0,.08)] group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
-      <Icon name={icon} className="text-muted" />
+      <Icon name={icon} className="text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate group-data-[rail=true]/side:hidden" dir="auto">{label}</span>
     </TextLink>
     </div>
@@ -88,7 +88,7 @@ function SearchPill() {
   if (!useDescribe().operations["search.query"]) return null;
   return (
     <BaseButton onPress={() => openDialog("search")}
-      className="mx-2.5 mb-1.5 mt-1 flex min-h-[var(--row)] items-center gap-2.5 rounded-btn border border-line-strong bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] px-3 text-muted hoverable group-data-[rail=true]/side:mx-2 group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
+      className="mx-2.5 mb-1.5 mt-1 flex min-h-[var(--row)] items-center gap-2.5 rounded-btn border border-line-strong bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] px-3 text-muted-foreground hoverable group-data-[rail=true]/side:mx-2 group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0">
       <Icon name="search" />
       <span className="group-data-[rail=true]/side:hidden">{t("search").replace("…", "")}</span>
       <kbd dir="ltr" className="ms-auto rounded border border-line px-1.5 text-xs group-data-[rail=true]/side:hidden">/</kbd>
@@ -147,8 +147,8 @@ function ProjectsList() {
   const mine = projects.filter((p) => p.space === current);
   return (
     <>
-      <div className="mt-1 flex min-h-[var(--row)] items-center px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted"><span className="grow">{t("projects")}</span>{canCreate && <IconButton icon="plus" size="sm" label={t("newProject")} onPress={() => void create()} />}</div>
-      {mine.length === 0 && <p className="px-2.5 py-2 text-[13px] text-muted">{t("noProjectsHere")}</p>}
+      <div className="mt-1 flex min-h-[var(--row)] items-center px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"><span className="grow">{t("projects")}</span>{canCreate && <IconButton icon="plus" size="sm" label={t("newProject")} onPress={() => void create()} />}</div>
+      {mine.length === 0 && <p className="px-2.5 py-2 text-[13px] text-muted-foreground">{t("noProjectsHere")}</p>}
       {mine.map((p) => <NavLink key={p.id} href={`#/p/${p.id}`} icon="board" label={p.name} items={menu(p)} />)}
     </>
   );
@@ -180,7 +180,7 @@ function Foot() {
         <Avatar subject={who.subject} name={who.display} mine size="sm" />
         <div className="min-w-0 leading-tight group-data-[rail=true]/side:hidden">
           <b className="block truncate font-semibold" dir="auto">{who.display}</b>
-          <small className="flex items-center gap-1.5 text-muted"><LiveDot /></small>
+          <small className="flex items-center gap-1.5 text-muted-foreground"><LiveDot /></small>
         </div>
       </div>
       <IconButton size="sm" icon="help" label={t("kHelp") + " (?)"} className="group-data-[rail=true]/side:hidden" onPress={() => openDialog("shortcuts")} />

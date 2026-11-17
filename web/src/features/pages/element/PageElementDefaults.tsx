@@ -36,7 +36,7 @@ export function PageElementDefaults({ page, scope, writer }: { page: Page; scope
         const opts = optionsOf(blocks, node).filter((o) => o.inherit), set = Object.keys(settings.elements?.[node] ?? {}).length;
         return (
           <Disclosure key={node} className="rounded-sm bg-sunken px-1" panelClassName="grid gap-1.5 pb-2 pt-1"
-            title={<span className="flex min-w-0 grow items-center gap-2 text-[13px]"><span className="grow truncate">{t(("node_" + node) as Key)}</span>{set > 0 && <span className="shrink-0 text-xs font-normal text-muted">{t("elementsSet", { n: set })}</span>}</span>}>
+            title={<span className="flex min-w-0 grow items-center gap-2 text-[13px]"><span className="grow truncate">{t(("node_" + node) as Key)}</span>{set > 0 && <span className="shrink-0 text-xs font-normal text-muted-foreground">{t("elementsSet", { n: set })}</span>}</span>}>
             {opts.map((o) => {
               const v = settings.elements?.[node]?.[o.id];
               return (

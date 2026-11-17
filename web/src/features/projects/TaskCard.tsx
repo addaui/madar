@@ -36,7 +36,7 @@ export function TaskCard({ task, projectKey, subtasks, today, draggableOn, selec
     <div ref={ref} data-task={task.id} role="button" tabIndex={0} aria-current={selected ? "true" : undefined}
       onClick={onOpen} onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}
       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }}
-      className={cn("mb-2 cursor-pointer rounded-md border border-line bg-surface p-2.5 shadow-1 hover-lift", done && "opacity-60", dragging && "opacity-40", selected && "border-accent outline outline-1 outline-accent")}>
+      className={cn("mb-2 cursor-pointer rounded-md border border-line bg-surface p-2.5 shadow-1 hover-lift", done && "opacity-60", dragging && "opacity-40", selected && "border-brand outline outline-1 outline-brand")}>
       <div className="flex items-start gap-2">
         <Checkbox round aria-label={done ? t("reopen") : t("markDone")} isSelected={done} onChange={() => onDone()} className="hit mt-0.5" />
         <span className={cn("min-w-0 grow break-words", done && "line-through")} dir="auto">{task.title}</span>
@@ -45,7 +45,7 @@ export function TaskCard({ task, projectKey, subtasks, today, draggableOn, selec
         {code && <CopyCode code={code} />}
         <PriorityChip band={task.band} />
         <DueChip due={task.due} today={today} done={done} />
-        {subtasks.length > 0 && <span className="inline-flex items-center gap-1 text-xs text-muted"><Icon name="subtask" className="size-3" />{subDone}/{subtasks.length}</span>}
+        {subtasks.length > 0 && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Icon name="subtask" className="size-3" />{subDone}/{subtasks.length}</span>}
       </div>
     </div>
   );

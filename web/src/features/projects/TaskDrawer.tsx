@@ -104,7 +104,7 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
               <Prop icon="calendar" label={t("due")}><DateField name="due" label={t("due")} value={due} onChange={(v) => { setDue(v); setDirty(true); }} isDisabled={!writer} /></Prop>
               <Prop icon="repeat" label={t("repeat")}>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-muted">{t("every")}</span>
+                  <span className="text-muted-foreground">{t("every")}</span>
                   <NumberField name="repeat_every" label={t("every")} minValue={1} maxValue={365} defaultValue={task.repeat?.every ?? 1} isDisabled={!writer} onChange={() => setDirty(true)} className="w-[84px]" />
                   <Select name="repeat_unit" label={t("repeat")} defaultValue={task.repeat?.unit ?? ""} isDisabled={!writer} onChange={() => setDirty(true)} options={[{ value: "", label: t("noRepeat") }, { value: "day", label: t("days") }, { value: "week", label: t("weeks") }, { value: "month", label: t("months") }]} />
                 </div>
@@ -121,13 +121,13 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
                 </Prop>
               ))}
             </div>
-            <h3 className="mb-1.5 mt-5 text-[13px] font-semibold text-muted">{t("description")}</h3>
+            <h3 className="mb-1.5 mt-5 text-[13px] font-semibold text-muted-foreground">{t("description")}</h3>
             <LegacyEditor doc={(task.description as EditorJson | null) ?? null} version={task.rev} editable={writer} lang={lang} blocks={blocks} project={project.id} placeholder={t("writeHere")} onChange={(d) => { description.current = d; setDirty(true); }} />
             {!task.parent && (
               <>
-                <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted"><Icon name="subtask" className="size-3.5" />{t("subtasks")}{subtasks.length > 0 && <span className="rounded-chip border border-line px-1.5 text-xs">{done}/{subtasks.length}</span>}</h3>
+                <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"><Icon name="subtask" className="size-3.5" />{t("subtasks")}{subtasks.length > 0 && <span className="rounded-chip border border-line px-1.5 text-xs">{done}/{subtasks.length}</span>}</h3>
                 {subtasks.map((s) => (
-                  <Checkbox key={s.id} className="py-1" isSelected={!!s.completed_at} isDisabled={!writer} onChange={() => toggleSub(s)}><span className={cn(!!s.completed_at && "text-muted line-through")} dir="auto">{s.title}</span></Checkbox>
+                  <Checkbox key={s.id} className="py-1" isSelected={!!s.completed_at} isDisabled={!writer} onChange={() => toggleSub(s)}><span className={cn(!!s.completed_at && "text-muted-foreground line-through")} dir="auto">{s.title}</span></Checkbox>
                 ))}
                 {writer && <SubAdd onAdd={addSub} label={t("subtasks")} placeholder={t("addPh")} />}
               </>
@@ -138,7 +138,7 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
           }} />
         {writer && dirty && (
           <div className="flex items-center gap-2 border-t border-line bg-surface px-3 py-2.5">
-            <span className="grow text-[13px] text-muted">{error ?? t("unsaved")}</span>
+            <span className="grow text-[13px] text-muted-foreground">{error ?? t("unsaved")}</span>
             <Button kind="ghost" onPress={() => { setDirty(false); description.current = null; void refresh(); }}>{t("discard")}</Button>
             <Button kind="primary" icon="check" type="submit" isDisabled={pending}>{t("save")}</Button>
           </div>
@@ -149,7 +149,7 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
 }
 
 function Prop({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {
-  return <div className="grid grid-cols-[104px_1fr] items-center gap-2.5"><div className="flex items-center gap-2 text-[13px] text-muted"><Icon name={icon} className="size-3.5" />{label}</div><div>{children}</div></div>;
+  return <div className="grid grid-cols-[104px_1fr] items-center gap-2.5"><div className="flex items-center gap-2 text-[13px] text-muted-foreground"><Icon name={icon} className="size-3.5" />{label}</div><div>{children}</div></div>;
 }
 
 /** A date attribute of the project, kept as the form's value ("YYYY-MM-DD" or empty). */

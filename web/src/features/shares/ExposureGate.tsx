@@ -18,7 +18,7 @@ function SetUpSignIn() {
   const hasConsole = plugins.some((p) => p.id === "@nuah/console" && p.state === "active");
   return hasConsole
     ? <Button kind="primary" onPress={() => { location.href = CONSOLE_SIGN_IN; }}>{t("exposureSetUp")}</Button>
-    : <p className="m-0 text-[13px] text-muted">{t("exposureNoConsole")}</p>;
+    : <p className="m-0 text-[13px] text-muted-foreground">{t("exposureNoConsole")}</p>;
 }
 
 /**
@@ -61,7 +61,7 @@ export function ExposureGate({ options, children }: { options: Options; children
       <SetUpSignIn />
       <Disclosure title={t("exposureAnyway")} className="text-[13px]">
         <div className="mt-2 grid gap-2">
-          <p className="m-0 text-muted">{t("exposureAnywayHint")}</p>
+          <p className="m-0 text-muted-foreground">{t("exposureAnywayHint")}</p>
           {!options.can_allow && <TextField label={t("exposureAdminPassword")} type="password" value={password} onChange={setPassword} />}
           <div><Button isDisabled={!options.can_allow && password.length === 0} onPress={() => void allow()}>{t("exposureAllow")}</Button></div>
         </div>

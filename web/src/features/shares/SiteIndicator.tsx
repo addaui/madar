@@ -39,7 +39,7 @@ export function SiteIndicator() {
   const label = !site.share ? t("siteMake") : state === "ok" ? t("siteUpToDate") : t("siteOutOfDate", { n: site.status?.changed ?? 0 });
   return (
     <PopupButton label={`${t("siteStatusLabel")}: ${label}`} width={360}
-      buttonProps={{ className: "relative inline-grid size-[30px] shrink-0 place-items-center rounded-sm text-muted hoverable hover:text-text data-[pressed]:bg-soft" }}
+      buttonProps={{ className: "relative inline-grid size-[30px] shrink-0 place-items-center rounded-sm text-muted-foreground hoverable hover:text-text data-[pressed]:bg-soft" }}
       trigger={<>
         <Icon name="globe" />
         {state !== "none" && <span aria-hidden="true" className={cn("absolute -end-0.5 -top-0.5 grid size-3.5 place-items-center rounded-full text-white", state === "ok" ? "bg-ok" : "bg-danger")}><Icon name={state === "ok" ? "check" : "alert"} className="size-2.5" /></span>}
@@ -66,7 +66,7 @@ function SitePanel({ space, name, site, admin }: { space: string; name: string; 
       <div className="grid gap-3 p-1">
         <b>{t("siteMake")}</b>
         <TextField label={t("siteName")} description={t("siteNameRule")} value={sub} onChange={(v) => setSub(v.toLowerCase())} />
-        <p className="m-0 text-[12px] text-muted">{sub ? address(sub) : ""} {!options.base_domain && t("siteNeedsDomain")}</p>
+        <p className="m-0 text-[12px] text-muted-foreground">{sub ? address(sub) : ""} {!options.base_domain && t("siteNeedsDomain")}</p>
         <Select label={t("shareWho")} value={audience} onChange={(a) => setAudience(a as typeof audience)} options={aud.map((a) => ({ value: a, label: t(("aud_" + a) as Key) }))} />
         <div><Button kind="primary" isDisabled={sub.length < 3} onPress={() => void run(() => link.call("shares.create_space", { space, subdomain: sub, audience }))}>{t("shareCreate")}</Button></div>
         {error && <p role="alert" className="m-0 text-danger">{error}</p>}
@@ -102,7 +102,7 @@ function Releases({ id, onChoose, fmt }: { id: string; onChoose: (n: number) => 
   if (list.length < 2) return null;
   return (
     <div className="grid gap-1">
-      <span className="text-[12px] font-semibold uppercase tracking-wide text-muted">{t("siteChoose")}</span>
+      <span className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">{t("siteChoose")}</span>
       <ul className="m-0 grid list-none gap-1 p-0">
         {list.map((r) => (
           <li key={r.number} className="flex items-center justify-between gap-2 text-[13px]">

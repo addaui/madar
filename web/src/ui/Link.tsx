@@ -9,7 +9,7 @@ import { interactive } from "./base";
  */
 export interface BaseLinkProps extends Omit<AriaLinkProps, "className" | "style" | "children"> { className?: string; children?: ReactNode }
 export function BaseLink({ className, ...rest }: BaseLinkProps) {
-  return <AriaLink className={cn(interactive, "data-[focus-visible]:outline-2 data-[focus-visible]:outline-accent", className)} {...rest} />;
+  return <AriaLink className={cn(interactive, "data-[focus-visible]:outline-2 data-[focus-visible]:outline-brand", className)} {...rest} />;
 }
 
 /** A link in running text or a list. */

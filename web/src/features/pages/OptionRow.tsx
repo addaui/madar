@@ -7,14 +7,14 @@ export function Opt({ icon, label, set, onRevert, writer, revert, stacked, child
   if (stacked) {
     return (
       <div className="grid gap-1.5 rounded-sm bg-sunken py-2 ps-[11px] pe-1">
-        <div className="flex min-w-0 items-center gap-2 text-[13px] text-muted"><Icon name={icon} className="size-[15px] shrink-0" /><span className="min-w-0 grow truncate">{label}</span><span className="grid size-6 place-items-center">{writer && set && <IconButton icon="undo" label={revert} size="sm" className="size-6" onPress={onRevert} />}</span></div>
+        <div className="flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground"><Icon name={icon} className="size-[15px] shrink-0" /><span className="min-w-0 grow truncate">{label}</span><span className="grid size-6 place-items-center">{writer && set && <IconButton icon="undo" label={revert} size="sm" className="size-6" onPress={onRevert} />}</span></div>
         <div className="flex flex-wrap items-center gap-2 pe-2">{children}</div>
       </div>
     );
   }
   return (
     <div className="grid min-h-[38px] grid-cols-[minmax(0,1fr)_auto_26px] items-center gap-2 rounded-sm bg-sunken ps-[11px] pe-1">
-      <div className="flex min-w-0 items-center gap-2 text-[13px] text-muted"><Icon name={icon} className="size-[15px] shrink-0" /><span className="truncate">{label}</span></div>
+      <div className="flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground"><Icon name={icon} className="size-[15px] shrink-0" /><span className="truncate">{label}</span></div>
       <div className="flex items-center justify-end gap-2">{children}</div>
       <span className="grid place-items-center">{writer && set && <IconButton icon="undo" label={revert} size="sm" className="size-6" onPress={onRevert} />}</span>
     </div>
@@ -22,5 +22,5 @@ export function Opt({ icon, label, set, onRevert, writer, revert, stacked, child
 }
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="mb-4"><h3 className="m-0 mb-1.5 text-[13px] font-semibold text-muted">{title}</h3><div className="grid gap-1.5">{children}</div></section>;
+  return <section className="mb-4"><h3 className="m-0 mb-1.5 text-[13px] font-semibold text-muted-foreground">{title}</h3><div className="grid gap-1.5">{children}</div></section>;
 }

@@ -10,7 +10,7 @@ export function IconPicker({ icon, onPick, disabled }: { icon: string | null; on
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
-    <PopupButton label={t("pickIcon")} onOpenChange={setOpen} width={340} buttonProps={{ isDisabled: disabled, className: "grid size-10 shrink-0 place-items-center rounded-sm bg-surface text-[21px] shadow-[0_0_0_1px_color-mix(in_srgb,var(--text)_14%,transparent)] outline-none hover:shadow-2 data-[focus-visible]:outline-2 data-[focus-visible]:outline-accent" }} trigger={<PageGlyph icon={icon} className={icon ? undefined : "size-6 text-muted"} />}>
+    <PopupButton label={t("pickIcon")} onOpenChange={setOpen} width={340} buttonProps={{ isDisabled: disabled, className: "grid size-10 shrink-0 place-items-center rounded-sm bg-surface text-[21px] shadow-[0_0_0_1px_color-mix(in_srgb,var(--text)_14%,transparent)] outline-none hover:shadow-2 data-[focus-visible]:outline-2 data-[focus-visible]:outline-brand" }} trigger={<PageGlyph icon={icon} className={icon ? undefined : "size-6 text-muted-foreground"} />}>
       {(close) => (
         <div>
           {open && <EmojiGrid onPick={(e) => { onPick(e); close(); }} />}

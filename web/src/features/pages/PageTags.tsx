@@ -34,7 +34,7 @@ export function PageTags({ page, scope, writer }: { page: Page; scope: PageScope
     <div className="grid gap-2">
       {(tags.length > 0 || !writer) && <Tags label={t("tags")} tags={tags} href={(tag) => searchHref("#" + tag)} onRemove={writer ? (tag) => save(tags.filter((x) => x !== tag)) : undefined} removeLabel={t("removeTag")} />}
       {writer && <ComboBox label={t("addTag")} placeholder={t("addTag")} maxLength={40} inputValue={draft} onInputChange={(v) => { if (v.endsWith(",")) add(v.slice(0, -1)); else setDraft(v); }} suggestions={suggestions.filter((x) => x.toLowerCase().includes(draft.trim().toLowerCase()))} onCommit={add} />}
-      {!writer && tags.length === 0 && <p className="m-0 text-muted">{t("noTags")}</p>}
+      {!writer && tags.length === 0 && <p className="m-0 text-muted-foreground">{t("noTags")}</p>}
     </div>
   );
 }

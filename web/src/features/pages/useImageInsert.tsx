@@ -102,7 +102,7 @@ function PasteChoice({ url, onImage, onLink }: { url: string; onImage: () => voi
   const t = useT();
   return (
     <div className="grid gap-2">
-      <p className="m-0 truncate text-[13px] text-muted" dir="ltr" title={url}>{url}</p>
+      <p className="m-0 truncate text-[13px] text-muted-foreground" dir="ltr" title={url}>{url}</p>
       <div className="flex gap-2"><Button kind="primary" icon="image" onPress={onImage} autoFocus>{t("insertAsImage")}</Button><Button icon="link" onPress={onLink}>{t("insertAsLink")}</Button></div>
     </div>
   );

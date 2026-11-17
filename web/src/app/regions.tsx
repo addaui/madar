@@ -79,7 +79,7 @@ export function Topbar({ title, crumbs, actions }: { title: string; crumbs: Reac
     <header className="flex min-h-10 items-center gap-0.5 px-3 pb-1 pt-1.5 max-md:px-2.5 group-data-[focus=1]/stage:hidden">
       <IconButton icon="side" label={t("toggleSide")} size="sm" className="size-[30px]" aria-pressed={overlay ? drawer : side === "open"} onPress={() => (overlay ? drawerState.set(!drawer) : sideState.set(side === "open" ? "closed" : "open"))} />
       <h1 className="sr-only">{title}</h1>
-      <nav aria-label="breadcrumb" className="flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap text-[13px] text-muted">{crumbs}</nav>
+      <nav aria-label="breadcrumb" className="flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap text-[13px] text-muted-foreground">{crumbs}</nav>
       <span className="grow" />
       <Suspense fallback={null}><SiteIndicator /></Suspense>
       {actions}
@@ -132,7 +132,7 @@ function ContextRegion() {
             onPress={() => { if (tier === "medium" || tier === "wide") contextState.set("open"); else setPeek(true); }}
             onHoverStart={(e) => { if (e.pointerType === "mouse") { clearTimeout(timer.current); timer.current = setTimeout(() => setPeek(true), RAIL_MS); } }}
             onHoverEnd={() => clearTimeout(timer.current)}
-            className="grid size-9 place-items-center rounded-sm border border-line bg-surface text-muted hoverable hover:text-text"><Icon name={icon} /></BaseButton>
+            className="grid size-9 place-items-center rounded-sm border border-line bg-surface text-muted-foreground hoverable hover:text-text"><Icon name={icon} /></BaseButton>
         </div>
       )}
       {sheet && peek && <IconButton icon="close" label={t("close")} className="fixed end-3 top-3 z-40 bg-surface shadow-1" onPress={() => setPeek(false)} />}

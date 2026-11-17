@@ -80,7 +80,7 @@ function SavedPage({ id }: { id: string }) {
 function StatusBar({ words, save }: { words: number; save: string }) {
   const { t } = useI18n();
   return (
-    <div className="flex items-center gap-3 px-3 py-1 text-[12px] leading-5 text-muted">
+    <div className="flex items-center gap-3 px-3 py-1 text-[12px] leading-5 text-muted-foreground">
       <span>{words} {t("words")} · {Math.max(1, Math.ceil(words / 200))} {t("minRead")}</span>
       <span className="grow" />
       <span className="inline-flex items-center gap-1.5"><span aria-hidden="true">🔒</span>{t("myPagesHint")}</span>
@@ -111,7 +111,7 @@ export function DraftPage({ parent, scope, onCreated, chrome = true }: { parent?
     <div className="h-full overflow-auto px-[clamp(20px,5vw,72px)] pb-9 pt-6">
         <div className="mx-auto flex min-h-full max-w-[var(--page-w,820px)] flex-col pt-7">
           <div className="mb-2 flex items-center gap-2.5 pt-1.5">
-            <span className="grid size-10 shrink-0 place-items-center rounded-sm bg-surface text-[21px] shadow-[0_0_0_1px_color-mix(in_srgb,var(--text)_14%,transparent)]"><PageGlyph className="size-6 text-muted" /></span>
+            <span className="grid size-10 shrink-0 place-items-center rounded-sm bg-surface text-[21px] shadow-[0_0_0_1px_color-mix(in_srgb,var(--text)_14%,transparent)]"><PageGlyph className="size-6 text-muted-foreground" /></span>
             <TextField bare autoFocus value={title} onChange={setTitle} onBlur={() => { if (title.trim()) create({ title, body: doc.current ?? undefined }); }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} dir="auto" label={t("title")} placeholder={t("untitled")} maxLength={200} className="min-w-0 flex-1" inputClassName="py-1 text-[32px] font-bold leading-tight tracking-tight" />
           </div>
           <LegacyEditor doc={null} version={0} editable lang={lang} blocks={blocks.blocks} placeholder={t("writeHere")}

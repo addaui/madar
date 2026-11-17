@@ -48,12 +48,12 @@ export function EmojiGrid({ onPick, tall = false }: { onPick: (emoji: string) =>
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const f = typed || found[0]?.[0]; if (f) pick(f); } }} />
       <div data-emoji-scroll className={tall ? "h-[300px] overflow-auto" : "max-h-[300px] min-h-[200px] overflow-auto"}>
         {cat.isPending ? <SkeletonLines rows={6} className="p-1" /> : deferred ? (
-          <div className="flex flex-wrap">{typed && cell(typed)}{found.map((it) => cell(it[0], it[1]))}{!typed && found.length === 0 && <p className="p-2 text-muted">{t("noEmojiFound")}</p>}</div>
+          <div className="flex flex-wrap">{typed && cell(typed)}{found.map((it) => cell(it[0], it[1]))}{!typed && found.length === 0 && <p className="p-2 text-muted-foreground">{t("noEmojiFound")}</p>}</div>
         ) : (
           <>
-            {recent().length > 0 && <section><h4 className="m-0 px-1 py-1 text-xs font-semibold text-muted">{t("recentEmoji")}</h4><div className="flex flex-wrap">{recent().map((e) => cell(e))}</div></section>}
+            {recent().length > 0 && <section><h4 className="m-0 px-1 py-1 text-xs font-semibold text-muted-foreground">{t("recentEmoji")}</h4><div className="flex flex-wrap">{recent().map((e) => cell(e))}</div></section>}
             {data.groups.map((g, i) => (
-              <section key={g.key}>{g.name && <h4 className="m-0 px-1 py-1 text-xs font-semibold text-muted">{g.name}</h4>}<LazyCells count={data.items.filter((it) => (it[3] || 0) === i).length}>{data.items.filter((it) => (it[3] || 0) === i).map((it) => cell(it[0], it[1]))}</LazyCells></section>
+              <section key={g.key}>{g.name && <h4 className="m-0 px-1 py-1 text-xs font-semibold text-muted-foreground">{g.name}</h4>}<LazyCells count={data.items.filter((it) => (it[3] || 0) === i).length}>{data.items.filter((it) => (it[3] || 0) === i).map((it) => cell(it[0], it[1]))}</LazyCells></section>
             ))}
           </>
         )}

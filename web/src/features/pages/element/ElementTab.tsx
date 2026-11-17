@@ -27,7 +27,7 @@ export function ElementTab({ page, writer }: { page: Page; scope?: PageScope; wr
   const { selected, list, control } = useStickerState();
   const sticker = selected ? list.find((s) => s.id === selected) : undefined;
   if (sticker && control) return <StickerOptionsPanel sticker={sticker} writer={writer} />;
-  if (!ctx || !api) return <p className="m-0 text-[13px] text-muted">{t("elementNone")}</p>;
+  if (!ctx || !api) return <p className="m-0 text-[13px] text-muted-foreground">{t("elementNone")}</p>;
   const at = Math.min(pick, ctx.chain.length - 1), el = ctx.chain[at]!;
   const opts = optionsOf(blocks, el.node);
   const settings = (page.settings ?? {}) as PageSettings & { elements?: PageDefaults };
@@ -40,15 +40,15 @@ export function ElementTab({ page, writer }: { page: Page; scope?: PageScope; wr
             const idx = all.length - 1 - i;
             return (
               <span key={c.pos + c.node} className="flex items-center gap-1">
-                {i > 0 && <Icon name="chevron" className="size-3 text-muted rtl:-scale-x-100" />}
-                <BaseButton onPress={() => elementStore.set({ pick: idx })} aria-current={idx === at ? "true" : undefined} className={cn("rounded-sm px-1.5 py-0.5 hoverable", idx === at ? "bg-soft font-semibold text-text" : "text-muted")}>{t(("node_" + c.node) as Key)}</BaseButton>
+                {i > 0 && <Icon name="chevron" className="size-3 text-muted-foreground rtl:-scale-x-100" />}
+                <BaseButton onPress={() => elementStore.set({ pick: idx })} aria-current={idx === at ? "true" : undefined} className={cn("rounded-sm px-1.5 py-0.5 hoverable", idx === at ? "bg-soft font-semibold text-text" : "text-muted-foreground")}>{t(("node_" + c.node) as Key)}</BaseButton>
               </span>
             );
           })}
         </nav>
       )}
       <Heading kind={el.node} />
-      {opts.length === 0 ? <p className="m-0 text-[13px] text-muted">{t("elementNoOptions")}</p> : (
+      {opts.length === 0 ? <p className="m-0 text-[13px] text-muted-foreground">{t("elementNoOptions")}</p> : (
         <Section title={t("elementThis", { type: t(("node_" + el.node) as Key) })}>
           {opts.map((o) => {
             const r = resolveOption(o, el.node, el.attrs, defaults);
@@ -84,7 +84,7 @@ function StickerOptionsPanel({ sticker, writer }: { sticker: import("../stickers
       </Section>
       {cls !== "wide" && (
         <Section title={t("stickerLayoutHere", { size: t(("preview" + cls[0]!.toUpperCase() + cls.slice(1)) as Key) })}>
-          <p className="m-0 text-[13px] text-muted">{own ? t("stickerLayoutOwn") : t("stickerLayoutShared")}</p>
+          <p className="m-0 text-[13px] text-muted-foreground">{own ? t("stickerLayoutOwn") : t("stickerLayoutShared")}</p>
           {own && writer && <Button size="sm" icon="undo" onPress={() => control.apply((l) => l.map((x) => (x.id === sticker.id ? shownIn(x, cls).clear() : x)))}>{t("resetSize")}</Button>}
         </Section>
       )}
@@ -95,12 +95,12 @@ function StickerOptionsPanel({ sticker, writer }: { sticker: import("../stickers
 
 function Heading({ kind }: { kind: string }) {
   const { t } = useI18n();
-  return <h3 className="m-0 mb-2 flex items-center gap-1.5 text-[13px] font-semibold"><Icon name={ICONS[kind] ?? "type"} className="size-3.5 text-muted" />{t(("node_" + kind) as Key)}</h3>;
+  return <h3 className="m-0 mb-2 flex items-center gap-1.5 text-[13px] font-semibold"><Icon name={ICONS[kind] ?? "type"} className="size-3.5 text-muted-foreground" />{t(("node_" + kind) as Key)}</h3>;
 }
 
 function Source({ source }: { source: "element" | "page" | "default" }) {
   const { t } = useI18n();
-  return source === "page" ? <span className="text-xs text-muted">{t("fromPage")}</span> : null;
+  return source === "page" ? <span className="text-xs text-muted-foreground">{t("fromPage")}</span> : null;
 }
 
 /** A control that needs the whole row: a few choices side by side, or a label too long for the narrow column. */

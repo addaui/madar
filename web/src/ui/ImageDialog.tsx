@@ -42,7 +42,7 @@ export function ImageDialog({ label, onDone }: { label: string; onDone: (url: st
             {(step || error) && (
               <div className="mt-3" aria-live="polite">
                 <ProgressBar label={words || t("sendingFile")} value={error || step?.step === "save" ? (error ? 100 : undefined) : pct} className={error ? "[&>span]:bg-danger" : undefined} />
-                <div className={error ? "mt-1.5 text-[12.5px] text-danger" : "mt-1.5 text-[12.5px] text-muted"}>{error ?? words}</div>
+                <div className={error ? "mt-1.5 text-[12.5px] text-danger" : "mt-1.5 text-[12.5px] text-muted-foreground"}>{error ?? words}</div>
               </div>
             )}
             <div className="mt-4 flex justify-end gap-2"><Button isDisabled={busy} onPress={() => onDone(null)}>{t("cancel")}</Button><Button kind="primary" type="submit" isDisabled={busy}>{t("ok")}</Button></div>

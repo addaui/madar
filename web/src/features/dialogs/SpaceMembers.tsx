@@ -20,7 +20,7 @@ export function SpaceMembers({ onClose }: { onClose: () => void }) {
   const space = usePersistedValue(spaceState);
   const spaces = useRead("spaces.list").data.spaces;
   const cur = spaces.find((s) => s.id === space && !s.builtin);
-  if (!cur) return <Window title={t("spaceMembers")} onClose={onClose}><p className="m-0 text-muted">{t("personalSpaceNote")}</p></Window>;
+  if (!cur) return <Window title={t("spaceMembers")} onClose={onClose}><p className="m-0 text-muted-foreground">{t("personalSpaceNote")}</p></Window>;
   return <Members id={cur.id} name={cur.name} admin={cur.role === "admin"} onClose={onClose} refresh={() => qc.invalidateQueries({ predicate: (q) => /^(spaces|projects)\./.test(String(q.queryKey[0])) })} />;
 }
 

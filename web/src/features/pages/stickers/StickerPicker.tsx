@@ -48,7 +48,7 @@ export function StickerPicker({ x, y, project, onPick, onClose }: { x: number; y
   const tabs = [{ id: "emoji", label: t("tabEmoji") }, { id: "stickers", label: t("tabStickers") }, { id: "gifs", label: t("tabGifs") }, { id: "upload", label: t("tabUpload") }];
   const gifs = files.filter((f) => f.type === "image/gif");
   const grid = (items: Upload[], empty: string) => items.length === 0
-    ? <p className="m-0 p-2 text-[13px] text-muted">{uploads.isPending && canList ? "…" : empty}</p>
+    ? <p className="m-0 p-2 text-[13px] text-muted-foreground">{uploads.isPending && canList ? "…" : empty}</p>
     : <div className="grid grid-cols-4 gap-1.5">{items.map((f) => (
         <BaseButton key={f.id} aria-label={f.name} onPress={() => onPick({ kind: "image", value: f.url })} className="grid aspect-square place-items-center overflow-hidden rounded-md bg-sunken hoverable">
           <img src={f.url} alt="" draggable={false} loading="lazy" className="size-full object-contain" />
@@ -67,7 +67,7 @@ export function StickerPicker({ x, y, project, onPick, onClose }: { x: number; y
           {tab === "stickers" && (
             <>
               {provider?.sticker_search && <GifTab provider={provider} variant="stickers" onPick={(g) => onPick({ kind: "gif", value: g.url })} />}
-              <h4 className="m-0 px-1 pb-1.5 pt-2 text-xs font-semibold text-muted">{t("stickerPacks")}</h4>
+              <h4 className="m-0 px-1 pb-1.5 pt-2 text-xs font-semibold text-muted-foreground">{t("stickerPacks")}</h4>
               <div className="grid grid-cols-4 gap-1.5">{PACK.map((p) => (
                 <BaseButton key={p.id} aria-label={p.label} onPress={() => onPick({ kind: "pack", value: p.id })} className="grid aspect-square place-items-center rounded-md p-2 hoverable">{p.draw()}</BaseButton>))}</div>
             </>
@@ -75,11 +75,11 @@ export function StickerPicker({ x, y, project, onPick, onClose }: { x: number; y
           {tab === "gifs" && (
             <>
               {provider && <GifTab provider={provider} onPick={(g) => onPick({ kind: "gif", value: g.url })} />}
-              {(gifs.length > 0 || !provider) && <h4 className="m-0 px-1 pb-1.5 pt-2 text-xs font-semibold text-muted">{t("uploadedHere")}</h4>}
+              {(gifs.length > 0 || !provider) && <h4 className="m-0 px-1 pb-1.5 pt-2 text-xs font-semibold text-muted-foreground">{t("uploadedHere")}</h4>}
               {drop}{(gifs.length > 0 || !provider) && grid(gifs, t("noGifs"))}
             </>
           )}
-          {tab === "upload" && <>{drop}<h4 className="m-0 px-1 pb-1.5 text-xs font-semibold text-muted">{t("uploadedHere")}</h4>{grid(files, t("noUploads"))}</>}
+          {tab === "upload" && <>{drop}<h4 className="m-0 px-1 pb-1.5 text-xs font-semibold text-muted-foreground">{t("uploadedHere")}</h4>{grid(files, t("noUploads"))}</>}
         </div>
       </Tabs>
     </PointPopover>

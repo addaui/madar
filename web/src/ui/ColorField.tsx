@@ -12,9 +12,9 @@ export function ColorField({ label, value, onChange, live, isDisabled, className
   return (
     <ColorPicker value={asColor(shown)} onChange={(c) => { const hex = c.toString("hex"); if (live) onChange(hex); else setDraft(hex); }}>
       <DialogTrigger onOpenChange={(open) => { if (!open && draft !== null) { if (draft !== value) onChange(draft); setDraft(null); } }}>
-        <AriaButton aria-label={label} isDisabled={isDisabled} className={cn("inline-flex items-center gap-1.5 rounded-sm outline-none data-[disabled]:opacity-45 data-[focus-visible]:outline-2 data-[focus-visible]:outline-accent", className)}>
+        <AriaButton aria-label={label} isDisabled={isDisabled} className={cn("inline-flex items-center gap-1.5 rounded-sm outline-none data-[disabled]:opacity-45 data-[focus-visible]:outline-2 data-[focus-visible]:outline-brand", className)}>
           <ColorSwatch className="size-7 rounded-sm border border-line-strong" />
-          <span className="text-[12.5px] tabular-nums text-muted" dir="ltr">{shown}</span>
+          <span className="text-[12.5px] tabular-nums text-muted-foreground" dir="ltr">{shown}</span>
         </AriaButton>
         <Popover className={cn(popup, "p-3")} placement="bottom start" offset={6}>
           <Dialog aria-label={label} className="grid w-48 gap-3 outline-none">

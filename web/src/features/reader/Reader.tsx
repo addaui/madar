@@ -60,7 +60,7 @@ function ReaderInner({ share, subdomain }: { share?: string; subdomain?: string 
   const err = q.error as (NuahError & { category?: string }) | null;
   const reason = err ? reasonOf(err) : null;
 
-  if (q.isPending) return <p className="p-8 text-muted">…</p>;
+  if (q.isPending) return <p className="p-8 text-muted-foreground">…</p>;
   if (reason === "shares.pin_required" || reason === "shares.bad_pin") {
     return <Gate title={t("readerPinTitle")} note={reason === "shares.bad_pin" ? t("readerPinWrong") : t("readerPinHint")}>
       <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); const v = String(new FormData(e.currentTarget).get("pin") ?? "").trim(); if (v) { keepPin(key, v); setPin(v); } }}>
@@ -76,7 +76,7 @@ function ReaderInner({ share, subdomain }: { share?: string; subdomain?: string 
 }
 
 function Gate({ title, note, children }: { title: string; note?: string; children?: React.ReactNode }) {
-  return <div className="grid min-h-dvh place-items-center p-6"><div className="grid w-[min(380px,100%)] gap-3"><h1 className="m-0 text-xl font-bold">{title}</h1>{note && <p className="m-0 text-muted">{note}</p>}{children}</div></div>;
+  return <div className="grid min-h-dvh place-items-center p-6"><div className="grid w-[min(380px,100%)] gap-3"><h1 className="m-0 text-xl font-bold">{title}</h1>{note && <p className="m-0 text-muted-foreground">{note}</p>}{children}</div></div>;
 }
 
 function SignInGate({ onDone }: { onDone: () => void }) {
@@ -104,7 +104,7 @@ function Tree({ tree, current, go }: { tree: Node[]; current: string | null; go:
     kids(parent, g).map((n) => (
       <li key={n.id}>
         {n.folder
-          ? <span className="block py-1 font-semibold text-muted" style={{ paddingInlineStart: depth * 14 }}>{n.icon} {n.title}</span>
+          ? <span className="block py-1 font-semibold text-muted-foreground" style={{ paddingInlineStart: depth * 14 }}>{n.icon} {n.title}</span>
           : <a href={`?page=${n.id}`} aria-current={n.id === current ? "page" : undefined} onClick={(e) => { e.preventDefault(); go(n.id); }}
               className="block rounded-sm py-1 text-[var(--page-fg,var(--text))] no-underline hover:underline aria-[current=page]:font-bold" style={{ paddingInlineStart: depth * 14 }}>{n.icon} {n.title}</a>}
         {kids(n.id, g).length > 0 && <ul className="m-0 list-none p-0">{rows(n.id, g, depth + 1)}</ul>}
@@ -114,7 +114,7 @@ function Tree({ tree, current, go }: { tree: Node[]; current: string | null; go:
     <nav aria-label="pages" className="grid gap-3 text-[14px]">
       {groups.map((g) => (
         <div key={g}>
-          {tree.find((n) => (n.group ?? 0) === g)?.group_name && <h2 className="m-0 mb-1 text-[12px] font-semibold uppercase tracking-wide text-muted">{tree.find((n) => (n.group ?? 0) === g)!.group_name}</h2>}
+          {tree.find((n) => (n.group ?? 0) === g)?.group_name && <h2 className="m-0 mb-1 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">{tree.find((n) => (n.group ?? 0) === g)!.group_name}</h2>}
           <ul className="m-0 list-none p-0">{rows(null, g, 0)}</ul>
         </div>
       ))}
@@ -155,7 +155,7 @@ function Shown({ data, shareId, pin, page, go }: { data: Opened; shareId: string
               onOpenRef={(kind, id) => { if (kind === "pages.page" && data.tree.some((n) => n.id === id)) go(id); }} />
           </div>
         ) : (
-          <div className="mx-auto max-w-[820px] pt-9"><h1 className="m-0 mb-4 text-[32px] font-bold">{data.share.title}</h1>{!many && <p className="text-muted">{t("readerUnavailable")}</p>}{many && <p className="text-muted">{t("readerPickPage")}</p>}</div>
+          <div className="mx-auto max-w-[820px] pt-9"><h1 className="m-0 mb-4 text-[32px] font-bold">{data.share.title}</h1>{!many && <p className="text-muted-foreground">{t("readerUnavailable")}</p>}{many && <p className="text-muted-foreground">{t("readerPickPage")}</p>}</div>
         )}
         {stickers.view}
       </main>

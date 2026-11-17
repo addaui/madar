@@ -92,7 +92,7 @@ export function Appearance({ onClose }: { onClose: () => void }) {
     const auto = it.type === "number_or_auto" && v === "auto";
     return (
       <span className="inline-flex items-center gap-2">
-        {it.type === "number_or_auto" && <Checkbox className="text-xs text-muted" isSelected={auto} onChange={(x) => set(k, x ? "auto" : Number(it.min ?? 0))}>auto</Checkbox>}
+        {it.type === "number_or_auto" && <Checkbox className="text-xs text-muted-foreground" isSelected={auto} onChange={(x) => set(k, x ? "auto" : Number(it.min ?? 0))}>auto</Checkbox>}
         <Slider label={name} className="w-36" minValue={Number(it.min ?? 0)} maxValue={Number(it.max ?? 100)} step={k === "bw" ? 0.5 : 1} value={auto ? Number(it.min ?? 0) : Number(v)} isDisabled={auto} onChange={(x) => set(k, x)}
           format={(x) => (auto ? t("auto") : (k === "rbtn" || k === "rchip") && x >= 40 ? t("pill") : String(x))} />
       </span>
@@ -102,7 +102,7 @@ export function Appearance({ onClose }: { onClose: () => void }) {
   return (
     <Window title={t("customize")} onClose={onClose} wide>
       <div className="mb-3 rounded-md border border-line p-2.5 text-[13px]" aria-live="polite">
-        <div className="mb-1 text-muted">{t("contrast")}</div>
+        <div className="mb-1 text-muted-foreground">{t("contrast")}</div>
         {rows.map(([n, a, b, goal]) => { const lc = Math.round(apca(a, b)); return <div key={n} className="flex justify-between"><span>{n}</span><span dir="ltr" className={lc >= goal ? "text-ok" : "text-danger"}>Lc {lc} / {t("target")} {goal}</span></div>; })}
       </div>
       <div className="mb-3 grid gap-1.5"><b className="text-[13px]">{t("preset")}</b>
@@ -116,7 +116,7 @@ export function Appearance({ onClose }: { onClose: () => void }) {
           if (!items.length) return null;
           return (
             <section key={g.id} className="mb-3">
-              <h3 className="m-0 mb-1 text-[13px] font-semibold uppercase tracking-wide text-muted">{(lang === "ar" && g.label.ar) || g.label.en}</h3>
+              <h3 className="m-0 mb-1 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">{(lang === "ar" && g.label.ar) || g.label.en}</h3>
               {items.map((it) => { const k = it.per_scheme ? sc + ":" + it.key : it.key; return <div key={it.key} className={cn("flex items-center justify-between gap-3 py-1.5", draft[k] !== undefined && "font-semibold")}><span>{(lang === "ar" && it.label.ar) || it.label.en}</span>{control(it)}</div>; })}
             </section>
           );

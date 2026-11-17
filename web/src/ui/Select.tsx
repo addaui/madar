@@ -16,16 +16,16 @@ export function Select({ label, value, defaultValue, onChange, options, name, is
   return (
     <AriaSelect aria-label={label} className={cn("grid gap-1", className)} name={name} isDisabled={isDisabled}
       selectedKey={value} defaultSelectedKey={defaultValue} onSelectionChange={(k) => onChange?.(k === null ? "" : String(k))}>
-      <AriaButton className={cn(plain ? "flex items-center gap-1 rounded-inner px-1.5 py-1 text-end text-[13px] hoverable" : "field flex items-center justify-between gap-2 text-start", "outline-none data-[focus-visible]:outline-2 data-[focus-visible]:outline-accent data-[disabled]:cursor-not-allowed data-[disabled]:opacity-60", triggerClassName)}>
+      <AriaButton className={cn(plain ? "flex items-center gap-1 rounded-inner px-1.5 py-1 text-end text-[13px] hoverable" : "field flex items-center justify-between gap-2 text-start", "outline-none data-[focus-visible]:outline-2 data-[focus-visible]:outline-brand data-[disabled]:cursor-not-allowed data-[disabled]:opacity-60", triggerClassName)}>
         <SelectValue className="truncate" />
-        <Icon name="chevron" className="size-4 shrink-0 rotate-90 text-muted" />
+        <Icon name="chevron" className="size-4 shrink-0 rotate-90 text-muted-foreground" />
       </AriaButton>
       {errorMessage && <FieldError className={fieldError}>{errorMessage}</FieldError>}
       <Popover className={cn(popup, "min-w-(--trigger-width)")} placement="bottom start" offset={4}>
         <ListBox className="max-h-72 overflow-auto outline-none">
           {options.map((o) => (
             <ListBoxItem key={o.value} id={o.value} textValue={o.text ?? (typeof o.label === "string" ? o.label : o.value)} isDisabled={o.disabled} className={popupItem}>
-              {({ isSelected }) => (<><span className="grow truncate" dir="auto">{o.label}</span>{isSelected && <Icon name="check" className="size-4 text-accent" />}</>)}
+              {({ isSelected }) => (<><span className="grow truncate" dir="auto">{o.label}</span>{isSelected && <Icon name="check" className="size-4 text-brand" />}</>)}
             </ListBoxItem>
           ))}
         </ListBox>

@@ -38,8 +38,8 @@ export function GifTab({ provider, variant = "gifs", onPick }: { provider: Descr
     <div className="grid gap-2">
       <SearchField value={text} onChange={setText} label={t(variant === "stickers" ? "gifStickerSearch" : "gifSearch")} placeholder={t(variant === "stickers" ? "gifStickerSearch" : "gifSearch")} maxLength={50} />
       {res.isError ? <p className="m-0 p-2 text-[13px] text-danger">{t("gifError")}</p>
-        : res.isPending ? <p className="m-0 p-2 text-[13px] text-muted">…</p>
-        : unique.length === 0 ? <p className="m-0 p-2 text-[13px] text-muted">{t("gifNone")}</p>
+        : res.isPending ? <p className="m-0 p-2 text-[13px] text-muted-foreground">…</p>
+        : unique.length === 0 ? <p className="m-0 p-2 text-[13px] text-muted-foreground">{t("gifNone")}</p>
         : (
           <div className="columns-2 gap-1.5">
             {unique.map((g) => (
@@ -50,7 +50,7 @@ export function GifTab({ provider, variant = "gifs", onPick }: { provider: Descr
           </div>
         )}
       {res.hasNextPage && <Button size="sm" isPending={res.isFetchingNextPage} onPress={() => void res.fetchNextPage()}>{t("loadMore")}</Button>}
-      <p className="m-0 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+      <p className="m-0 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
         {provider.attribution && <a href={provider.attribution.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-text"><Icon name="link" className="size-3" />{provider.attribution.text}</a>}
         <span>{t("gifPrivacy", { name: provider.name ?? "" })}</span>
       </p>

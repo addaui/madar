@@ -12,10 +12,10 @@ export type MenuEntries = (MenuEntry | "-" | null | undefined)[];
 
 const row = (e: MenuEntry) => (
   <>
-    {e.icon ? <Icon name={e.icon} className="size-4 text-muted" /> : <span className="size-4" />}
+    {e.icon ? <Icon name={e.icon} className="size-4 text-muted-foreground" /> : <span className="size-4" />}
     <span className="grow truncate" dir="auto">{e.label}</span>
-    {e.checked && <Icon name="check" className="size-4 text-accent" />}
-    {e.sub && <Icon name="chevron" className="size-4 text-muted rtl:-scale-x-100" />}
+    {e.checked && <Icon name="check" className="size-4 text-brand" />}
+    {e.sub && <Icon name="chevron" className="size-4 text-muted-foreground rtl:-scale-x-100" />}
   </>
 );
 

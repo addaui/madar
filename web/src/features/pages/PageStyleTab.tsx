@@ -75,7 +75,7 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
           options={(["auto", "light", "dark"] as const).map((m) => ({ value: m, label: t(("mode_" + m) as Key), hint: m === "auto" ? t("modeAutoHint") : undefined }))} />
         <div className="grid grid-cols-3 gap-2">
           {PAGE_PRESETS.map((p) => <PresetTile key={p.id} label={t(("pre_" + p.id) as Key)} settings={p[shown]} on={(st.preset ?? "default") === p.id && !own} disabled={!writer} onClick={() => applyBuiltin(p, mode)} />)}
-          <BaseButton onPress={() => setMore(true)} aria-label={t("moreStyles")} className="grid gap-1 rounded-sm border border-line p-1.5 text-center text-xs hoverable"><span className="grid h-[34px] place-items-center rounded-md bg-sunken text-xl tracking-[2px] text-muted">···</span>{t("moreStyles")}</BaseButton>
+          <BaseButton onPress={() => setMore(true)} aria-label={t("moreStyles")} className="grid gap-1 rounded-sm border border-line p-1.5 text-center text-xs hoverable"><span className="grid h-[34px] place-items-center rounded-md bg-sunken text-xl tracking-[2px] text-muted-foreground">···</span>{t("moreStyles")}</BaseButton>
         </div>
         {own && writer && hasStyles && <div><Button kind="ghost" size="sm" icon="plus" onPress={() => void saveAs()}>{t("saveStyle")}</Button></div>}
       </Section>
@@ -114,7 +114,7 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
       </Section>
       <Section title={t("secImage")}>
         <div className="flex items-center gap-2.5">
-          <div className="grid size-[72px] place-items-center rounded-md border border-line bg-sunken text-xs text-muted" ref={(el) => { if (el) { el.style.backgroundImage = eff.bg_image ? `url("${eff.bg_image}")` : ""; el.style.backgroundSize = "cover"; } }}>{!eff.bg_image && t("noImage")}</div>
+          <div className="grid size-[72px] place-items-center rounded-md border border-line bg-sunken text-xs text-muted-foreground" ref={(el) => { if (el) { el.style.backgroundImage = eff.bg_image ? `url("${eff.bg_image}")` : ""; el.style.backgroundSize = "cover"; } }}>{!eff.bg_image && t("noImage")}</div>
           {writer && <Button icon="image" onPress={() => void pickImage("bg_image")}>{eff.bg_image ? t("changeImage") : t("chooseImage")}</Button>}
           {writer && eff.bg_image && <Button kind="ghost" icon="trash" onPress={() => put("bg_image", undefined)}>{t("removeImage")}</Button>}
         </div>
@@ -136,7 +136,7 @@ export function PageStyleTab({ page, scope, writer }: { page: Page; scope: PageS
 function PresetTile({ label, settings, on, disabled, onClick }: { label: string; settings: PageSettings; on: boolean; disabled?: boolean; onClick: () => void }) {
   const s = settings;
   return (
-    <BaseButton isDisabled={disabled} aria-pressed={on} onPress={onClick} className={cn("grid gap-1 rounded-sm border border-line p-1.5 text-center text-xs hoverable", on && "border-accent shadow-[0_0_0_1px_var(--accent)]")}>
+    <BaseButton isDisabled={disabled} aria-pressed={on} onPress={onClick} className={cn("grid gap-1 rounded-sm border border-line p-1.5 text-center text-xs hoverable", on && "border-brand shadow-[0_0_0_1px_var(--accent)]")}>
       <div className="grid h-[42px] place-items-center rounded-md border border-line" ref={(el) => {
         if (!el) return;
         el.style.backgroundColor = s.bg_color ?? "var(--sunken)";
@@ -168,15 +168,15 @@ function MoreStyles({ shown, onClose, writer, hasStyles, onBuiltin, onSaved, onS
   const remove = async (s: Saved) => { if (!(await askConfirm(t("sure")))) return; await link.call("pages.style_delete", { id: s.id } as never); await qc.invalidateQueries({ queryKey: ["pages.styles"] }); await load(); };
   return (
     <Window title={t("pageStyles")} onClose={onClose} wide>
-        <h3 className="mb-2 text-[13px] font-semibold text-muted">{t("builtInStyles")}</h3>
+        <h3 className="mb-2 text-[13px] font-semibold text-muted-foreground">{t("builtInStyles")}</h3>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2">{PAGE_PRESETS.map((p) => <PresetTile key={p.id} label={t(("pre_" + p.id) as Key)} settings={p[shown]} on={false} disabled={!writer} onClick={() => onBuiltin(p)} />)}</div>
-        <h3 className="mb-2 mt-4 text-[13px] font-semibold text-muted">{t("myStyles")}</h3>
+        <h3 className="mb-2 mt-4 text-[13px] font-semibold text-muted-foreground">{t("myStyles")}</h3>
         {styles && styles.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2">{styles.map((s) => (
             <div key={s.id} className="group/tile relative"><PresetTile label={s.name} settings={s.settings} on={same(s.settings, {})} disabled={!writer} onClick={() => onSaved(s.settings)} />
               {writer && <IconButton icon="close" label={t("delete")} size="sm" className="absolute end-1.5 top-1.5 size-[22px] bg-surface opacity-0 group-hover/tile:opacity-100 focus:opacity-100" onPress={() => void remove(s)} />}</div>
           ))}</div>
-        ) : <p className="m-0 text-muted">{t("noStyles")}</p>}
+        ) : <p className="m-0 text-muted-foreground">{t("noStyles")}</p>}
         {writer && hasStyles && <div className="mt-4 flex justify-end"><Button icon="plus" onPress={async () => { await onSave(); await load(); }}>{t("saveStyle")}</Button></div>}
     </Window>
   );

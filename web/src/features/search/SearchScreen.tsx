@@ -37,8 +37,8 @@ export function SearchScreen({ q = "", kind, all }: SearchParams) {
         </div>
         <Segmented label={t("kindAll")} value={kind ?? ""} onChange={(v) => change({ kind: (v || undefined) as SearchKind | undefined })} className="justify-self-start"
           options={[{ value: "", label: t("kindAll") }, { value: "page", label: t("kindPages") }, { value: "knowledge", label: t("kindKnowledge") }, { value: "task", label: t("kindTasks") }]} />
-        {query.length < 2 ? <p className="m-0 text-muted">{t("searchPageHint")}</p>
-          : items.length === 0 && !isFetching ? <p className="m-0 grid justify-items-center gap-2 py-10 text-muted"><Icon name="search" className="size-6" /><b className="text-text">{t("noResults")}</b></p>
+        {query.length < 2 ? <p className="m-0 text-muted-foreground">{t("searchPageHint")}</p>
+          : items.length === 0 && !isFetching ? <p className="m-0 grid justify-items-center gap-2 py-10 text-muted-foreground"><Icon name="search" className="size-6" /><b className="text-text">{t("noResults")}</b></p>
           : (
             <ul aria-label={t("resultsFor")} className="m-0 grid list-none gap-1 p-0">
               {items.map((h) => <Result key={h.kind + ":" + h.id} hit={h} />)}
@@ -53,10 +53,10 @@ function Result({ hit: h }: { hit: Hit }) {
   const t = useT();
   return (
     <li className="flex items-start gap-2.5 rounded-md px-2.5 py-2 hoverable">
-      <Icon name={h.kind === "page" || h.kind === "knowledge" ? "page" : "task"} className="mt-0.5 shrink-0 text-muted" />
+      <Icon name={h.kind === "page" || h.kind === "knowledge" ? "page" : "task"} className="mt-0.5 shrink-0 text-muted-foreground" />
       <span className="min-w-0 grow">
         <TextLink href={hrefOfHit(h)} className="block truncate font-semibold"><span dir="auto">{h.title || t("untitled")}</span></TextLink>
-        {h.snippet && <span className="block truncate text-[13px] text-muted" dir="auto">{h.snippet}</span>}
+        {h.snippet && <span className="block truncate text-[13px] text-muted-foreground" dir="auto">{h.snippet}</span>}
         {h.tags && h.tags.length > 0 && <span className="mt-1 flex flex-wrap gap-1">{h.tags.map((tag) => <TextLink key={tag} href={searchHref("#" + tag)} className="rounded-chip bg-soft px-2 py-0.5 text-xs"><span dir="auto">#{tag}</span></TextLink>)}</span>}
       </span>
       {h.project_name && <span className="rounded-chip border border-line px-2 py-0.5 text-xs" dir="auto">{h.project_name}</span>}

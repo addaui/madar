@@ -34,7 +34,7 @@ export function Settings({ onClose, onAppearance, onFeatures }: { onClose: () =>
       {canManageFeatures && <section className="mb-4 flex items-center justify-between gap-3 rounded-md border border-line p-3"><span>{t("featuresIntro").split(".")[0]}.</span><Button onPress={onFeatures}>{t("featuresBtn")}</Button></section>}
       {groups.map((g) => (
         <section key={g} className="mb-4 rounded-md border border-line p-3">
-          <h2 className="m-0 mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">{t(("g_" + g) as "g_other")}</h2>
+          <h2 className="m-0 mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">{t(("g_" + g) as "g_other")}</h2>
           {items.filter((i) => (i.group ?? "other") === g).map((it) => {
             const v = prefs[it.key] ?? it.default;
             let ctl;

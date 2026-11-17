@@ -17,7 +17,7 @@ export function BellMenu() {
   const unread = useRead("inbox.list", { limit: 30 }).data.unread;
   return (
     <PopupButton label={t("inbox") + (unread ? ` (${unread})` : "")} width={340}
-      buttonProps={{ className: "relative inline-grid size-[var(--hit)] shrink-0 place-items-center rounded-sm text-muted hoverable hover:text-text data-[pressed]:bg-soft" }}
+      buttonProps={{ className: "relative inline-grid size-[var(--hit)] shrink-0 place-items-center rounded-sm text-muted-foreground hoverable hover:text-text data-[pressed]:bg-soft" }}
       trigger={<><Icon name="bell" />{unread > 0 && <span className="absolute end-0.5 top-0.5 grid min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold leading-4 text-white">{unread > 9 ? "9+" : unread}</span>}</>}>
       <Inbox />
     </PopupButton>
@@ -69,9 +69,9 @@ export function SpacesMenu() {
   return (
     <MenuButton label={t("spaces")} entries={entries}
       buttonProps={{ className: "mx-2.5 mb-1 flex min-h-[var(--row)] items-center gap-2.5 rounded-sm border border-line bg-[color-mix(in_srgb,var(--surface)_60%,transparent)] px-2.5 text-start hoverable group-data-[rail=true]/side:mx-2 group-data-[rail=true]/side:justify-center group-data-[rail=true]/side:px-0" }}>
-      <span aria-hidden="true" className="grid size-[22px] shrink-0 place-items-center rounded-md bg-accent text-xs font-bold text-on-accent">{(Array.from(name)[0] ?? "S").toUpperCase()}</span>
+      <span aria-hidden="true" className="grid size-[22px] shrink-0 place-items-center rounded-md bg-brand text-xs font-bold text-brand-foreground">{(Array.from(name)[0] ?? "S").toUpperCase()}</span>
       <span className="min-w-0 flex-1 truncate group-data-[rail=true]/side:hidden" dir="auto">{name}</span>
-      <Icon name="down" className="size-[15px] text-muted group-data-[rail=true]/side:hidden" />
+      <Icon name="down" className="size-[15px] text-muted-foreground group-data-[rail=true]/side:hidden" />
     </MenuButton>
   );
 }

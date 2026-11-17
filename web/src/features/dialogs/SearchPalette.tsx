@@ -33,13 +33,13 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
         empty={query.length < 2 ? t("searchHint") : <span className="grid justify-items-center gap-2 py-4"><Icon name="search" /><b className="text-text">{t("noResults")}</b></span>}
         render={({ hit: h }) => (
           <>
-            <Icon name={h.kind === "page" || h.kind === "knowledge" ? "page" : "task"} className="mt-0.5 text-muted" />
-            <span className="min-w-0 grow"><b className="block truncate" dir="auto">{h.title || t("untitled")}</b>{h.snippet && <span className="block truncate text-[13px] text-muted" dir="auto">{h.snippet}</span>}</span>
+            <Icon name={h.kind === "page" || h.kind === "knowledge" ? "page" : "task"} className="mt-0.5 text-muted-foreground" />
+            <span className="min-w-0 grow"><b className="block truncate" dir="auto">{h.title || t("untitled")}</b>{h.snippet && <span className="block truncate text-[13px] text-muted-foreground" dir="auto">{h.snippet}</span>}</span>
             {h.project_name && <span className="rounded-chip border border-line px-2 py-0.5 text-xs" dir="auto">{h.project_name}</span>}
           </>
         )} />
-      {query.length >= 2 && <div className="mt-2"><TextLink href={searchHref(query)} onPress={onClose} className="inline-block px-1 py-0.5 text-[13px] text-accent">{t("showAllResults")}</TextLink></div>}
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 text-xs text-muted">
+      {query.length >= 2 && <div className="mt-2"><TextLink href={searchHref(query)} onPress={onClose} className="inline-block px-1 py-0.5 text-[13px] text-brand">{t("showAllResults")}</TextLink></div>}
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 text-xs text-muted-foreground">
         <span><kbd className="rounded border border-line px-1">↑</kbd> <kbd className="rounded border border-line px-1">↓</kbd> {t("kMove")}</span>
         <span><kbd className="rounded border border-line px-1">↵</kbd> {t("kOpen")}</span>
         <span><kbd className="rounded border border-line px-1">Esc</kbd> {t("close")}</span>

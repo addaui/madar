@@ -24,8 +24,8 @@ export function SignIn() {
   return (
     <div className="grid min-h-dvh place-items-center p-4">
       <form action={submit} className="grid w-[min(400px,100%)] gap-3.5 rounded-lg bg-surface p-8 shadow-2">
-        <div className="flex items-center gap-2.5 text-[17px] font-bold"><Icon name="logo" className="size-[26px] text-accent" />Madar</div>
-        <p className="m-0 text-muted">{t("signInHint")}</p>
+        <div className="flex items-center gap-2.5 text-[17px] font-bold"><Icon name="logo" className="size-[26px] text-brand" />Madar</div>
+        <p className="m-0 text-muted-foreground">{t("signInHint")}</p>
         <TextField name="username" label={t("username")} placeholder={t("yourUsername")} isRequired autoComplete="username" dir="auto" />
         <TextField name="password" type="password" label={t("password")} placeholder={t("password")} isRequired autoComplete="current-password" />
         <p role="alert" className="m-0 min-h-[1.2em] text-danger">{error}</p>

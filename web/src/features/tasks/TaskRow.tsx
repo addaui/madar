@@ -5,7 +5,7 @@ import { useDateFormat } from "../../lib/format";
 import { Icon } from "../../ui/Icon";
 import { TextLink } from "../../ui/Link";
 
-const BAND: Record<string, string> = { urgent: "text-danger", high: "text-[var(--p-high,var(--warn))]", medium: "text-warn", low: "text-muted" };
+const BAND: Record<string, string> = { urgent: "text-danger", high: "text-[var(--p-high,var(--warn))]", medium: "text-warn", low: "text-muted-foreground" };
 
 export function PriorityChip({ band }: { band: string | undefined }) {
   const t = useT();
@@ -25,7 +25,7 @@ export function TaskRow({ task, today }: { task: MyTask; today: string }) {
   return (
     <TextLink href={`#/p/${task.project}?task=${task.id}`}
       className="flex min-h-[42px] items-center gap-2.5 rounded-md px-2.5 py-1.5">
-      <Icon name="task" className="text-muted" />
+      <Icon name="task" className="text-muted-foreground" />
       <span className="min-w-0 grow truncate" dir="auto">{task.title}</span>
       <PriorityChip band={task.band} />
       <span className="rounded-chip border border-line px-2 py-0.5 text-xs" dir="auto">{task.project_name}</span>
