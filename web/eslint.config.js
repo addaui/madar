@@ -18,15 +18,15 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   reactHooks.configs.flat["recommended-latest"] ?? reactHooks.configs.recommended,
   { rules: { "no-restricted-imports": ["error", { paths: reactRules }], "no-restricted-syntax": ["error", ...syntaxRules] } },
-  // ADR 0069: controls come from the kit (src/ui), which is built on React Aria. Features never use the native control elements or the library itself.
+  // ADR 0086: controls come from the kit (src/ui), which is built on Base UI. Features never use the native control elements or the libraries themselves.
   {
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/ui/**", "**/*.test.{ts,tsx}"],
     rules: {
-      "no-restricted-imports": ["error", { paths: [...reactRules, { name: "react-aria-components", message: "Use the kit in src/ui (ADR 0069): add a variant or a component there, built on its base." }] }],
+      "no-restricted-imports": ["error", { paths: [...reactRules, { name: "react-aria-components", message: "React Aria was removed (ADR 0086): use the kit in src/ui." }], patterns: [{ group: ["@base-ui/react", "@base-ui/react/*", "sonner"], message: "Use the kit in src/ui (ADR 0086); toasts come from notify()." }] }],
       "no-restricted-syntax": ["error", ...syntaxRules,
-        { selector: "JSXOpeningElement[name.name=/^(button|input|select|textarea|dialog|details|progress|table)$/]", message: "Use the kit's component (Button, TextField, Select, Checkbox, Tabs, Disclosure, ProgressBar, DataTable, ...) from src/ui (ADR 0069)." },
-        { selector: "JSXAttribute[name.name='role'][value.value=/^(tab|tablist|radio|radiogroup|dialog|alertdialog|progressbar|switch|checkbox)$/]", message: "A control gets its role from React Aria through the kit (ADR 0069)." },
+        { selector: "JSXOpeningElement[name.name=/^(button|input|select|textarea|dialog|details|progress|table)$/]", message: "Use the kit's component (Button, TextField, Select, Checkbox, Tabs, Disclosure, ProgressBar, DataTable, ...) from src/ui (ADR 0086)." },
+        { selector: "JSXAttribute[name.name='role'][value.value=/^(tab|tablist|radio|radiogroup|dialog|alertdialog|progressbar|switch|checkbox)$/]", message: "A control gets its role from Base UI through the kit (ADR 0086)." },
       ],
     },
   },

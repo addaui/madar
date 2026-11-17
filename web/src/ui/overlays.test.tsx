@@ -81,3 +81,88 @@ describe("overlays", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+import { ColorField, hexToHsv, hsvToHex } from "./ColorField";
+import { ComboBox } from "./ComboBox";
+import { DataTable } from "./Table";
+import { SearchList } from "./SearchList";
+import { Slider } from "./Slider";
+import { FileDrop } from "./FileDrop";
+import { BaseLink } from "./Link";
+
+describe("the rest of the kit", () => {
+  it("colours convert both ways without drifting", () => {
+    for (const hex of ["#ff0000", "#3a7bd5", "#000000", "#ffffff", "#808080"]) expect(hsvToHex(hexToHsv(hex))).toBe(hex);
+  });
+
+  it("a colour typed in the hex box is reported when the picker closes", async () => {
+    const onChange = vi.fn();
+    render(<ColorField label="Accent" value="#000000" onChange={onChange} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Accent" }));
+    const box = (await screen.findAllByLabelText("Accent")).find((e) => e.tagName === "INPUT" && e.getAttribute("type") !== "range")!;
+    await user.clear(box); await user.type(box, "#336699");
+    await user.keyboard("{Escape}");
+    expect(onChange).toHaveBeenCalledWith("#336699");
+  });
+
+  it("a slider moves with the arrow keys and says its value", async () => {
+    const onChange = vi.fn();
+    render(<Slider label="Size" value={5} onChange={onChange} minValue={0} maxValue={10} />);
+    screen.getByRole("slider", { name: "Size" }).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(onChange).toHaveBeenCalledWith(6);
+  });
+
+  it("a table row opens with Enter, and an empty table says so", async () => {
+    const onOpen = vi.fn();
+    const cols = [{ id: "n", label: "Name", isRowHeader: true }];
+    const { rerender } = render(<DataTable label="T" columns={cols} rows={[{ id: "1" }]} cell={() => "one"} onOpen={onOpen} />);
+    screen.getByRole("row", { name: /one/ }).focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onOpen).toHaveBeenCalledWith("1");
+    rerender(<DataTable label="T" columns={cols} rows={[]} cell={() => ""} empty="Nothing" />);
+    expect(screen.getByText("Nothing")).toBeInTheDocument();
+  });
+
+  it("a search list picks with the arrow keys and Enter while the focus stays in the field", async () => {
+    const onPick = vi.fn();
+    render(<SearchList label="Find" value="q" onChange={() => undefined} items={[{ id: "a", text: "A" }, { id: "b", text: "B" }]} onPick={onPick} render={(i) => i.text} empty="none" />);
+    const input = screen.getByRole("combobox", { name: "Find" });
+    expect(input).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    expect(onPick).toHaveBeenCalledWith({ id: "b", text: "B" });
+  });
+
+  it("a combo box commits what is typed on Enter, and a suggestion when picked", async () => {
+    const onCommit = vi.fn();
+    const Host = () => { const [v, setV] = useState(""); return <ComboBox label="Tag" inputValue={v} onInputChange={setV} suggestions={["red", "green"]} onCommit={onCommit} />; };
+    render(<Host />);
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("combobox", { name: "Tag" }), "blue{Enter}");
+    expect(onCommit).toHaveBeenCalledWith("blue");
+    expect(screen.getByRole("combobox", { name: "Tag" })).toHaveValue("");
+  });
+
+  it("a file drop passes on only the types it accepts", () => {
+    const onFile = vi.fn();
+    render(<FileDrop label="Drop" accept={["image/png"]} onFile={onFile}>x</FileDrop>);
+    const zone = screen.getByRole("group", { name: "Drop" });
+    const drop = (f: File) => { const e = new Event("drop", { bubbles: true, cancelable: true }); Object.assign(e, { dataTransfer: { files: [f], items: [] } }); zone.dispatchEvent(e); };
+    drop(new File(["x"], "a.txt", { type: "text/plain" }));
+    expect(onFile).not.toHaveBeenCalled();
+    drop(new File(["x"], "a.png", { type: "image/png" }));
+    expect(onFile).toHaveBeenCalledOnce();
+  });
+
+  it("a link is a real anchor, and onPress is skipped when a new tab is asked for", async () => {
+    const onPress = vi.fn();
+    render(<BaseLink href="#/x" onPress={onPress}>go</BaseLink>);
+    expect(screen.getByRole("link", { name: "go" })).toHaveAttribute("href", "#/x");
+    const user = userEvent.setup();
+    await user.keyboard("{Control>}"); await user.click(screen.getByRole("link", { name: "go" })); await user.keyboard("{/Control}");
+    expect(onPress).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("link", { name: "go" }));
+    expect(onPress).toHaveBeenCalledOnce();
+  });
+});

@@ -43,5 +43,5 @@ export const askImage = (label: string) => new Promise<string | null>((resolve) 
 export const askRef = () => new Promise<{ kind: string; id: string; title: string } | null>((resolve) => push({ kind: "ref", resolve }));
 
 /** A short notice that fades by itself (what was done, and where). The host shows it in a live region. */
-/** A short notice ("Saved"); the host shows it in React Aria's toast queue. */
+/** A short notice ("Saved"); the host shows it as a toast. */
 export const toast = (text: string) => push({ kind: "toast", text });

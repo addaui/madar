@@ -17,7 +17,7 @@ export function BellMenu() {
   const unread = useRead("inbox.list", { limit: 30 }).data.unread;
   return (
     <PopupButton label={t("inbox") + (unread ? ` (${unread})` : "")} width={340}
-      buttonProps={{ className: "relative inline-grid size-[var(--hit)] shrink-0 place-items-center rounded-sm text-muted-foreground hoverable hover:text-text data-[pressed]:bg-soft" }}
+      buttonProps={{ className: "relative inline-grid size-[var(--hit)] shrink-0 place-items-center rounded-sm text-muted-foreground hoverable hover:text-text data-[popup-open]:bg-soft" }}
       trigger={<><Icon name="bell" />{unread > 0 && <span className="absolute end-0.5 top-0.5 grid min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold leading-4 text-white">{unread > 9 ? "9+" : unread}</span>}</>}>
       <Inbox />
     </PopupButton>

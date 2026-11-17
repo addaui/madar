@@ -25,7 +25,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "react": "19.2.9",
-    "react-aria-components": "^1.22.1",
     "react-dom": "19.2.9",
     "react-error-boundary": "^6.1.6",
     "sonner": "^2.0.8",

@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { useId, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
-import { FieldError as AriaFieldError, Label, Text, type FieldErrorProps } from "react-aria-components";
 import { cn } from "../lib/cn";
 import { fieldError, fieldHint, fieldLabel, invalid } from "./base";
 import { Icon } from "./Icon";
@@ -15,20 +14,8 @@ export interface FieldFrameProps {
   /** Show the label above the field. Without it the label is only for assistive technology. */
   showLabel?: boolean;
   description?: string;
-  errorMessage?: FieldErrorProps["children"];
+  errorMessage?: ReactNode;
   className?: string;
-}
-
-/** The label, hint and error around one control. The control itself is `children`. */
-export function FieldFrame({ label, showLabel, description, errorMessage, children }: FieldFrameProps & { children: ReactNode }) {
-  return (
-    <>
-      <Label className={showLabel ? fieldLabel : "sr-only"}>{label}</Label>
-      {children}
-      {description && <Text slot="description" className={fieldHint}>{description}</Text>}
-      <AriaFieldError className={fieldError}>{errorMessage}</AriaFieldError>
-    </>
-  );
 }
 
 interface TextProps extends FieldFrameProps {

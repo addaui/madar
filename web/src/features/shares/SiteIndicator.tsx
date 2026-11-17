@@ -39,7 +39,7 @@ export function SiteIndicator() {
   const label = !site.share ? t("siteMake") : state === "ok" ? t("siteUpToDate") : t("siteOutOfDate", { n: site.status?.changed ?? 0 });
   return (
     <PopupButton label={`${t("siteStatusLabel")}: ${label}`} width={360}
-      buttonProps={{ className: "relative inline-grid size-[30px] shrink-0 place-items-center rounded-sm text-muted-foreground hoverable hover:text-text data-[pressed]:bg-soft" }}
+      buttonProps={{ className: "relative inline-grid size-[30px] shrink-0 place-items-center rounded-sm text-muted-foreground hoverable hover:text-text data-[popup-open]:bg-soft" }}
       trigger={<>
         <Icon name="globe" />
         {state !== "none" && <span aria-hidden="true" className={cn("absolute -end-0.5 -top-0.5 grid size-3.5 place-items-center rounded-full text-white", state === "ok" ? "bg-ok" : "bg-danger")}><Icon name={state === "ok" ? "check" : "alert"} className="size-2.5" /></span>}

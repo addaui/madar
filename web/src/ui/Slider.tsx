@@ -1,4 +1,4 @@
-import { Label, Slider as AriaSlider, SliderOutput, SliderThumb, SliderTrack } from "react-aria-components";
+import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { cn } from "../lib/cn";
 import { fieldLabel } from "./base";
 
@@ -7,20 +7,18 @@ export function Slider({ label, showLabel, value, onChange, onChangeEnd, minValu
   label: string; showLabel?: boolean; value: number; onChange: (v: number) => void; onChangeEnd?: (v: number) => void; minValue: number; maxValue: number; step?: number; format?: (v: number) => string; isDisabled?: boolean; className?: string;
 }) {
   return (
-    <AriaSlider value={value} onChange={onChange} onChangeEnd={onChangeEnd} minValue={minValue} maxValue={maxValue} step={step} isDisabled={isDisabled} className={cn("grid min-w-28 gap-1 data-[disabled]:opacity-45", className)}>
+    <SliderPrimitive.Root value={value} onValueChange={(v) => onChange(Array.isArray(v) ? v[0]! : (v as number))} onValueCommitted={(v) => onChangeEnd?.(Array.isArray(v) ? v[0]! : (v as number))}
+      min={minValue} max={maxValue} step={step} disabled={isDisabled} className={cn("grid min-w-28 gap-1 data-[disabled]:opacity-45", className)}>
       <div className="flex items-center justify-between gap-2">
-        <Label className={showLabel ? fieldLabel : "sr-only"}>{label}</Label>
-        <SliderOutput className="text-[12.5px] tabular-nums text-muted-foreground">{({ state }) => (format ? format(state.values[0]!) : String(state.values[0]))}</SliderOutput>
+        <SliderPrimitive.Label className={showLabel ? fieldLabel : "sr-only"}>{label}</SliderPrimitive.Label>
+        <SliderPrimitive.Value className="text-[12.5px] tabular-nums text-muted-foreground">{(_f, values) => (format ? format(values[0]!) : String(values[0]))}</SliderPrimitive.Value>
       </div>
-      <SliderTrack className="relative h-5 w-full">
-        {({ state }) => (
-          <>
-            <span className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-line-strong" />
-            <span className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-brand" ref={(el) => { if (el) { el.style.insetInlineStart = "0"; el.style.width = state.getThumbPercent(0) * 100 + "%"; } }} />
-            <SliderThumb className="top-1/2 size-4 rounded-full border-2 border-brand bg-surface shadow-1 outline-none data-[dragging]:scale-110 data-[focus-visible]:outline-2 data-[focus-visible]:outline-offset-2 data-[focus-visible]:outline-brand" />
-          </>
-        )}
-      </SliderTrack>
-    </AriaSlider>
+      <SliderPrimitive.Control className="flex h-5 w-full touch-none items-center">
+        <SliderPrimitive.Track className="relative h-1 w-full rounded-full bg-line-strong">
+          <SliderPrimitive.Indicator className="rounded-full bg-brand" />
+          <SliderPrimitive.Thumb aria-label={label} className="size-4 rounded-full border-2 border-brand bg-surface shadow-1 outline-none transition-transform duration-150 data-[dragging]:scale-110 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand motion-reduce:transition-none" />
+        </SliderPrimitive.Track>
+      </SliderPrimitive.Control>
+    </SliderPrimitive.Root>
   );
 }
