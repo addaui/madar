@@ -33,7 +33,7 @@ export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
   const canShare = useHasOp("shares.create_page");
   const [sharing, setSharing] = useState(false);
   return (
-    <div className="flex h-full min-h-0 flex-col workspace:bg-transparent panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-surface panels:shadow-1">
+    <div className="flex h-full min-h-0 flex-col workspace:bg-transparent panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-surface panels:shadow-1 flush:bg-surface">
       <Tabs variant="compact" label={t("toggleInfo")} selected={tab} onSelect={(k) => setTab(k as Tab)} items={[{ id: "info", label: t("infoTab") }, { id: "page", label: t("pageTab") }, { id: "element", label: t("elementTab") + (showKind && kind ? " · " + t(("node_" + kind) as Key) : "") }]}
         className="flex min-h-0 flex-1 flex-col" panelClassName="min-h-0 flex-1 overflow-auto p-5">
         {tab === "info" ? (

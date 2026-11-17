@@ -138,7 +138,7 @@ function ContextRegion() {
       {sheet && peek && <IconButton icon="close" label={t("close")} className="fixed end-3 top-3 z-40 bg-surface shadow-1" onPress={() => setPeek(false)} />}
       <aside ref={setContext} hidden={!column && !peek} onPointerLeave={rail ? leave : undefined}
         className={cn("group-data-[focus=1]/stage:hidden",
-          column ? "w-[var(--pane-w)] shrink-0 overflow-auto" : sheet ? "fixed inset-0 z-30 overflow-auto bg-surface" : "fixed inset-y-3 end-3 z-30 w-[min(var(--pane-w),calc(100vw-24px))] overflow-auto rounded-lg bg-surface shadow-2")} />
+          column ? "w-[var(--pane-w)] shrink-0 overflow-auto flush:border-s flush:border-line" : sheet ? "fixed inset-0 z-30 overflow-auto bg-surface" : "fixed inset-y-3 end-3 z-30 w-[min(var(--pane-w),calc(100vw-24px))] overflow-auto rounded-lg bg-surface shadow-2")} />
     </>
   );
 }
@@ -150,7 +150,7 @@ export function Frame({ flush = false, children }: { flush?: boolean; children: 
   const focus = usePersistedValue(focusState) === "1";
   return (
     <div data-focus={focus ? "1" : "0"} className="group/stage flex h-full min-h-0 min-w-0 gap-[var(--gap)]">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-[var(--glass,var(--surface))] panels:shadow-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-[var(--glass,var(--surface))] panels:shadow-1 flush:bg-surface">
         <div ref={setTopbar} className="contents" />
         <main id="main" tabIndex={-1} className={cn("min-h-0 flex-1 overflow-auto px-7 pb-10 pt-1.5 max-md:px-4 workspace:rounded-lg workspace:bg-surface workspace:elevated", flush && "px-0 pb-0 pt-0")}>{children}</main>
         <div ref={setBottom} className="contents" />

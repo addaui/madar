@@ -64,6 +64,7 @@
 
 @custom-variant dark (&:where([data-scheme="dark"], [data-scheme="dark"] *));
 @custom-variant workspace (&:where([data-layout="workspace"] *));
+@custom-variant flush (&:where([data-layout="flush"] *));
 @custom-variant panels (&:where([data-layout="panels"] *, :root:not([data-layout]) *));
 
 /* what a theme does not set is derived here */

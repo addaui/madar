@@ -46,7 +46,7 @@ export function Sidebar() {
       onPointerLeave={() => { clearTimeout(timer.current); setPeek(false); if (auto) drawerState.set(false); }}
       className={cn(
         "group/side relative z-40 flex h-full min-h-0 flex-col overflow-hidden transition-[inline-size,box-shadow] duration-200 ease-out",
-        "panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-[var(--glass-side,var(--surface))] panels:shadow-1",
+        "panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-[var(--glass-side,var(--surface))] panels:shadow-1 flush:border-e flush:border-line flush:bg-[var(--glass-side,var(--surface))]",
         "max-md:fixed max-md:inset-y-0 max-md:start-0 max-md:z-50 max-md:hidden max-md:w-[min(86vw,320px)] max-md:rounded-e-lg max-md:bg-surface max-md:shadow-2 max-md:data-[drawer=true]:flex",
         "w-[var(--side)] data-[rail=true]:w-[var(--rail)] data-[peek=true]:w-[272px] data-[peek=true]:rounded-lg data-[peek=true]:bg-surface data-[peek=true]:shadow-2",
       )}
