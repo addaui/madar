@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "collections": {
+    "spaces.spaces": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "created_by": {
+          "type": "string",
+          "index": true
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "created_by"
+      ]
+    },
+    "spaces.members": {
+      "type": "object",
+      "properties": {
+        "space": {
+          "type": "string",
+          "index": true
+        },
+        "subject": {
+          "type": "string",
+          "index": true
+        },
+        "access_level": {
+          "type": "string"
+        },
+        "display": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "space",
+        "subject",
+        "access_level"
+      ]
+    }
+  }
+}

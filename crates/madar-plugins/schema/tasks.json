@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "collections": {
+    "tasks.tasks": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string",
+          "index": true
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "number"
+        },
+        "due": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assignee": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "index": true
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "index": true
+        },
+        "position": {
+          "type": "number"
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer"
+        },
+        "completed_at": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "number": {
+          "type": "integer"
+        },
+        "custom": {
+          "type": "object",
+          "description": "Custom attribute values by attribute id, checked against the project's attributes"
+        },
+        "description": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Rich text, checked by the editor's shape rules"
+        },
+        "repeat": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "{every, unit}"
+        },
+        "repeat_of": {
+          "type": "string"
+        },
+        "repeats_into": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "project",
+        "title",
+        "status",
+        "position",
+        "archived",
+        "created_by",
+        "created_at",
+        "number"
+      ]
+    },
+    "tasks.labels": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "project",
+        "name"
+      ]
+    },
+    "tasks.counters": {
+      "type": "object",
+      "properties": {
+        "next": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "next"
+      ]
+    }
+  }
+}

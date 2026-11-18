@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "collections": {
+    "discussion.comments": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task": {
+          "type": "string",
+          "index": true
+        },
+        "page": {
+          "type": "string",
+          "index": true
+        },
+        "block": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "body": {
+          "description": "Plain text or rich text"
+        },
+        "author": {
+          "type": "string"
+        },
+        "author_display": {
+          "type": "string"
+        },
+        "at": {
+          "type": "integer"
+        },
+        "reply_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_reply_at": {
+          "type": "integer"
+        },
+        "participants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "author",
+        "at",
+        "reply_count",
+        "participants"
+      ]
+    }
+  }
+}

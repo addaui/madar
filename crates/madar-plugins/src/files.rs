@@ -62,7 +62,7 @@ impl Plugin for Files {
             "defines": {"extension_points": {"files.store": {"policy": "single",
                 "description": "Keep and return bytes. {action: put|get|delete, id, data (base64, for put)}; get answers {data}.",
                 "input": {"type":"object","required":["action","id"]}}}},
-            "data": {"collections": [FILES, USES], "version": 1, "indexes": [{"collection": FILES, "field": "owner"}, {"collection": FILES, "field": "project"}, {"collection": USES, "field": "from_key"}, {"collection": USES, "field": "file"}]},
+            "data": {"schema": schema(include_str!("../schema/files.json"))},
             "listeners": [{"id": "files.track", "on": ["pages.*", "tasks.*", "discussion.*"], "handler": "files.track"},
                            {"id": "files.project_gone", "on": ["projects.deleted"], "handler": "files.project_gone"}],
             "operations": {
@@ -212,7 +212,7 @@ impl Plugin for FilesDb {
             "description": "Keeps uploaded bytes in the database. Swap for a disk or bucket provider for big deployments.",
             "requires": {"plugins": ["@madar/files"]},
             "provides": [{"extension_point": "files.store"}],
-            "data": {"collections": [BLOBS], "version": 1}
+            "data": {"schema": schema(include_str!("../schema/files-db.json"))}
         }))
     }
     fn bind(&self, b: &mut Bindings) {

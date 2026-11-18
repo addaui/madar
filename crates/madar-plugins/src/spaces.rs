@@ -57,7 +57,7 @@ fn role_with(get: &dyn Fn(&str, &str) -> Result<Option<Doc>>, space: &str, subje
     if get(SPACES, space)?.is_none_or(|d| d.deleted) {
         return Ok(None);
     }
-    Ok(get(SPACE_MEMBERS, &member_id(space, subject))?.filter(|d| !d.deleted).map(|d| text(&d.body, "role").to_string()))
+    Ok(get(SPACE_MEMBERS, &member_id(space, subject))?.filter(|d| !d.deleted).map(|d| text(&d.body, "access_level").to_string()))
 }
 
 /// [`role_with`] for the read-only handle a resource or Scope gets.
@@ -92,14 +92,14 @@ fn grants(role: &str) -> Vec<String> {
 fn require_role(tx: &Tx, space: &str, wants: &[&str]) -> Result<()> {
     let me = tx.who().subject.clone();
     match tx.get(SPACE_MEMBERS, &member_id(space, &me))? {
-        Some(m) if tx.get(SPACES, space)?.is_some() && wants.contains(&text(&m.body, "role")) => Ok(()),
+        Some(m) if tx.get(SPACES, space)?.is_some() && wants.contains(&text(&m.body, "access_level")) => Ok(()),
         Some(_) => Err(Error::denied("spaces.manage")),
         None => Err(Error::not_found("space")),
     }
 }
 
 fn admins(tx: &Tx, space: &str) -> Result<usize> {
-    Ok(tx.query(SPACE_MEMBERS, &Query::new().eq("space", space).limit(500))?.items.iter().filter(|d| text(&d.body, "role") == "admin").count())
+    Ok(tx.query(SPACE_MEMBERS, &Query::new().eq("space", space).limit(500))?.items.iter().filter(|d| text(&d.body, "access_level") == "admin").count())
 }
 
 pub struct Spaces;
@@ -125,8 +125,7 @@ impl Plugin for Spaces {
                 "allowed_features": {"type": "array", "uniqueItems": true, "items": {"enum": ["@madar/tasks", "@madar/discussion", "@madar/pages", "@madar/audit", "@madar/export", "@madar/timeline"]},
                     "title": "Features a Space may use", "x-tier": "owner", "x-apply": "live",
                     "description": "A Space admin can switch these on or off for the Space. Leave empty to allow all of them."}}},
-            "data": {"collections": [SPACES, SPACE_MEMBERS], "reads": ["projects.projects"], "version": 1,
-                     "indexes": [{"collection": SPACES, "field": "created_by"}, {"collection": SPACE_MEMBERS, "field": "subject"}, {"collection": SPACE_MEMBERS, "field": "space"}]},
+            "data": {"schema": schema(include_str!("../schema/spaces.json")), "reads": {"projects.projects": ["space"]}},
             "permissions": {
                 "spaces.create": {"description": "Start a Space", "default": ["admin", "member"]},
                 "spaces.read": {"description": "See a Space and who is in it", "default": ["admin", "member", "viewer"]},
@@ -181,7 +180,7 @@ impl Plugin for Spaces {
             let mut mine = vec![];
             for m in tx.query(SPACE_MEMBERS, &Query::new().eq("subject", me.as_str()).limit(500))?.items {
                 if let Some(s) = tx.get(SPACES, text(&m.body, "space"))? {
-                    mine.push(json!({"id": s.id, "name": s.body["name"], "builtin": false, "role": m.body["role"]}));
+                    mine.push(json!({"id": s.id, "name": s.body["name"], "builtin": false, "role": m.body["access_level"]}));
                 }
             }
             mine.sort_by(|a, b| text(a, "name").to_lowercase().cmp(&text(b, "name").to_lowercase()));
@@ -195,7 +194,7 @@ impl Plugin for Spaces {
                 return Err(Error::reason(Category::Invalid, "spaces.too_many", "You have reached the number of Spaces one person may create"));
             }
             let s = tx.create(SPACES, json!({"name": i["name"], "created_by": me}))?;
-            tx.put(SPACE_MEMBERS, &member_id(&s.id, &me), json!({"space": s.id, "subject": me, "role": "admin", "display": tx.who().display}), Expect::Absent)?;
+            tx.put(SPACE_MEMBERS, &member_id(&s.id, &me), json!({"space": s.id, "subject": me, "access_level": "admin", "display": tx.who().display}), Expect::Absent)?;
             tx.emit("spaces.created", Audience::scope("spaces.members", &s.id), json!({"space": s.id, "name": s.body["name"]}))?;
             Ok(json!({"id": s.id, "name": s.body["name"], "builtin": false, "role": "admin"}))
         });
@@ -234,7 +233,7 @@ impl Plugin for Spaces {
         b.op("spaces.members", |tx, i| {
             let id = text(&i, "space");
             let all = tx.query(SPACE_MEMBERS, &Query::new().eq("space", id).asc("subject").limit(500))?;
-            let rows: Vec<Value> = all.items.iter().map(|d| json!({"subject": d.body["subject"], "role": d.body["role"], "display": d.body["display"]})).collect();
+            let rows: Vec<Value> = all.items.iter().map(|d| json!({"subject": d.body["subject"], "role": d.body["access_level"], "display": d.body["display"]})).collect();
             Ok(json!({"members": rows}))
         });
         b.op("spaces.share", |tx, i| {
@@ -250,12 +249,12 @@ impl Plugin for Spaces {
             };
             let mid = member_id(id, &who);
             let existing = tx.get(SPACE_MEMBERS, &mid)?;
-            if existing.as_ref().is_some_and(|d| text(&d.body, "role") == "admin") && role != "admin" && admins(tx, id)? <= 1 {
+            if existing.as_ref().is_some_and(|d| text(&d.body, "access_level") == "admin") && role != "admin" && admins(tx, id)? <= 1 {
                 return Err(Error::reason(Category::Conflict, "spaces.last_admin", "A Space keeps at least one admin; make someone else an admin first"));
             }
             let expect = existing.as_ref().map(|d| Expect::Rev(d.rev)).unwrap_or(Expect::Absent);
             let display = display.or_else(|| existing.as_ref().and_then(|d| d.body["display"].as_str().map(String::from)));
-            tx.put(SPACE_MEMBERS, &mid, json!({"space": id, "subject": who, "role": role, "display": display}), expect)?;
+            tx.put(SPACE_MEMBERS, &mid, json!({"space": id, "subject": who, "access_level": role, "display": display}), expect)?;
             tx.emit("spaces.shared", Audience::scope("spaces.members", id), json!({"space": id, "subject": who, "role": role, "by": tx.who().subject}))?;
             Ok(json!({}))
         });
@@ -317,7 +316,7 @@ fn features_of(tx: &mut Tx, id: &str) -> Result<Value> {
 fn remove(tx: &mut Tx, space: &str, subject: &str) -> Result<Value> {
     let mid = member_id(space, subject);
     let Some(m) = tx.get(SPACE_MEMBERS, &mid)? else { return Err(Error::not_found("member")) };
-    if text(&m.body, "role") == "admin" && admins(tx, space)? <= 1 {
+    if text(&m.body, "access_level") == "admin" && admins(tx, space)? <= 1 {
         return Err(Error::reason(Category::Conflict, "spaces.last_admin", "A Space keeps at least one admin; make someone else an admin first"));
     }
     tx.delete(SPACE_MEMBERS, &mid)?;

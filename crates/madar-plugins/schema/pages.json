@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "collections": {
+    "pages.pages": {
+      "type": "object",
+      "properties": {
+        "number": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Rich text"
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "folder": {
+          "type": "boolean"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "index": true
+        },
+        "position": {
+          "type": "number"
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "index": true
+        },
+        "space": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner": {
+          "type": "string",
+          "index": true
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer"
+        },
+        "updated_at": {
+          "type": "integer"
+        },
+        "settings": {
+          "type": "object",
+          "description": "Page style, checked by the plugin"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "title",
+        "folder",
+        "position",
+        "owner",
+        "created_by",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "pages.versions": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "string",
+          "index": true
+        },
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "at": {
+          "type": "integer"
+        },
+        "by": {
+          "type": "string"
+        },
+        "edited_at": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "page",
+        "at",
+        "by"
+      ]
+    },
+    "pages.counters": {
+      "type": "object",
+      "properties": {
+        "next": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "next"
+      ]
+    },
+    "pages.styles": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "settings": {
+          "type": "object",
+          "description": "Page style, checked by the plugin"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer"
+        },
+        "updated_at": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "settings",
+        "owner"
+      ]
+    }
+  }
+}

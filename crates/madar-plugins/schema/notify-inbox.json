@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "collections": {
+    "inbox.messages": {
+      "type": "object",
+      "properties": {
+        "to": {
+          "type": "string",
+          "index": true
+        },
+        "text": {
+          "type": "string"
+        },
+        "link": {
+          "description": "Where the message points, as the sender gave it"
+        },
+        "read": {
+          "type": "boolean"
+        },
+        "at": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "to",
+        "text",
+        "read",
+        "at"
+      ]
+    }
+  }
+}

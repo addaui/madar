@@ -377,9 +377,7 @@ impl Plugin for Shares {
             "settings_schema": {"type": "object", "additionalProperties": false, "properties": {
                 "base_domain": {"type": "string", "maxLength": 100, "title": "Base domain for Space sites", "x-tier": "owner", "x-apply": "live",
                     "description": "A Space site is shown at <name>.<this domain>. The operator points *.<this domain> at the server and allows it in the web server's host names."}}},
-            "data": {"collections": [SHARES, RELEASES, SNAPS, CONFIG], "reads": [PAGES, PROJECTS, FILES, spaces::SPACES, spaces::SPACE_MEMBERS], "version": 1,
-                     "indexes": [{"collection": SHARES, "field": "page"}, {"collection": SHARES, "field": "space"}, {"collection": SHARES, "field": "subdomain"},
-                                 {"collection": RELEASES, "field": "share"}, {"collection": SNAPS, "field": "rel"}]},
+            "data": {"schema": schema(include_str!("../schema/shares.json")), "reads": {"pages.pages": ["project", "parent", "title", "icon", "position", "folder", "body", "settings", "owner"], "projects.projects": ["name", "space"], "files.files": ["name", "type", "size"], "spaces.spaces": ["name"], "spaces.members": ["access_level"]}},
             "permissions": {"shares.create": {"description": "Share pages and manage your shares", "default": ["admin", "member"]},
                             "shares.read": {"description": "Read what was shared with the people who are signed in", "default": ["admin", "member", "viewer"]},
                             "shares.allow": {"description": "Allow or stop sharing from an instance that has no sign-in", "default": ["admin"]}},

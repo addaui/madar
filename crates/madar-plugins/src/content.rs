@@ -377,8 +377,7 @@ impl Plugin for Refs {
             "id": "@madar/refs", "version": "0.1.0", "name": "References", "namespaces": ["refs"],
             "description": "Remembers what refers to what, so every item can show what refers to it",
             "requires": {"plugins": ["@madar/projects"]},
-            "data": {"collections": [LINKS], "version": 1,
-                     "indexes": [{"collection": LINKS, "field": "from_key"}, {"collection": LINKS, "field": "to_key"}]},
+            "data": {"schema": schema(include_str!("../schema/refs.json"))},
             "operations": {
                 "refs.to": {"kind": "query", "description": "What refers to an item, inside one project", "permission": "projects.read",
                     "resource": {"type":"projects.project","id":"project"},

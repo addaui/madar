@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "collections": {
+    "projects.projects": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "unique": true
+        },
+        "space": {
+          "type": "string",
+          "index": true
+        },
+        "statuses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "color": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          }
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "An attribute definition, checked by the plugin"
+          }
+        },
+        "created_by": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "key",
+        "space",
+        "statuses",
+        "created_by"
+      ]
+    },
+    "projects.members": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string",
+          "index": true
+        },
+        "subject": {
+          "type": "string",
+          "index": true
+        },
+        "access_level": {
+          "type": "string"
+        },
+        "display": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "project",
+        "subject",
+        "access_level"
+      ]
+    }
+  }
+}

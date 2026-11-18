@@ -733,36 +733,10 @@ impl Plugin for Pages {
             "description": "A tree of rich-text pages: a project's Knowledge (knowledge.*) and your own Pages (pages.*)",
             "requires": {"plugins": ["@madar/projects", "@madar/spaces"], "capabilities": ["emit", "call"]},
             "provides": [{"extension_point": "search.source", "optional": true}],
-            "data": {"collections": [PAGES, VERSIONS, COUNTERS, STYLES], "version": 2,
-                     "indexes": [{"collection": PAGES, "field": "project"}, {"collection": PAGES, "field": "owner"}, {"collection": PAGES, "field": "parent"}, {"collection": VERSIONS, "field": "page"}]},
+            "data": {"schema": schema(include_str!("../schema/pages.json"))},
             "events": {"pages.created": {}, "pages.updated": {}, "pages.moved": {}, "pages.removed": {}, "pages.style.saved": {}, "pages.style.removed": {}},
             "operations": ops
         }))
-    }
-    fn migrate(&self, from: u32, tx: &mut Tx) -> Result<()> {
-        if from != 1 {
-            return Ok(());
-        }
-        // version 2: number each project's pages in the order they were made (notes have no project, so no number)
-        let all = tx.query(PAGES, &Query::new().asc("created_at").limit(20000))?.items;
-        let mut last: std::collections::BTreeMap<String, i64> = Default::default();
-        for d in &all {
-            if let (Some(n), Some(p)) = (d.body["number"].as_i64(), d.body["project"].as_str()) {
-                let e = last.entry(p.to_string()).or_insert(0);
-                *e = (*e).max(n);
-            }
-        }
-        for d in all.into_iter().filter(|d| d.body["number"].is_null() && d.body["project"].is_string()) {
-            let e = last.entry(text(&d.body, "project").to_string()).or_insert(0);
-            *e += 1;
-            let mut body = d.body.clone();
-            body["number"] = json!(*e);
-            tx.put(PAGES, &d.id, body, Expect::Rev(d.rev))?;
-        }
-        for (project, n) in last {
-            tx.put(COUNTERS, &project, json!({"next": n + 1}), Expect::Any)?;
-        }
-        Ok(())
     }
     fn bind(&self, b: &mut Bindings) {
         b.provide("search.source", |tx, i| {

@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "collections": {
+    "files.files": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "index": true
+        },
+        "owner": {
+          "type": "string",
+          "index": true
+        },
+        "created_at": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "size",
+        "owner",
+        "created_at"
+      ]
+    },
+    "files.uses": {
+      "type": "object",
+      "properties": {
+        "from_key": {
+          "type": "string",
+          "index": true
+        },
+        "file": {
+          "type": "string",
+          "index": true
+        }
+      },
+      "required": [
+        "from_key",
+        "file"
+      ]
+    }
+  }
+}

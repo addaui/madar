@@ -2,6 +2,13 @@
 use nuah_kernel::*;
 use serde_json::{json, Value};
 
+/// A plugin's schema file, embedded in the program ([ADR 0091]).
+///
+/// [ADR 0091]: https://docs.addaui.com/nuah/adr/0091-plugins-declare-one-schema-nuah-upgrades-their-data-from-it-and-refuses-changes-that-would-lose-data/
+pub fn schema(src: &str) -> Value {
+    serde_json::from_str(src).expect("an embedded schema file is JSON")
+}
+
 pub fn manifest(v: Value) -> Manifest {
     serde_json::from_value(v).expect("madar manifest")
 }

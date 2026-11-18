@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "collections": {
+    "audit.entries": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "index": true
+        },
+        "kind": {
+          "type": "string"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "at": {
+          "type": "integer"
+        },
+        "data": {
+          "type": "object",
+          "description": "What the event said, as recorded"
+        }
+      },
+      "required": [
+        "kind",
+        "actor",
+        "at"
+      ]
+    }
+  }
+}

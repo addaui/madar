@@ -19,7 +19,7 @@ impl Plugin for Audit {
             "description": "A history of everything that happened in a project, for its owners",
             "requires": {"plugins": ["@madar/projects"]},
             "provides": [{"extension_point": "timeline.source", "optional": true}],
-            "data": {"collections": [ENTRIES], "version": 1, "indexes": [{"collection": ENTRIES, "field": "project"}]},
+            "data": {"schema": schema(include_str!("../schema/audit.json"))},
             "operations": {
                 "audit.list": {"kind": "query", "description": "The history of a project (owners only)", "permission": "projects.manage", "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project"],"properties":{"project":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":500},"after":{"type":"integer","minimum":0}},"additionalProperties":false},
@@ -98,7 +98,7 @@ impl Plugin for Quota {
             "id": "@madar/quota", "version": "0.2.0", "name": "Quota", "namespaces": ["quota"],
             "description": "Limits how many tasks a project holds",
             "requires": {"plugins": ["@madar/tasks"]},
-            "data": {"reads": ["tasks.tasks"]},
+            "data": {"reads": {"tasks.tasks": ["project", "archived"]}},
             "settings_schema": {"type":"object","properties":{"max_tasks":{"type":"integer","minimum":1,"maximum":1000000}},"additionalProperties":false},
             "hooks": [{"stage": "before", "on": "tasks.create", "order": 20, "handler": "quota.check", "reasons": {"quota.exceeded": "The project is full"}}]
         }))
@@ -201,7 +201,7 @@ impl Plugin for NotifyInbox {
             "description": "Keeps messages for each person to read in the app",
             "requires": {"plugins": ["@madar/notify"], "capabilities": ["emit"]},
             "provides": [{"extension_point": "notify.channel"}],
-            "data": {"collections": [MESSAGES], "version": 1, "indexes": [{"collection": MESSAGES, "field": "to"}]},
+            "data": {"schema": schema(include_str!("../schema/notify-inbox.json"))},
             "events": {"inbox.received": {}},
             "operations": {
                 "inbox.list": {"kind": "query", "description": "Your notifications", "input": {"type":"object","properties":{"unread":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200}},"additionalProperties":false},

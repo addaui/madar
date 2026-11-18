@@ -52,7 +52,7 @@ impl Plugin for Discussion {
             "description": "Comments on tasks and pages with threads (one level of replies), and updates",
             "provides": [{"extension_point": "timeline.source", "optional": true}],
             "requires": {"plugins": ["@madar/projects", "@madar/tasks"], "capabilities": ["emit", "call"]},
-            "data": {"collections": [COMMENTS], "version": 1, "indexes": [{"collection": COMMENTS, "field": "task"}, {"collection": COMMENTS, "field": "page"}]},
+            "data": {"schema": schema(include_str!("../schema/discussion.json"))},
             "events": {"discussion.added": {}, "discussion.removed": {}},
             "operations": {
                 "discussion.add": {"kind": "command", "description": "Write a comment or an update on a task", "permission": "projects.write", "resource": {"type":"projects.project","id":"project"},

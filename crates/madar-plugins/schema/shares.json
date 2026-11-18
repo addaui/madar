@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "collections": {
+    "shares.shares": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "page",
+            "space"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "page": {
+          "type": "string",
+          "index": true
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "space": {
+          "type": "string",
+          "index": true
+        },
+        "subdomain": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "index": true
+        },
+        "audience": {
+          "type": "string"
+        },
+        "pin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "subject"
+            ],
+            "properties": {
+              "subject": {
+                "type": "string"
+              },
+              "display": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "mode": {
+          "type": "string"
+        },
+        "release": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "include_children": {
+          "type": "boolean"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "audience",
+        "mode",
+        "release",
+        "include_children",
+        "created_by",
+        "created_at"
+      ]
+    },
+    "shares.releases": {
+      "type": "object",
+      "properties": {
+        "share": {
+          "type": "string",
+          "index": true
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "at": {
+          "type": "integer"
+        },
+        "by": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sig": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "share",
+        "number",
+        "at",
+        "by",
+        "count",
+        "sig"
+      ]
+    },
+    "shares.snapshots": {
+      "type": "object",
+      "properties": {
+        "share": {
+          "type": "string"
+        },
+        "rel": {
+          "type": "string",
+          "index": true
+        },
+        "release": {
+          "type": "integer"
+        },
+        "item": {
+          "type": "object",
+          "description": "One shared page as it was released"
+        }
+      },
+      "required": [
+        "share",
+        "rel",
+        "release",
+        "item"
+      ]
+    },
+    "shares.config": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string"
+        },
+        "at": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "by",
+        "at"
+      ]
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "collections": {
+    "files-db.blobs": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "string",
+          "description": "The file, base64"
+        }
+      },
+      "required": [
+        "data"
+      ]
+    }
+  }
+}

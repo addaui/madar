@@ -159,8 +159,7 @@ impl Plugin for Tasks {
             "provides": [{"extension_point": "prefs.item", "optional": true}, {"extension_point": "search.source", "optional": true}],
             "description": "Tasks on a board: columns, order, subtasks, labels, and a Today view",
             "requires": {"plugins": ["@madar/projects"], "capabilities": ["emit", "call"]},
-            "data": {"collections": [TASKS, LABELS, COUNTERS], "version": 3,
-                     "indexes": [{"collection": TASKS, "field": "project"}, {"collection": TASKS, "field": "assignee"}, {"collection": TASKS, "field": "parent"}]},
+            "data": {"schema": schema(include_str!("../schema/tasks.json"))},
             "events": {
                 "tasks.created": {}, "tasks.recurred": {}, "tasks.updated": {}, "tasks.moved": {}, "tasks.removed": {},
                 "tasks.assigned": {}, "tasks.completed": {}, "tasks.label_created": {}, "tasks.label_removed": {}
@@ -226,44 +225,6 @@ impl Plugin for Tasks {
         }))
     }
 
-    fn migrate(&self, from: u32, tx: &mut Tx) -> Result<()> {
-        // version 3: the plain `notes` text became the first paragraphs of the rich `description`
-        if from < 3 {
-            for d in tx.query(TASKS, &Query::new().limit(20000))?.items.into_iter().filter(|d| d.body.get("notes").is_some()) {
-                let mut body = d.body.clone();
-                let notes = text(&d.body, "notes").to_string();
-                if !notes.trim().is_empty() && body.get("description").map_or(true, |x| x.is_null()) {
-                    let paragraphs: Vec<Value> = notes.split('\n').map(|l| if l.is_empty() { json!({"type": "paragraph"}) } else { json!({"type": "paragraph", "content": [{"type": "text", "text": l}]}) }).collect();
-                    body["description"] = json!({"type": "doc", "content": paragraphs});
-                }
-                body.as_object_mut().map(|o| o.remove("notes"));
-                tx.put(TASKS, &d.id, body, Expect::Rev(d.rev))?;
-            }
-        }
-        if from != 1 {
-            return Ok(());
-        }
-        // version 2: number the tasks of each project in the order they were made
-        let all = tx.query(TASKS, &Query::new().asc("created_at").limit(20000))?.items;
-        let mut last: std::collections::BTreeMap<String, i64> = Default::default();
-        for d in &all {
-            if let Some(n) = d.body["number"].as_i64() {
-                let e = last.entry(text(&d.body, "project").to_string()).or_insert(0);
-                *e = (*e).max(n);
-            }
-        }
-        for d in all.into_iter().filter(|d| d.body["number"].is_null()) {
-            let e = last.entry(text(&d.body, "project").to_string()).or_insert(0);
-            *e += 1;
-            let mut body = d.body.clone();
-            body["number"] = json!(*e);
-            tx.put(TASKS, &d.id, body, Expect::Rev(d.rev))?;
-        }
-        for (project, n) in last {
-            tx.put(COUNTERS, &project, json!({"next": n + 1}), Expect::Any)?;
-        }
-        Ok(())
-    }
     fn bind(&self, b: &mut Bindings) {
         b.provide("prefs.item", |_tx, _i| {
             Ok(nuah_prefs::pref_answer(vec![

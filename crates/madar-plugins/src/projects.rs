@@ -70,7 +70,7 @@ fn effective_level(tx: &Tx, project: &Doc, subject: &str) -> Result<Option<Strin
 }
 
 fn level_of(tx: &Tx, project: &str, subject: &str) -> Result<Option<String>> {
-    Ok(tx.get(MEMBERS, &member_id(project, subject))?.map(|d| text(&d.body, "level").to_string()))
+    Ok(tx.get(MEMBERS, &member_id(project, subject))?.map(|d| text(&d.body, "access_level").to_string()))
 }
 
 fn project_view(d: &Doc, level: &str) -> Value {
@@ -153,8 +153,7 @@ impl Plugin for Projects {
             "provides": [{"extension_point": "prefs.item", "optional": true}],
             "description": "Projects, their members and Access levels",
             "requires": {"plugins": ["@madar/spaces"], "capabilities": ["emit"]},
-            "data": {"collections": [PROJECTS, MEMBERS], "reads": [spaces::SPACES, SPACE_MEMBERS], "version": 3,
-                     "indexes": [{"collection": MEMBERS, "field": "subject"}, {"collection": MEMBERS, "field": "project"}, {"collection": PROJECTS, "field": "space"}]},
+            "data": {"schema": schema(include_str!("../schema/projects.json")), "reads": {"spaces.spaces": [], "spaces.members": ["space", "subject", "access_level", "display"]}},
             "permissions": {
                 "projects.create": {"description": "Start a project", "default": ["admin", "member"]},
                 "projects.read": {"description": "See a project and everything in it", "default": ["admin", "member", "viewer"]},
@@ -204,20 +203,6 @@ impl Plugin for Projects {
         }))
     }
 
-    fn migrate(&self, from: u32, tx: &mut Tx) -> Result<()> {
-        if from != 1 {
-            return Ok(());
-        }
-        // version 2: every project gets a key made from its name
-        let all = tx.query(PROJECTS, &Query::new().asc("name").limit(5000))?.items;
-        for d in all.into_iter().filter(|d| d.body.get("key").is_none_or(|k| k.is_null())) {
-            let key = fresh_key(tx, text(&d.body, "name"), &d.id)?;
-            let mut body = d.body.clone();
-            body["key"] = json!(key);
-            tx.put(PROJECTS, &d.id, body, Expect::Rev(d.rev))?;
-        }
-        Ok(())
-    }
     fn bind(&self, b: &mut Bindings) {
         b.provide("prefs.item", |_tx, _i| {
             Ok(nuah_prefs::pref_answer(vec![json!({"key": "projects.default_tab", "group": "behaviour", "type": "choice", "default": "board",
@@ -226,7 +211,7 @@ impl Plugin for Projects {
         });
         b.resource("projects.project", |db, who, id| {
             let Some(p) = db.get(PROJECTS, id)?.filter(|d| !d.deleted) else { return Ok(None) };
-            let direct = db.get(MEMBERS, &member_id(id, &who.subject))?.filter(|d| !d.deleted).map(|d| text(&d.body, "level").to_string());
+            let direct = db.get(MEMBERS, &member_id(id, &who.subject))?.filter(|d| !d.deleted).map(|d| text(&d.body, "access_level").to_string());
             Ok(best(direct, space_level(db, &p.body, &who.subject)?).map(|l| grants(&l)))
         });
         b.scope("projects.members", |db, id, subject| {
@@ -252,7 +237,7 @@ impl Plugin for Projects {
                 return Err(Error::not_found("space"));
             }
             let p = tx.create(PROJECTS, json!({"name": i["name"], "key": key, "space": space, "statuses": statuses, "attributes": attributes, "created_by": me}))?;
-            tx.put(MEMBERS, &member_id(&p.id, &me), json!({"project": p.id, "subject": me, "level": "owner", "display": tx.who().display}), Expect::Absent)?;
+            tx.put(MEMBERS, &member_id(&p.id, &me), json!({"project": p.id, "subject": me, "access_level": "owner", "display": tx.who().display}), Expect::Absent)?;
             tx.emit("projects.created", Audience::scope("projects.members", &p.id), json!({"project": p.id, "name": p.body["name"]}))?;
             Ok(project_view(&p, "owner"))
         });
@@ -369,11 +354,11 @@ impl Plugin for Projects {
             let who = who.as_str();
             let mid = member_id(id, who);
             let existing = tx.get(MEMBERS, &mid)?;
-            if existing.as_ref().is_some_and(|d| text(&d.body, "level") == "owner") {
+            if existing.as_ref().is_some_and(|d| text(&d.body, "access_level") == "owner") {
                 return Err(Error::reason(Category::Conflict, "projects.owner_fixed", "The owner's level cannot be changed"));
             }
             let expect = existing.as_ref().map(|d| Expect::Rev(d.rev)).unwrap_or(Expect::Absent);
-            tx.put(MEMBERS, &mid, json!({"project": id, "subject": who, "level": level, "display": display}), expect)?;
+            tx.put(MEMBERS, &mid, json!({"project": id, "subject": who, "access_level": level, "display": display}), expect)?;
             tx.emit("projects.shared", Audience::scope("projects.members", id), json!({"project": id, "subject": who, "level": level, "by": tx.who().subject}))?;
             Ok(json!({}))
         });
@@ -387,13 +372,13 @@ impl Plugin for Projects {
             let p = tx.get(PROJECTS, id)?.ok_or_else(|| Error::not_found("project"))?;
             let mut rows: std::collections::BTreeMap<String, Value> = Default::default();
             for d in tx.query(MEMBERS, &Query::new().eq("project", id).asc("subject").limit(500))?.items {
-                rows.insert(text(&d.body, "subject").to_string(), json!({"subject": d.body["subject"], "level": d.body["level"], "display": d.body["display"], "via": "project"}));
+                rows.insert(text(&d.body, "subject").to_string(), json!({"subject": d.body["subject"], "level": d.body["access_level"], "display": d.body["display"], "via": "project"}));
             }
             // everyone in the project's Space is in the project too, at the level the Space gives (never lower than their own row)
             let space = space_of(&p.body);
             if space != PERSONAL {
                 for m in tx.query(SPACE_MEMBERS, &Query::new().eq("space", space).limit(500))?.items {
-                    let (who, level) = (text(&m.body, "subject").to_string(), spaces::level_for(text(&m.body, "role")));
+                    let (who, level) = (text(&m.body, "subject").to_string(), spaces::level_for(text(&m.body, "access_level")));
                     match rows.get_mut(&who) {
                         Some(row) if rank(text(row, "level")) >= rank(level) => {}
                         Some(row) => {
@@ -427,7 +412,7 @@ impl Plugin for Projects {
 fn remove_member(tx: &mut Tx, project: &str, subject: &str) -> Result<Value> {
     let mid = member_id(project, subject);
     let Some(m) = tx.get(MEMBERS, &mid)? else { return Err(Error::not_found("member")) };
-    if text(&m.body, "level") == "owner" {
+    if text(&m.body, "access_level") == "owner" {
         return Err(Error::reason(Category::Conflict, "projects.owner_fixed", "The owner cannot be removed"));
     }
     tx.delete(MEMBERS, &mid)?;
