@@ -406,7 +406,7 @@ describe("the editor on a Live document", () => {
     ed.destroy();
   });
 
-  it("the browser binding and the server read the same JSON (writes fixtures/live-layout.json for the Rust side)", async () => {
+  it("the browser binding and the server read the same JSON (UPDATE_FIXTURES=1 writes fixtures/live-layout.json for the Rust side)", async () => {
     const out: { name: string; snapshot: string; json: any }[] = [];
     for (const f of docs.filter((d) => d.model && d.server)) {
       const doc = new (L().LoroDoc)();
@@ -418,6 +418,8 @@ describe("the editor on a Live document", () => {
       ed.destroy();
     }
     expect(out.length).toBeGreaterThan(10);
+    // block ids and Loro peers are random, so the file is written only when asked (UPDATE_FIXTURES=1), like the other shared fixtures
+    if (!process.env.UPDATE_FIXTURES) return;
     const { writeFileSync } = await import("node:fs");
     writeFileSync(resolve(root, "fixtures", "live-layout.json"), JSON.stringify({ note: "Written by web/src/features/pages/editor/engine.test.ts: Loro snapshots made by the browser binding, read by the server in crates/madar-plugins/tests.", documents: out }, null, 1) + "\n");
   });
