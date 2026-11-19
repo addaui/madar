@@ -40,9 +40,9 @@ export function compareDocs(before: unknown, after: unknown): BlockDiff[] {
   let i = 0, j = 0;
   const flush = (x: number, y: number) => {
     const gone = a.slice(i, x), fresh = b.slice(j, y);
-    // blocks without ids that were edited: removed then added in the same place reads as one changed block
+    // a block that had no id on one side (it got one later), removed then added in the same place, reads as one changed block
     const n = Math.min(gone.length, fresh.length);
-    for (let k = 0; k < n && !gone[k].id && !fresh[k].id; k++) { out.push({ kind: "changed", text: fresh[k].text, words: compareWords(gone[k].text, fresh[k].text) }); gone[k] = null as never; fresh[k] = null as never; }
+    for (let k = 0; k < n && (!gone[k].id || !fresh[k].id); k++) { out.push({ kind: "changed", text: fresh[k].text, words: compareWords(gone[k].text, fresh[k].text) }); gone[k] = null as never; fresh[k] = null as never; }
     for (const g of gone) if (g) out.push({ kind: "removed", text: g.text });
     for (const f of fresh) if (f) out.push({ kind: "added", text: f.text });
     i = x; j = y;

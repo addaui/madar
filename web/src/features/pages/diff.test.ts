@@ -21,4 +21,10 @@ describe("comparing two versions of a page", () => {
     expect(out[0].kind).toBe("changed");
     expect(out[0].words!.some((w) => w.op === "added" && w.text.includes("يا"))).toBe(true);
   });
+  it("a block that got its id later is compared word by word, not as removed and added", () => {
+    const q = (text: string) => ({ type: "paragraph", content: [{ type: "text", text }] });
+    const out = compareDocs(doc(q("Hello from the server.")), doc(p("b1", "[B] Hello from the server [A].")));
+    expect(out.map((b) => b.kind)).toEqual(["changed"]);
+  });
 });
+
