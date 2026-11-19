@@ -13,6 +13,7 @@ import { lazy } from "react";
 const OverlayHost = lazy(() => import("../ui/OverlayHost").then((m) => ({ default: m.OverlayHost })));
 import { AppRouter } from "./router";
 import { link } from "../api/link";
+import { forgetThisDevice } from "./offline";
 import { siteSubdomain } from "../features/reader/host";
 const Reader = lazy(() => import("../features/reader/Reader").then((m) => ({ default: m.Reader })));
 
@@ -21,7 +22,8 @@ function Gate() {
   const qc = useQueryClient();
   const describe = useDescribe();
   useEffect(() => {
-    const out = () => void qc.invalidateQueries({ queryKey: ["describe"] });
+    // the session is gone: what this device kept for the person goes too (ADR 0093)
+    const out = () => void forgetThisDevice(qc).then(() => qc.invalidateQueries({ queryKey: ["describe"] }));
     const reload = () => location.reload();
     addEventListener("madar:unauthenticated", out);
     addEventListener("madar:incompatible", reload);

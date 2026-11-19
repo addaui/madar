@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { forgetThisDevice } from "./offline";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { lazy, Suspense } from "react";
@@ -173,7 +174,8 @@ function Foot() {
   const who = d.who;
   if (!who) return null;
   // the session is the cookie; the generated input names a token, which only bearer use needs
-  const signOut = async () => { await link.call("auth.sign_out", {} as never); await qc.invalidateQueries(); };
+  // what this device kept for offline is the person's: it goes with them
+  const signOut = async () => { await link.call("auth.sign_out", {} as never); await forgetThisDevice(qc); await qc.invalidateQueries(); };
   return (
     <div className="flex items-center gap-2 px-2.5 py-1.5 group-data-[rail=true]/side:flex-col group-data-[rail=true]/side:px-2">
       <div className="flex min-w-0 flex-1 items-center gap-[9px] group-data-[rail=true]/side:flex-none">

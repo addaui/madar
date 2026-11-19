@@ -10,7 +10,11 @@ export default defineConfig({
   base: "/faces/web-react/",
   plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss()],
   resolve: { dedupe: ["react", "react-dom"] },
+  // a build's own id: what this device kept for offline is forgotten when a new build arrives (src/app/offline.ts)
+  define: { __MADAR_BUILD__: JSON.stringify(process.env.MADAR_BUILD ?? new Date().toISOString()) },
   build: {
+    // the list of the build's files, so the service worker can keep all of them for offline (public/sw.js)
+    manifest: "asset-manifest.json",
     outDir: "../faces/madar/web-react",
     emptyOutDir: true,
     target: "es2023",
