@@ -8,6 +8,13 @@ use crate::util::*;
 use nuah_kernel::*;
 use serde_json::{json, Value};
 
+/// The Space a personal page belongs to. A page stored without one is in the person's own Space (`default`): that is
+/// how an instance that switched Spaces on only later keeps every earlier page where its owner finds it. Intended, not a
+/// leftover; the one place this rule is written.
+pub fn space_of(body: &Value) -> &str {
+    body.get("space").and_then(|x| x.as_str()).unwrap_or("default")
+}
+
 pub const PAGES: &str = "pages.pages";
 pub const VERSIONS: &str = "pages.versions";
 pub const COUNTERS: &str = "pages.counters";
@@ -22,7 +29,7 @@ const KIND: &str = "pages.page";
 fn view(d: &Doc, with_body: bool) -> Value {
     let b = &d.body;
     let mut v = json!({
-        "id": d.id, "rev": d.rev, "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"], "icon": b["icon"], "space": if b["project"].is_null() { b.get("space").cloned().unwrap_or_else(|| json!("default")) } else { Value::Null }, "folder": b.get("folder").cloned().unwrap_or(json!(false)), "parent": b["parent"], "position": b["position"],
+        "id": d.id, "rev": d.rev, "number": b.get("number").cloned().unwrap_or(Value::Null), "title": b["title"], "icon": b["icon"], "space": if b["project"].is_null() { json!(space_of(b)) } else { Value::Null }, "folder": b.get("folder").cloned().unwrap_or(json!(false)), "parent": b["parent"], "position": b["position"],
         "project": b["project"], "created_by": b["created_by"], "created_at": b["created_at"], "updated_at": b["updated_at"], "settings": b.get("settings").cloned().unwrap_or_else(|| json!({})),
         "tags": b.get("tags").cloned().unwrap_or_else(|| json!([])),
     });
@@ -151,7 +158,7 @@ fn create(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
         if folder && up.body.get("folder") != Some(&json!(true)) {
             return Err(Error::reason(Category::Invalid, "pages.bad_parent", "A folder goes inside a folder"));
         }
-        space = up.body.get("space").and_then(|x| x.as_str()).unwrap_or("default").to_string();
+        space = space_of(&up.body).to_string();
         if depth_of(tx, &s, Some(p.clone()))? + 1 > MAX_DEPTH {
             return Err(Error::reason(Category::Invalid, "pages.too_deep", "Pages can be nested 12 levels deep"));
         }
@@ -183,7 +190,7 @@ fn list(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let page = tx.query(PAGES, &s.query().asc("position").limit(2000))?;
     // your own pages of one Space (a page from before Spaces belongs to the default one)
     let want = i.get("space").and_then(|x| x.as_str());
-    Ok(json!({"pages": page.items.iter().filter(|d| want.is_none_or(|w| d.body.get("space").and_then(|x| x.as_str()).unwrap_or("default") == w)).map(|d| view(d, false)).collect::<Vec<_>>()}))
+    Ok(json!({"pages": page.items.iter().filter(|d| want.is_none_or(|w| space_of(&d.body) == w)).map(|d| view(d, false)).collect::<Vec<_>>()}))
 }
 
 fn snapshot(tx: &mut Tx, old: &Doc, force: bool) -> Result<()> {
@@ -479,7 +486,7 @@ fn page_tasks(tx: &mut Tx, i: &Value) -> Result<Value> {
         }
     };
     for d in tx.query(PAGES, &Query::new().eq("owner", me.as_str()).eq("project", Value::Null).limit(2000))?.items {
-        if want.is_none_or(|w| d.body.get("space").and_then(|x| x.as_str()).unwrap_or("default") == w) {
+        if want.is_none_or(|w| space_of(&d.body) == w) {
             take(&d, None, &mut rows);
         }
     }
@@ -549,7 +556,7 @@ fn set_space(tx: &mut Tx, i: &Value) -> Result<Value> {
     let s = Scope::of(tx, i, true);
     let page = get(tx, &s, text(i, "id"))?;
     let space = text(i, "space").to_string();
-    if page.body.get("space").and_then(|x| x.as_str()).unwrap_or("default") == space {
+    if space_of(&page.body) == space {
         return Ok(view(&page, false));
     }
     known_space(tx, &space)?;
@@ -757,7 +764,7 @@ impl Plugin for Pages {
                 if let Some((score, snippet)) = found {
                     items.push(json!({"kind": kind, "id": d.id, "title": d.body["title"], "snippet": snippet, "score": score, "tags": d.body.get("tags").cloned().unwrap_or_else(|| json!([])),
                         "project": project.map(|p| p["id"].clone()).unwrap_or(Value::Null), "project_name": project.map(|p| p["name"].clone()).unwrap_or(Value::Null),
-                        "space": if project.is_none() { d.body.get("space").cloned().unwrap_or_else(|| json!("default")) } else { Value::Null }}));
+                        "space": if project.is_none() { json!(space_of(&d.body)) } else { Value::Null }}));
                 }
             };
             for p in projects["projects"].as_array().cloned().unwrap_or_default() {
