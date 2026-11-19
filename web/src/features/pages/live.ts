@@ -4,11 +4,12 @@
  * @nuah/live-doc; this file connects it to the Link (the page's operations), to Pulse (body updates and Presence arrive as Signals), to the
  * browser's storage, and to the editor bundle's Loro (one WebAssembly instance for both).
  */
+import { CursorEphemeralStore } from "loro-prosemirror";
+import { sharedLoro } from "./editorHost";
 import { idbStore, LiveDoc, type LiveTransport } from "@nuah/live-doc";
 import type { PulseSignal } from "@nuah/link-client";
 import { NuahError } from "@nuah/link-client";
 import { link } from "../../api/link";
-import { loadEditorBundle } from "./LegacyEditor";
 import { inputOf, opOf, type PageScope } from "./scope";
 
 export const toB64 = (b: Uint8Array): string => {
@@ -74,12 +75,10 @@ export async function openLive(scope: PageScope, id: string, me: { subject: stri
   let p = sessions.get(id);
   if (!p) {
     p = (async () => {
-      await loadEditorBundle();
-      const M = window.MadarEditor as unknown as { ready(url?: string): Promise<void>; loro: { LoroDoc: never; VersionVector: never; CursorEphemeralStore: new (peer: string, timeout?: number) => Open["presence"] } };
-      await M.ready(import.meta.env.BASE_URL + "loro.wasm");
-      const live = await LiveDoc.open(`${scope.project ?? "me"}:${id}`, { transport: transportFor(scope, id), store, loro: M.loro, isRejection });
+      const loro = (await sharedLoro()) as unknown as { LoroDoc: never; VersionVector: never };
+      const live = await LiveDoc.open(`${scope.project ?? "me"}:${id}`, { transport: transportFor(scope, id), store, loro, isRejection });
       const peer = live.doc.peerIdStr;
-      const presence = new M.loro.CursorEphemeralStore(peer, 30_000);
+      const presence = new CursorEphemeralStore(peer as never, 30_000) as unknown as Open["presence"];
       live.setEphemeral(presence as never);
       const user = { name: me.display, color: colorOf(me.subject) };
       presence.setLocal({ user });

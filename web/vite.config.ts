@@ -9,7 +9,9 @@ const core = process.env.NUAH_CORE ?? "http://127.0.0.1:3941";
 export default defineConfig({
   base: "/faces/web-react/",
   plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss()],
-  resolve: { dedupe: ["react", "react-dom"] },
+  // one Loro on the page: every import of loro-crdt (the Live documents, loro-prosemirror's Presence) is its web build, started with the
+  // Face's loro.wasm and shared with the editor and its element plugins (ADR 0093, 0095); tests keep Node's build
+  resolve: { dedupe: ["react", "react-dom"], alias: process.env.VITEST ? [] : [{ find: /^loro-crdt$/, replacement: "loro-crdt/web" }] },
   // a build's own id: what this device kept for offline is forgotten when a new build arrives (src/app/offline.ts)
   define: { __MADAR_BUILD__: JSON.stringify(process.env.MADAR_BUILD ?? new Date().toISOString()) },
   build: {

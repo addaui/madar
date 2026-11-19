@@ -1,4 +1,6 @@
-import { useRead } from "../../../api/hooks";
+import { useState } from "react";
+import { PointPopover } from "../../../ui/PointPopover";
+import { useKinds } from "./kinds";
 import type { Page } from "../../../api/types";
 import { useI18n, type Key } from "../../../i18n/i18n";
 import { cn } from "../../../lib/cn";
@@ -9,7 +11,7 @@ import type { PageScope } from "../scope";
 import type { PageSettings } from "../style/settings";
 import { stickerStore, useStickerState } from "../stickers/store";
 import { OptionControl } from "./OptionControl";
-import { optionsOf, resetValueOf, resolveOption, type BlockDecl, type OptionDecl, type PageDefaults } from "./options";
+import { blocksOf, optionsOf, resetValueOf, resolveOption, type OptionDecl, type PageDefaults } from "./options";
 import { elementStore, useElementState } from "./store";
 import { shownIn, STICKER_OPTIONS } from "./stickerOptions";
 
@@ -22,14 +24,22 @@ const ICONS: Record<string, string> = { paragraph: "type", heading: "heading-1",
  */
 export function ElementTab({ page, writer }: { page: Page; scope?: PageScope; writer: boolean }) {
   const { t, lang } = useI18n();
-  const blocks = (useRead("editor.blocks").data as { blocks: BlockDecl[] }).blocks;
+  const kinds = useKinds();
+  const blocks = blocksOf(kinds);
+  const [open, setOpen] = useState<{ id: string; x: number; y: number } | null>(null);
   const { ctx, api, pick } = useElementState();
   const { selected, list, control } = useStickerState();
   const sticker = selected ? list.find((s) => s.id === selected) : undefined;
   if (sticker && control) return <StickerOptionsPanel sticker={sticker} writer={writer} />;
   if (!ctx || !api) return <p className="m-0 text-[13px] text-muted-foreground">{t("elementNone")}</p>;
   const at = Math.min(pick, ctx.chain.length - 1), el = ctx.chain[at]!;
-  const opts = optionsOf(blocks, el.node);
+  // an element (a card) is known by its kind; its options come with the context, its values live in its settings (ADR 0094)
+  const key = el.kind ?? el.node;
+  const all = el.options ?? optionsOf(blocks, key);
+  const pinned = all.filter((o) => o.pinned), rest = all.filter((o) => !o.pinned);
+  const values = (el.kind ? (el.attrs.data as Record<string, unknown> | undefined) ?? {} : el.attrs);
+  const write = (o: OptionDecl, v: unknown) => { if (el.id && api.setOption) api.setOption(el.id, o.id, v); else api.setAttrs(el.pos, { [o.attr ?? o.id]: v }); };
+  const label = (node: string, kind?: string | null) => { const k = kind ? kinds.find((x) => x.kind === kind) : undefined; return k ? (lang === "ar" && k.label.ar) || k.label.en : t(("node_" + node) as Key); };
   const settings = (page.settings ?? {}) as PageSettings & { elements?: PageDefaults };
   const defaults = settings.elements;
   return (
@@ -41,25 +51,46 @@ export function ElementTab({ page, writer }: { page: Page; scope?: PageScope; wr
             return (
               <span key={c.pos + c.node} className="flex items-center gap-1">
                 {i > 0 && <Icon name="chevron" className="size-3 text-muted-foreground rtl:-scale-x-100" />}
-                <BaseButton onPress={() => elementStore.set({ pick: idx })} aria-current={idx === at ? "true" : undefined} className={cn("rounded-sm px-1.5 py-0.5 hoverable", idx === at ? "bg-soft font-semibold text-text" : "text-muted-foreground")}>{t(("node_" + c.node) as Key)}</BaseButton>
+                <BaseButton onPress={() => elementStore.set({ pick: idx })} aria-current={idx === at ? "true" : undefined} className={cn("rounded-sm px-1.5 py-0.5 hoverable", idx === at ? "bg-soft font-semibold text-text" : "text-muted-foreground")}>{label(c.node, c.kind)}</BaseButton>
               </span>
             );
           })}
         </nav>
       )}
-      <Heading kind={el.node} />
-      {opts.length === 0 ? <p className="m-0 text-[13px] text-muted-foreground">{t("elementNoOptions")}</p> : (
-        <Section title={t("elementThis", { type: t(("node_" + el.node) as Key) })}>
-          {opts.map((o) => {
-            const r = resolveOption(o, el.node, el.attrs, defaults);
+      <Heading kind={el.node} title={label(el.node, el.kind)} />
+      {all.length === 0 ? <p className="m-0 text-[13px] text-muted-foreground">{t("elementNoOptions")}</p> : (
+        <Section title={t("elementThis", { type: label(el.node, el.kind) })}>
+          {(pinned.length ? pinned : all.slice(0, 2)).map((o) => {
+            const r = resolveOption(o, key, values, defaults);
             return (
               <Opt key={o.id} icon={ICONS[el.node] ?? "type"} label={optionLabel(o, lang)} stacked={isWide(o)} set={r.source === "element"} writer={writer} revert={t("revertOption")}
-                onRevert={() => api.setAttrs(el.pos, { [o.attr ?? o.id]: resetValueOf(o) })}>
+                onRevert={() => write(o, resetValueOf(o))}>
                 <Source source={r.source} />
-                <OptionControl opt={o} value={r.value} disabled={!writer} onChange={(v) => api.setAttrs(el.pos, { [o.attr ?? o.id]: v })} />
+                <OptionControl opt={o} value={r.value} disabled={!writer} onChange={(v) => write(o, v)} />
               </Opt>
             );
           })}
+          {/* the other options stay out of the way: a row of buttons, each opening its control (ADR 0094) */}
+          {(pinned.length ? rest : all.slice(2)).length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {(pinned.length ? rest : all.slice(2)).map((o) => (
+                <Button key={o.id} size="sm" onPress={(e) => { const r = (e.target as HTMLElement).getBoundingClientRect(); setOpen({ id: o.id, x: r.left, y: r.bottom }); }}>{optionLabel(o, lang)}</Button>
+              ))}
+            </div>
+          )}
+          {open && (() => {
+            const o = all.find((x) => x.id === open.id);
+            if (!o) return null;
+            const r = resolveOption(o, key, values, defaults);
+            return (
+              <PointPopover x={open.x} y={open.y} onClose={() => setOpen(null)} dialogLabel={optionLabel(o, lang)}>
+                <div className="grid min-w-56 gap-2 p-1">
+                  <span className="text-[13px] font-semibold">{optionLabel(o, lang)}</span>
+                  <OptionControl opt={o} value={r.value} disabled={!writer} onChange={(v) => write(o, v)} />
+                </div>
+              </PointPopover>
+            );
+          })()}
         </Section>
       )}
     </div>
@@ -93,9 +124,9 @@ function StickerOptionsPanel({ sticker, writer }: { sticker: import("../stickers
   );
 }
 
-function Heading({ kind }: { kind: string }) {
+function Heading({ kind, title }: { kind: string; title?: string }) {
   const { t } = useI18n();
-  return <h3 className="m-0 mb-2 flex items-center gap-1.5 text-[13px] font-semibold"><Icon name={ICONS[kind] ?? "type"} className="size-3.5 text-muted-foreground" />{t(("node_" + kind) as Key)}</h3>;
+  return <h3 className="m-0 mb-2 flex items-center gap-1.5 text-[13px] font-semibold"><Icon name={ICONS[kind] ?? "type"} className="size-3.5 text-muted-foreground" />{title ?? t(("node_" + kind) as Key)}</h3>;
 }
 
 function Source({ source }: { source: "element" | "page" | "default" }) {

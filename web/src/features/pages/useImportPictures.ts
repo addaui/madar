@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useHasOp } from "../../api/session";
 import { link } from "../../api/link";
 import { uploadFile } from "../../lib/upload";
-import type { EditorJson } from "./LegacyEditor";
+import type { EditorJson } from "./PageEditor";
 import { importPicture, importRemote, remotePictures, type Importer } from "./pictures";
 
 /** The network side of ADR 0077: the Core fetches the picture (`links.fetch`, which only reaches public sites) and it is stored as an upload of this Space. */

@@ -3,7 +3,7 @@ import { NuahError } from "@nuah/link-client";
 import { useSyncExternalStore } from "react";
 import { link } from "../../api/link";
 import type { Page } from "../../api/types";
-import type { EditorJson } from "./LegacyEditor";
+import type { EditorJson } from "./PageEditor";
 import { inputOf, keyOf, opOf, type PageScope } from "./scope";
 import type { PageSettings } from "./style/settings";
 

@@ -1,4 +1,4 @@
-import type { EditorJson } from "./LegacyEditor";
+import type { EditorJson } from "./PageEditor";
 
 /**
  * Pictures in a page come from this server's files, never from another site (ADR 0077): a viewer's browser must not contact a stranger because a page said so.

@@ -14,13 +14,15 @@ self.route = (url, method, mode) => {
   if (/^\/(link|pulse|files|auth|healthz|readyz|upgrade)(\/|$)/.test(u.pathname)) return "network";
   if (mode === "navigate") return u.pathname === "/" || u.pathname.startsWith(BASE) ? "app-shell" : "network";
   if (u.pathname.startsWith(BASE + "assets/")) return "cache-first";
+  // plugins' browser files (ADR 0095): with the file's hash in the address they never change; the others are revalidated
+  if (u.pathname.startsWith("/plugins/")) return /^v=[0-9a-f]{12}$/.test(u.search.slice(1)) ? "cache-first" : "network-first";
   if (u.pathname.startsWith(BASE)) return "network-first";
   return "network";
 };
 
 async function keepAll() {
   const c = await caches.open(CACHE);
-  const files = [SHELL, BASE + "vendor-editor.js", BASE + "loro.wasm"];
+  const files = [SHELL, BASE + "loro.wasm"];
   try {
     const m = await (await fetch(BASE + "asset-manifest.json", { cache: "no-store" })).json();
     for (const e of Object.values(m)) for (const f of [e.file, ...(e.css || [])]) if (f) files.push(BASE + f);

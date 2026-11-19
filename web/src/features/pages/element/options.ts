@@ -10,9 +10,22 @@ export interface OptionDecl {
   attr?: string;
   /** The page may set it for every element of the type. */
   inherit?: boolean; plugin?: string;
+  /** Shown in the Element tab itself; the others are buttons that open their control (ADR 0094). */
+  pinned?: boolean;
 }
 export interface BlockDecl { id: string; node: string; label: Labelled; icon?: string; insert?: boolean; options?: OptionDecl[] }
 export type Source = "element" | "page" | "default";
+
+/** A kind as `editor.elements` lists it (ADR 0094). */
+export interface KindDecl { kind: string; shape: "card" | "content"; label: Labelled; icon?: string; nodes?: string[]; options?: OptionDecl[] }
+
+/**
+ * The kinds' options as the Element tab's blocks: a content kind gives one per node type (keyed by the type, as pages' defaults are), a
+ * card kind one keyed by the kind.
+ */
+export function blocksOf(kinds: readonly KindDecl[]): BlockDecl[] {
+  return kinds.flatMap((k) => (k.shape === "content" ? (k.nodes ?? []).map((n) => ({ id: `${k.kind}#${n}`, node: n, label: k.label, icon: k.icon, options: k.options })) : [{ id: k.kind, node: k.kind, label: k.label, icon: k.icon, options: k.options }]));
+}
 
 /** The options of a node type: those of every block that declares it, once each by id. */
 export function optionsOf(blocks: readonly BlockDecl[], node: string): OptionDecl[] {

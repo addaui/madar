@@ -1,6 +1,6 @@
+import { textOf } from "./text";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { useRead } from "../../api/hooks";
 import { useHasOp } from "../../api/session";
 import type { Page } from "../../api/types";
 import { useI18n } from "../../i18n/i18n";
@@ -8,7 +8,7 @@ import { IconPicker } from "./IconPicker";
 import { TextField } from "../../ui/Field";
 import { link } from "../../api/link";
 import { askRef, toast } from "../../ui/overlays";
-import { LegacyEditor, type EditorHandle, type EditorJson } from "./LegacyEditor";
+import { PageEditor, type EditorHandle, type EditorJson } from "./PageEditor";
 import { useStickers } from "./stickers/useStickers";
 import { importerFor, localPreview, useImportPictures } from "./useImportPictures";
 import { elementStore, type ElementContext } from "./element/store";
@@ -31,7 +31,6 @@ const canon = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof 
 export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: PageScope; onWords: (n: number) => void; onSave: (s: string) => void }) {
   const { t, lang } = useI18n();
   const qc = useQueryClient();
-  const blocks = useRead("editor.blocks").data as { blocks: unknown[] };
   const hasAnalyzer = useHasOp("links.analyze"), hasOldPreviews = useHasOp("previews.get"), hasPreviews = hasAnalyzer || hasOldPreviews;
   const saver = saverFor(qc, page, scope);
   const state = useSaveState(saver);
@@ -98,7 +97,7 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
   useEffect(() => { handle.current?.setDefaults(((page.settings ?? {}) as PageSettings).elements ?? {}); }, [page.settings, ready]);
   useEffect(() => () => { elementStore.set({ ctx: null, api: null, pick: 0 }); }, []);
 
-  const countWords = (d: EditorJson) => { const txt = window.MadarEditor ? window.MadarEditor.text(d) : ""; onWords((txt.match(/[\p{L}\p{N}]+/gu) ?? []).length); };
+  const countWords = (d: EditorJson) => { const txt = textOf(d); onWords((txt.match(/[\p{L}\p{N}]+/gu) ?? []).length); };
   const onChange = (d: EditorJson) => {
     latest.current = d;
     if (live) { clearTimeout(timer.current); timer.current = setTimeout(() => countWords(d), 800); return; }
@@ -131,9 +130,9 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
             )}
           </div>
           {lv.failed && <p className="mb-2 rounded-md bg-sunken px-3 py-2 text-[13px] text-muted-foreground">{t("pageNotHereOffline")}</p>}
-          {(live || lv.failed || page.id.startsWith("draft-")) && <LegacyEditor key={live ? `live-${lv.generation}` : "json"} doc={doc} version={version} editable={!lv.failed} lang={lang}
-            live={live ? { doc: live.live.doc, ephemeral: live.presence, user: me ? { name: me.display, color: colorOf(me.subject) } : undefined } : undefined} {...comments.editor} blocks={blocks.blocks} placeholder={t("writeHere")} onChange={onChange}
-            onReady={(h) => { handle.current = h; elementStore.set({ api: { setAttrs: (pos, patch) => h.setAttrs(pos, patch) } }); countWords(latest.current); setReady((r) => r + 1); }} stickers={stickers.options}
+          {(live || lv.failed || page.id.startsWith("draft-")) && <PageEditor key={live ? `live-${lv.generation}` : "json"} doc={doc} version={version} editable={!lv.failed} lang={lang}
+            live={live ? { doc: live.live.doc, ephemeral: live.presence, user: me ? { name: me.display, color: colorOf(me.subject) } : undefined } : undefined} {...comments.editor} placeholder={t("writeHere")} onChange={onChange}
+            onReady={(h) => { handle.current = h; elementStore.set({ api: { setAttrs: (pos, patch) => h.setAttrs(pos, patch), setOption: (id, option, value) => h.setOption(id, option, value) } }); countWords(latest.current); setReady((r) => r + 1); }} stickers={stickers.options}
             onContext={(c) => elementStore.set({ ctx: c as ElementContext | null, pick: 0 })}
             onOpenRef={(kind, rid) => { location.hash = kind === "pages.page" ? (scope.project ? `#/p/${scope.project}?tab=knowledge&page=${rid}` : `#/pages/${rid}`) : `#/today`; }}
             pickRef={askRef}

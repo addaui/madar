@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PointPopover } from "./PointPopover";
 import { useT } from "../i18n/i18n";
 import { Button } from "./Button";
 import { TextField } from "./Field";
@@ -54,6 +55,8 @@ function Request({ req, close }: { req: Exclude<OverlayRequest, { kind: "toast" 
 
   if (req.kind === "ref") return <RefDialog onDone={(v) => { req.resolve(v); close(); }} />;
   if (req.kind === "image") return <ImageDialog label={req.label} onDone={(v) => { req.resolve(v); close(); }} />;
+  if (req.kind === "domModal") return <DomModal req={req} close={close} />;
+  if (req.kind === "domPopover") return <DomPopover req={req} close={close} />;
 
   return <PointMenu x={req.x} y={req.y} entries={req.items} onClose={close} />;
 }
@@ -77,4 +80,33 @@ function Countdown({ label, seconds, done }: { label: string; seconds: number; d
       <div className="flex justify-end"><Button autoFocus onPress={() => done(false)}>{t("stop")}</Button></div>
     </ModalFrame>
   );
+}
+
+/** Calls a plugin's `render` on an element of ours once, and its cleanup when closed. */
+function useDrawn(render: (el: HTMLElement, close: () => void) => (() => void) | void, close: () => void, handle: { close: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    handle.close = close;
+    const el = box.current;
+    const cleanup = el ? render(el, close) : undefined;
+    return () => { if (typeof cleanup === "function") cleanup(); };
+    // drawn once per request
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return box;
+}
+
+function DomModal({ req, close }: { req: Extract<OverlayRequest, { kind: "domModal" }>; close: () => void }) {
+  const box = useDrawn(req.render, close, req.handle);
+  return (
+    <ModalFrame title={req.title} onClose={close} size={req.size === "page" ? "page" : "wide"} top="4vh">
+      <ModalTitle className="mb-2 text-base">{req.title}</ModalTitle>
+      <div ref={box} className={req.size === "page" ? "h-[80vh] min-h-0" : "min-h-0"} />
+    </ModalFrame>
+  );
+}
+
+function DomPopover({ req, close }: { req: Extract<OverlayRequest, { kind: "domPopover" }>; close: () => void }) {
+  const box = useDrawn((el) => req.render(el), close, req.handle);
+  return <PointPopover x={req.x} y={req.y} onClose={close} dialogLabel="Options"><div ref={box} /></PointPopover>;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { importPicture, importRemote, isOwnPicture, isRemote, remotePictures, withPictures } from "./pictures";
-import type { EditorJson } from "./LegacyEditor";
+import type { EditorJson } from "./PageEditor";
 
 const doc = (...c: unknown[]) => ({ type: "doc", content: c }) as unknown as EditorJson;
 const img = (src: string) => ({ type: "image", attrs: { src } });

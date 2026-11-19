@@ -1,3 +1,4 @@
+import { textOf } from "./text";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { link } from "../../api/link";
@@ -70,7 +71,7 @@ export default function History({ page, scope, writer, onClose }: { page: Page; 
                   ))}
                 </div>
               ) : (
-                <pre className="max-h-[45vh] overflow-auto whitespace-pre-wrap rounded-md bg-sunken p-3 text-[13px]" dir="auto">{window.MadarEditor ? window.MadarEditor.text(one.data.body) : ""}</pre>
+                <pre className="max-h-[45vh] overflow-auto whitespace-pre-wrap rounded-md bg-sunken p-3 text-[13px]" dir="auto">{textOf(one.data.body)}</pre>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
                 {writer && <Button kind="primary" icon="history" onPress={() => void restore()}>{t("restoreVersion")}</Button>}

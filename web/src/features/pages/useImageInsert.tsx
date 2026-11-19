@@ -9,7 +9,7 @@ import { TextField } from "../../ui/Field";
 import { Icon } from "../../ui/Icon";
 import { PointPopover } from "../../ui/PointPopover";
 import { toast } from "../../ui/overlays";
-import type { EditorHandle, Spot } from "./LegacyEditor";
+import type { EditorHandle, Spot } from "./PageEditor";
 
 type Open = { kind: "pick"; at: Spot; done: (src: string | null) => void } | { kind: "paste"; at: Spot; url: string } | null;
 

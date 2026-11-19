@@ -2,8 +2,8 @@ import { useSyncExternalStore } from "react";
 import { useStickerState } from "../stickers/store";
 
 /** The element the cursor is in, or that is selected: the block and the blocks around it, innermost first (reported by the editor). */
-export interface ElementContext { chain: { node: string; pos: number; attrs: Record<string, unknown>; id: string | null }[]; selected: boolean }
-export interface ElementApi { setAttrs: (pos: number, patch: Record<string, unknown>) => void }
+export interface ElementContext { chain: { node: string; pos: number; attrs: Record<string, unknown>; id: string | null; kind?: string | null; options?: import("./options").OptionDecl[] }[]; selected: boolean }
+export interface ElementApi { setAttrs: (pos: number, patch: Record<string, unknown>) => void; setOption?: (blockId: string, option: string, value: unknown) => void }
 interface State { ctx: ElementContext | null; api: ElementApi | null; pick: number }
 
 let state: State = { ctx: null, api: null, pick: 0 };

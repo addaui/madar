@@ -15,7 +15,10 @@ export type OverlayRequest =
   | { kind: "countdown"; label: string; seconds: number; resolve: (v: boolean) => void }
   | { kind: "menu"; x: number; y: number; items: MenuItems }
   | { kind: "image"; label: string; resolve: (v: string | null) => void }
-  | { kind: "ref"; resolve: (v: { kind: string; id: string; title: string } | null) => void };
+  | { kind: "ref"; resolve: (v: { kind: string; id: string; title: string } | null) => void }
+  /** A modal (or the full view of an element) whose inside a plugin draws; `render` returns what to do when it closes. */
+  | { kind: "domModal"; title: string; size: "wide" | "page"; render: (el: HTMLElement, close: () => void) => (() => void) | void; handle: { close: () => void } }
+  | { kind: "domPopover"; x: number; y: number; render: (el: HTMLElement) => (() => void) | void; handle: { close: () => void } };
 
 let sink: ((r: OverlayRequest) => void) | null = null;
 const waiting: OverlayRequest[] = [];
@@ -45,3 +48,16 @@ export const askRef = () => new Promise<{ kind: string; id: string; title: strin
 /** A short notice that fades by itself (what was done, and where). The host shows it in a live region. */
 /** A short notice ("Saved"); the host shows it as a toast. */
 export const toast = (text: string) => push({ kind: "toast", text });
+
+/** A modal a plugin draws into (the editor's elements: a full view, raw data). Returns what closes it. */
+export const openDomModal = (title: string, render: (el: HTMLElement, close: () => void) => (() => void) | void, size: "wide" | "page" = "page") => {
+  const handle = { close: () => {} };
+  push({ kind: "domModal", title, size, render, handle });
+  return () => handle.close();
+};
+/** A popover a plugin draws into, at a spot on the screen. Returns what closes it. */
+export const openDomPopover = (at: { left: number; bottom: number }, render: (el: HTMLElement) => (() => void) | void) => {
+  const handle = { close: () => {} };
+  push({ kind: "domPopover", x: at.left, y: at.bottom, render, handle });
+  return () => handle.close();
+};

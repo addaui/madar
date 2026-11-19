@@ -1,3 +1,4 @@
+import { textOf as bodyText } from "./text";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { link } from "../../api/link";
@@ -12,7 +13,7 @@ import { askConfirm } from "../../ui/overlays";
 import { Window } from "../dialogs/Dialog";
 
 interface Comment { id: string; author: string; author_display?: string | null; at: number; body: unknown; parent?: string | null }
-const textOf = (b: unknown): string => (typeof b === "string" ? b : window.MadarEditor ? window.MadarEditor.text(b) : "");
+const textOf = (b: unknown): string => (typeof b === "string" ? b : bodyText(b));
 
 /** The comments on one block of a project page: in order, replies under their comment, one box to write in. */
 export default function BlockThread({ project, page, block, manager, onClose }: { project: string; page: string; block: string; manager: boolean; onClose: () => void }) {

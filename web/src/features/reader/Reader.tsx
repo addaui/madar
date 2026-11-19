@@ -7,7 +7,7 @@ import type { Ops } from "../../api/contract";
 import { I18nProvider, useT, type Lang } from "../../i18n/i18n";
 import { Button } from "../../ui/Button";
 import { TextField } from "../../ui/Field";
-import { LegacyEditor, type EditorHandle, type EditorJson } from "../pages/LegacyEditor";
+import { PageEditor, type EditorHandle, type EditorJson } from "../pages/PageEditor";
 import { paintPage } from "../pages/style/paint";
 import type { PageSettings } from "../pages/style/settings";
 import { useStickers } from "../pages/stickers/useStickers";
@@ -156,7 +156,7 @@ function Shown({ data, shareId, pin, page, go }: { data: Opened; shareId: string
               {open.icon && <span aria-hidden="true" className="text-[32px] leading-none">{open.icon}</span>}
               <h1 className="page-title m-0 text-[32px] font-bold leading-tight tracking-tight text-[var(--page-fg,var(--text))]" dir="auto">{open.title}</h1>
             </div>
-            <LegacyEditor doc={doc} version={0} editable={false} lang={document.documentElement.lang || "en"} blocks={(data.blocks ?? []) as unknown[]} placeholder="" onChange={() => undefined}
+            <PageEditor doc={doc} version={0} editable={false} lang={document.documentElement.lang || "en"} placeholder="" onChange={() => undefined}
               onReady={(h) => { handle.current = h; setReady((r) => r + 1); }} stickers={stickers.options}
               onOpenRef={(kind, id) => { if (kind === "pages.page" && data.tree.some((n) => n.id === id)) go(id); }} />
           </div>

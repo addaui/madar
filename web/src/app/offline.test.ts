@@ -28,6 +28,11 @@ describe("the service worker (ADR 0093)", () => {
     expect(route("https://m.example/faces/web-react/vendor-editor.js", "GET")).toBe("network-first");
     expect(route("https://m.example/faces/web-react/", "GET", "navigate")).toBe("app-shell");
   });
+  it("keeps plugins' browser files: a file with its hash for good, the rest from the server while it answers (ADR 0095)", () => {
+    expect(route("https://m.example/plugins/nuah/editor/host.js?v=3f9a1c2b4d5e", "GET")).toBe("cache-first");
+    expect(route("https://m.example/plugins/nuah/mermaid/chunks/flow-AB12.js", "GET")).toBe("network-first");
+    expect(route("https://other.example/plugins/nuah/editor/host.js?v=3f9a1c2b4d5e", "GET")).toBe("network");
+  });
 });
 
 describe("the reads kept on this device", () => {

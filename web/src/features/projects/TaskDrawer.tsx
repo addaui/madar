@@ -18,7 +18,7 @@ import { Select } from "../../ui/Select";
 import { Tabs } from "../../ui/Tabs";
 import { Icon } from "../../ui/Icon";
 import { askConfirm, openMenuFrom } from "../../ui/overlays";
-import { LegacyEditor, type EditorJson } from "../pages/LegacyEditor";
+import { PageEditor, type EditorJson } from "../pages/PageEditor";
 import { Activity } from "./Activity";
 
 const BANDS: [band: string, value: number][] = [["low", 2], ["medium", 5], ["high", 7], ["urgent", 9]];
@@ -39,7 +39,6 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
   const [priority, setPriority] = useState(task.priority);
   const [due, setDue] = useState(task.due ?? "");
   const description = useRef<EditorJson | null>(null);
-  const blocks = qc.getQueryData<{ blocks: unknown[] }>(["editor.blocks", {}])?.blocks ?? [];
   const custom0 = (task.custom ?? {}) as Record<string, unknown>;
   const refresh = () => qc.invalidateQueries({ predicate: (q) => /^(tasks|projects|timeline|discussion)\./.test(String(q.queryKey[0])) });
 
@@ -122,7 +121,7 @@ export function TaskDrawer({ project, task, members, labels, subtasks, writer, o
               ))}
             </div>
             <h3 className="mb-1.5 mt-5 text-[13px] font-semibold text-muted-foreground">{t("description")}</h3>
-            <LegacyEditor doc={(task.description as EditorJson | null) ?? null} version={task.rev} editable={writer} lang={lang} blocks={blocks} project={project.id} placeholder={t("writeHere")} onChange={(d) => { description.current = d; setDirty(true); }} />
+            <PageEditor doc={(task.description as EditorJson | null) ?? null} version={task.rev} editable={writer} lang={lang} project={project.id} placeholder={t("writeHere")} onChange={(d) => { description.current = d; setDirty(true); }} />
             {!task.parent && (
               <>
                 <h3 className="mb-1.5 mt-5 flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"><Icon name="subtask" className="size-3.5" />{t("subtasks")}{subtasks.length > 0 && <span className="rounded-chip border border-line px-1.5 text-xs">{done}/{subtasks.length}</span>}</h3>

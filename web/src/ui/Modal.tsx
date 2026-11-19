@@ -8,9 +8,9 @@ import { cn } from "../lib/cn";
  */
 export function ModalFrame({ label, title, onClose, size = "sm", dismissable = true, role, top = "10vh", children, className }: {
   /** The accessible name when there is no visible `title`. */
-  label?: string; title?: string; onClose: () => void; size?: "sm" | "md" | "lg" | "wide"; dismissable?: boolean; role?: "dialog" | "alertdialog"; top?: string; children: ReactNode; className?: string;
+  label?: string; title?: string; onClose: () => void; size?: "sm" | "md" | "lg" | "wide" | "page"; dismissable?: boolean; role?: "dialog" | "alertdialog"; top?: string; children: ReactNode; className?: string;
 }) {
-  const width = { sm: "w-[min(420px,94vw)]", md: "w-[min(460px,94vw)]", lg: "w-[min(520px,94vw)]", wide: "w-[min(720px,94vw)]" }[size];
+  const width = { sm: "w-[min(420px,94vw)]", md: "w-[min(460px,94vw)]", lg: "w-[min(520px,94vw)]", wide: "w-[min(720px,94vw)]", page: "w-[min(1400px,96vw)]" }[size];
   return (
     <Dialog.Root open modal disablePointerDismissal={!dismissable}
       onOpenChange={(o, d) => { if (o) return; if (!dismissable) { d.cancel(); return; } onClose(); }}>

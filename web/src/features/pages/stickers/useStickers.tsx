@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../../../i18n/i18n";
 import type { MenuEntries } from "../../../ui/Menu";
 import { openContextMenu } from "../../../ui/overlays";
-import type { EditorHandle } from "../LegacyEditor";
+import type { EditorHandle } from "../PageEditor";
 import {
   addSticker, applyIn, classOf, effective, resetClass, bringForward, bringToFront, remove, sendBackward, sendToBack, setBehind, type Narrow, type Sticker,
 } from "./model";

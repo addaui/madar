@@ -1,3 +1,4 @@
+import { textOf } from "../pages/text";
 import { useQueryClient } from "@tanstack/react-query";
 import { startTransition } from "react";
 import { link } from "../../api/link";
@@ -20,7 +21,7 @@ export function Activity({ project, target, writer }: { project: string; target:
     await link.call("discussion.add", { project, [target.type === "tasks.task" ? "task" : "page"]: target.id, body } as never);
     await qc.invalidateQueries({ predicate: (q) => /^(timeline|discussion)\./.test(String(q.queryKey[0])) });
   });
-  const textOf = (b: unknown): string => (window.MadarEditor ? window.MadarEditor.text(b) : "");
+  const textOf = (b: unknown): string => (textOf(b));
   return (
     <div>
       <h3 className="mb-2 text-[13px] font-semibold text-muted-foreground">{t("timeline")}</h3>

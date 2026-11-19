@@ -12,5 +12,5 @@ export function warmUp(qc: QueryClient): void {
   void qc.prefetchQuery({ queryKey: ["describe"], queryFn: () => link.describe(), staleTime: Infinity });
   // and the reads of the screen the address names
   void warm(qc, readsForHash(location.hash, localStorage.getItem("madar.space") ?? "default")).catch(() => undefined);
-  for (const [op, input] of [["prefs.get", {}], ["appearance.get", {}], ["inbox.list", { limit: 30 }], ["spaces.list", {}], ["projects.list", {}], ["editor.blocks", {}]] as [string, object][]) read(op, input);
+  for (const [op, input] of [["prefs.get", {}], ["appearance.get", {}], ["inbox.list", { limit: 30 }], ["spaces.list", {}], ["projects.list", {}], ["editor.elements", {}]] as [string, object][]) read(op, input);
 }
