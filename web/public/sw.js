@@ -6,15 +6,15 @@ const BASE = self.location.pathname.replace(/sw\.js$/, "");
 const CACHE = "madar-app-1";
 const SHELL = BASE;
 
-/** What to do with a request: "network" (never kept), "cache-first" (a file whose name has its hash: it never changes), "stale-while-revalidate"
- *  (the app's other files: shown at once, refreshed for next time), or "app-shell" (opening the app: the server's if it answers, else the kept one). */
+/** What to do with a request: "network" (never kept), "cache-first" (a file whose name has its hash: it never changes), "network-first" (the app's
+ *  other files: the server's while it answers, so a new release never runs with an old editor; the kept copy offline), or "app-shell" (opening the app). */
 self.route = (url, method, mode) => {
   const u = new URL(url);
   if (u.origin !== self.location.origin || method !== "GET") return "network";
   if (/^\/(link|pulse|files|auth|healthz|readyz|upgrade)(\/|$)/.test(u.pathname)) return "network";
   if (mode === "navigate") return u.pathname === "/" || u.pathname.startsWith(BASE) ? "app-shell" : "network";
   if (u.pathname.startsWith(BASE + "assets/")) return "cache-first";
-  if (u.pathname.startsWith(BASE)) return "stale-while-revalidate";
+  if (u.pathname.startsWith(BASE)) return "network-first";
   return "network";
 };
 
@@ -55,8 +55,12 @@ self.addEventListener("fetch", (e) => {
         return (await c.match(SHELL)) || Response.error();
       }
     }
-    const hit = await c.match(r);
-    const fresh = fetch(r).then((res) => { if (res.ok) void c.put(r, res.clone()); return res; }).catch(() => undefined);
-    return hit || (await fresh) || Response.error();
+    try {
+      const res = await fetch(r);
+      if (res.ok) void c.put(r, res.clone());
+      return res;
+    } catch {
+      return (await c.match(r)) || Response.error();
+    }
   })());
 });

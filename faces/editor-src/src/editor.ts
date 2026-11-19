@@ -306,7 +306,7 @@ const liveExtension = (live: Live) => Extension.create({
   priority: 1000,
   addProseMirrorPlugins() {
     const out = [LoroSyncPlugin({ doc: live.doc as any }), LoroUndoPlugin({ doc: live.doc as any })]
-    if (live.ephemeral) out.push(LoroEphemeralCursorPlugin(live.ephemeral, { user: live.user }) as any)
+    if (live.ephemeral) out.push(LoroEphemeralCursorPlugin(drawableCursors(live.ephemeral, live.doc), { user: live.user }) as any)
     return out
   },
   addKeyboardShortcuts() {
@@ -314,6 +314,19 @@ const liveExtension = (live: Live) => Extension.create({
     return { 'Mod-z': run(loroUndo), 'Mod-y': run(loroRedo), 'Shift-Mod-z': run(loroRedo) }
   },
 })
+
+/** Another person's cursor can point into text this copy has not received yet (right after being offline): the binding throws drawing it, which
+ *  would cancel whatever the editor was doing. Such a cursor is left out until its text arrives. */
+function drawableCursors(store: CursorEphemeralStore, doc: LoroNS.LoroDoc): CursorEphemeralStore {
+  const here = (c: any) => { if (!c) return true; try { return !!doc.getCursorPos(c) } catch { return false } }
+  return new Proxy(store, {
+    get(t, k) {
+      if (k === 'getAll') return () => Object.fromEntries(Object.entries(t.getAll()).filter(([, st]: [string, any]) => here(st.anchor) && here(st.focus)))
+      const v = (t as any)[k]
+      return typeof v === 'function' ? v.bind(t) : v
+    },
+  })
+}
 
 /** Whether every node of a Live document is one this editor can draw (a block of a plugin that is off cannot be edited live). */
 function liveDrawable(doc: LoroNS.LoroDoc): boolean {
