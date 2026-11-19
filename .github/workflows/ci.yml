@@ -35,6 +35,8 @@ jobs:
         run: |
           tag="$(grep -m1 '^nuah-prefs ' madar/Cargo.toml | sed 's/.*tag = "\(.*\)".*/\1/')"
           git clone --depth 1 --branch "$tag" https://github.com/addaui/nuah-plugins nuah-plugins
+          # v0.7.0 tracks a node_modules symlink in packages/font-engine; a clean install needs none
+          find nuah-plugins -name node_modules -prune -exec rm -rf {} +
       - uses: pnpm/action-setup@v4
         with:
           version: 12
