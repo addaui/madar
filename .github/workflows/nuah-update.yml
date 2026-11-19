@@ -36,13 +36,14 @@ jobs:
         run: |
           changed=no
           if [ -n "${{ steps.tags.outputs.nuah }}" ] && [ "${{ steps.tags.outputs.nuah }}" != "${{ steps.tags.outputs.nuah_now }}" ]; then
-            sed -E -i "s#(^nuah-(kernel|adapters|http|host|console|setup-web) = .*tag = \")[^\"]*\"#\1${{ steps.tags.outputs.nuah }}\"#" Cargo.toml; changed=yes
+            # every crate of the repository moves together, found by its address (a name list missed new crates)
+            sed -E -i "s#(git = \"https://github.com/addaui/nuah\", tag = \")[^\"]*\"#\1${{ steps.tags.outputs.nuah }}\"#" Cargo.toml; changed=yes
           fi
           if [ -n "${{ steps.tags.outputs.plugins }}" ] && [ "${{ steps.tags.outputs.plugins }}" != "${{ steps.tags.outputs.plugins_now }}" ]; then
-            sed -E -i "s#(^nuah-(prefs|appearance|metric-prometheus) = .*tag = \")[^\"]*\"#\1${{ steps.tags.outputs.plugins }}\"#" Cargo.toml; changed=yes
+            sed -E -i "s#(git = \"https://github.com/addaui/nuah-plugins\", tag = \")[^\"]*\"#\1${{ steps.tags.outputs.plugins }}\"#" Cargo.toml; changed=yes
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
-          if [ "$changed" = yes ]; then cargo update -p nuah-kernel -p nuah-adapters -p nuah-http -p nuah-shell -p nuah-console -p nuah-setup-web -p nuah-prefs -p nuah-appearance -p nuah-metric-prometheus; fi
+          if [ "$changed" = yes ]; then cargo update $(grep -E 'git = "https://github.com/addaui/nuah(-plugins)?"' Cargo.toml | sed -E 's/^([a-z0-9-]+) .*/-p \1/'); fi
       - uses: peter-evans/create-pull-request@v7
         if: steps.move.outputs.changed == 'yes'
         with:
