@@ -42,7 +42,10 @@ export class PageSaver {
   async #send(patch: PagePatch) {
     this.#set("saving");
     try {
-      const out = (await link.call(opOf(this.scope, "update") as never, inputOf(this.scope, { id: this.id, expected_rev: this.rev, ...patch }) as never)) as Page;
+      // Only a whole body is guarded by the revision: the body is a Live document now (ADR 0093), and every push moves the revision, so a title or an
+      // icon would otherwise be refused while someone types.
+      const guard = patch.body !== undefined ? { expected_rev: this.rev } : {};
+      const out = (await link.call(opOf(this.scope, "update") as never, inputOf(this.scope, { id: this.id, ...guard, ...patch }) as never)) as Page;
       this.rev = out.rev;
       this.qc.setQueryData(keyOf(this.scope, "get", { id: this.id }), out);
       if (patch.title !== undefined || patch.icon !== undefined || patch.tags !== undefined) void this.qc.invalidateQueries({ predicate: (q) => /^(pages|knowledge)\.list/.test(String(q.queryKey[0])) });

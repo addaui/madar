@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { affectedBy } from "./pulse";
+import { affectedBy, affectedByEvent } from "./pulse";
 import { matches } from "./hooks";
 
 describe("what a Pulse event makes stale", () => {
@@ -43,3 +43,18 @@ describe("every event a plugin declares makes some reads stale", () => {
     }
   });
 });
+
+describe("a change to a page's body (ADR 0093)", () => {
+  it("does not refetch the open page or the lists: the Live document has the change already", () => {
+    const ops = affectedByEvent("pages.updated", { data: { changes: { body: true } } });
+    expect(ops).not.toContain("pages.");
+    expect(ops).not.toContain("knowledge.");
+    expect(ops).toContain("search.");
+    expect(ops).toContain("pages.tasks");
+  });
+  it("a title change still refreshes the pages", () => {
+    expect(affectedByEvent("pages.updated", { data: { changes: { title: ["a", "b"] } } })).toContain("pages.");
+    expect(affectedByEvent("tasks.updated", { data: {} })).toEqual(affectedBy("tasks.updated"));
+  });
+});
+

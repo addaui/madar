@@ -2,7 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import type { Preset } from "@nuah/theme-engine";
 import { link } from "./link";
-import { affectedBy } from "./pulse";
+import { affectedByEvent } from "./pulse";
+import { liveOnline, onLiveSignal } from "../features/pages/live";
 import { invalidate, useRead, useSuspending } from "./hooks";
 import type { Describe, PulseState } from "@nuah/link-client";
 
@@ -49,11 +50,16 @@ export function usePulse(enabled: boolean) {
   const client = useQueryClient();
   useEffect(() => {
     if (!enabled) return;
+    let was: PulseState = "connecting";
     const stop = link.watch({
-      onEvent: (kind) => { const ops = affectedBy(kind); if (ops.length) void invalidate(client, ops); },
+      onEvent: (kind, data) => { const ops = affectedByEvent(kind, data); if (ops.length) void invalidate(client, ops); },
       onReset: () => { void client.invalidateQueries(); },
-      onState: pulseState.set,
+      // Signals are not stored: what was sent while the stream was down is gone, so open pages catch up when it is back (ADR 0093)
+      onSignal: onLiveSignal,
+      onState: (s) => { if (s === "live" && was !== "live") liveOnline(); was = s; pulseState.set(s); },
     });
-    return stop;
+    const online = () => liveOnline();
+    window.addEventListener("online", online);
+    return () => { stop(); window.removeEventListener("online", online); };
   }, [client, enabled]);
 }

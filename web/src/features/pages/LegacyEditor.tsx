@@ -9,7 +9,7 @@ import "./legacy-editor.css";
  * to it; the new editor replaces this file behind the same props.
  */
 export interface EditorJson { type: "doc"; content?: unknown[] }
-export interface EditorHandle { json(): EditorJson; set(doc: EditorJson): void; setEditable(on: boolean): void; focus(atEnd?: boolean): void; destroy(): void; isEmpty(): boolean; refreshComments?(): void; insert(content: unknown, pos?: number): void; replaceUrl(url: string, content: unknown): void;
+export interface EditorHandle { json(): EditorJson; /** Whether edits go into the Live document (ADR 0093). */ live?(): boolean; set(doc: EditorJson): void; setEditable(on: boolean): void; focus(atEnd?: boolean): void; destroy(): void; isEmpty(): boolean; refreshComments?(): void; insert(content: unknown, pos?: number): void; replaceUrl(url: string, content: unknown): void;
   /** The page's stickers (ADR 0071), kept in the document's attributes; `blockAt` is the block under a point (it gets an id if it had none). */
   stickers(): unknown[]; setStickers(list: unknown[]): void; blockAt(x: number, y: number): { id: string; at?: number } | null;
   /** The top of the line a character of a block is on (for a sticker pinned to a word), and the floats that make text wrap around stickers. */
@@ -19,7 +19,9 @@ export interface EditorHandle { json(): EditorJson; set(doc: EditorJson): void; 
 /** A point on screen, for a popover to open at. */
 export interface Spot { left: number; top: number; bottom: number }
 interface EditorOptions {
-  content: EditorJson | null; editable: boolean; lang: string; blocks: unknown[]; placeholder: string; gutter: boolean;
+  content: EditorJson | null; editable: boolean;
+  /** The page body as a Live document (ADR 0093): the content comes from it and edits go into it. */
+  live?: { doc: unknown; ephemeral?: unknown; user?: { name: string; color: string } }; lang: string; blocks: unknown[]; placeholder: string; gutter: boolean;
   onChange: (doc: EditorJson) => void;
   icon: (name: string) => Node | null;
   askUrl: (label: string) => Promise<string | null>; askText: (label: string, initial?: string) => Promise<string | null>;
@@ -89,10 +91,12 @@ export interface LegacyEditorProps {
   onContext?: EditorOptions["onContext"];
   /** Changes when the document was replaced from outside (a fresh copy after a conflict, a restored version). */
   version: number;
+  /** The Live document the body is (the editor is made again when it is replaced). */
+  live?: EditorOptions["live"];
 }
 
 /** Mounts the editor into a div and keeps it in step: made once per page, handed a new document only when `version` changes. */
-export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChange, onReady, onOpenRef, pickRef, preview, turnIntoPage, newPage, project, comments, commentsVersion, stickers, onContext, version }: LegacyEditorProps) {
+export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChange, onReady, onOpenRef, pickRef, preview, turnIntoPage, newPage, project, comments, commentsVersion, stickers, onContext, version, live }: LegacyEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<EditorHandle | null>(null);
   const images = useImageInsert({ project, editor: () => api.current });
@@ -106,7 +110,7 @@ export function LegacyEditor({ doc, editable, lang, blocks, placeholder, onChang
     loadEditorBundle().then(() => {
       if (dead || !host.current || !window.MadarEditor) return;
       api.current = window.MadarEditor.create(host.current, {
-        content: doc, editable, lang, blocks, placeholder, gutter: true,
+        content: doc, editable, lang, blocks, placeholder, gutter: true, live,
         onChange: (d) => latest.current.onChange(d),
         icon: svgIcon,
         askUrl: (label) => askText(label), askText,

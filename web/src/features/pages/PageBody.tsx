@@ -18,6 +18,9 @@ import { inputOf, keyOf, opOf, type PageScope } from "./scope";
 import { paintPage } from "./style/paint";
 import type { PageSettings } from "./style/settings";
 import { useAppScheme } from "./style/useAppScheme";
+import { useLive, usePresence } from "./useLive";
+import { colorOf } from "./live";
+import { useDescribe } from "../../api/session";
 import "./page-style.css";
 
 
@@ -45,10 +48,15 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
   const comments = useBlockComments(scope, page.id);
   const handle = useRef<EditorHandle | null>(null);
   const stickers = useStickers({ project: scope.project, editable: true, handle: () => handle.current });
+  // the body is a Live document (ADR 0093): the editor writes into it, and the session sends it; only a draft is plain JSON saved by the saver
+  const lv = useLive(scope, page.id);
+  const live = lv.open;
+  const others = usePresence(live);
+  const me = useDescribe().who;
   // pictures at other sites are copied into this Space's files (ADR 0077), and a link card's picture is copied when the card is made
   useImportPictures({
     body: page.body as EditorJson, project: scope.project,
-    apply: (d) => { setDoc(d); latest.current = d; setVersion((v) => v + 1); void saver.save({ body: d }); },
+    apply: (d) => { if (live) { handle.current?.set(d); return; } setDoc(d); latest.current = d; setVersion((v) => v + 1); void saver.save({ body: d }); },
     done: (r) => { if (r.imported) toast(t("picturesImported", { n: r.imported })); if (r.failed) toast(t("picturesNotImported", { n: r.failed })); },
   });
   const preview = hasPreviews ? async (url: string) => localPreview(await link.call((hasAnalyzer ? "links.analyze" : "previews.get") as never, { url } as never).catch(() => null) as { image?: string | null; icon?: string | null } | null, importerFor(scope.project)) : undefined;
@@ -56,22 +64,28 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
   // a changed copy from outside (another device or tab; a conflict) replaces what is here, unless something here is waiting to be saved
   const seen = useRef(page.rev);
   useEffect(() => {
+    if (live) return;   // a Live document merges changes itself
     if (page.rev === seen.current) return;
     seen.current = page.rev;
     if (dirty.current || saver.busy) return;
     // a copy that is what the editor already shows (our own save coming back) changes nothing, and must not move the cursor
     if (canon(page.body) === canon(latest.current)) { setTitle(page.title); return; }
     setTitle(page.title); setDoc(page.body as EditorJson); latest.current = page.body as EditorJson; setVersion((v) => v + 1);
-  }, [page, saver]);
+  }, [page, saver, live]);
   useEffect(() => { const f = () => { dirty.current = false; toast(t("pageChanged")); }; saver.conflicts.add(f); return () => { saver.conflicts.delete(f); }; }, [saver, t]);
 
-  useEffect(() => { onSave(state === "saving" ? t("saving") : state === "saved" ? t("saved") : state === "offline" ? t("offline") : ""); }, [state, onSave, t]);
+  useEffect(() => {
+    if (live) { onSave(lv.state === "sending" ? t("saving") : lv.state === "offline" ? t("offlineSavedHere") : lv.state === "rejected" ? t("pageRejected") : t("saved")); return; }
+    onSave(state === "saving" ? t("saving") : state === "saved" ? t("saved") : state === "offline" ? t("offline") : "");
+  }, [state, onSave, t, live, lv.state]);
+  // the server refused a change: the page shows the server's copy, and what was typed can be copied from the one kept aside
+  useEffect(() => { if (lv.generation > 0) toast(t("pageRejected")); }, [lv.generation, t]);
 
   // what was typed in the last moments is sent when the page is left (a draft is stored by it if it has content)
   useEffect(() => () => {
     clearTimeout(titleTimer.current);
-    if (dirty.current) { clearTimeout(timer.current); void saver.save({ body: latest.current }); }
-  }, [saver]);
+    if (dirty.current && !live) { clearTimeout(timer.current); void saver.save({ body: latest.current }); }
+  }, [saver, live]);
 
   // the page's look: painted onto its elements whenever its settings, the editor or the app's light or dark change
   useEffect(() => {
@@ -86,7 +100,9 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
 
   const countWords = (d: EditorJson) => { const txt = window.MadarEditor ? window.MadarEditor.text(d) : ""; onWords((txt.match(/[\p{L}\p{N}]+/gu) ?? []).length); };
   const onChange = (d: EditorJson) => {
-    dirty.current = true; latest.current = d;
+    latest.current = d;
+    if (live) { clearTimeout(timer.current); timer.current = setTimeout(() => countWords(d), 800); return; }
+    dirty.current = true;
     clearTimeout(timer.current);
     timer.current = setTimeout(() => { void saver.save({ body: d }).then(() => { dirty.current = false; }); countWords(d); }, 800);
   };
@@ -108,15 +124,22 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
             <IconPicker icon={page.icon ?? null} onPick={(e) => { qc.setQueryData(keyOf(scope, "get", { id: page.id }), { ...page, icon: e }); void saver.save({ icon: e }); }} />
             <TextField bare value={title} onChange={typeTitle} onBlur={() => saveTitle()} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} dir="auto" label={t("title")} placeholder={t("untitled")} maxLength={200}
               className="min-w-0 flex-1" inputClassName="page-title py-1 text-[32px] font-bold leading-tight tracking-tight text-[var(--page-fg,var(--text))]" />
+            {others.length > 0 && (
+              <div className="flex shrink-0 -space-x-1.5" aria-label={t("alsoHere", { names: others.map((o) => o.name).join(", ") })} title={t("alsoHere", { names: others.map((o) => o.name).join(", ") })}>
+                {others.slice(0, 5).map((o, i) => <span key={i} className="grid size-7 place-items-center rounded-full border-2 border-surface text-[12px] font-semibold text-white" style={{ background: o.color }} aria-hidden>{Array.from(o.name)[0]?.toUpperCase()}</span>)}
+              </div>
+            )}
           </div>
-          <LegacyEditor doc={doc} version={version} editable lang={lang} {...comments.editor} blocks={blocks.blocks} placeholder={t("writeHere")} onChange={onChange}
+          {lv.failed && <p className="mb-2 rounded-md bg-sunken px-3 py-2 text-[13px] text-muted-foreground">{t("pageNotHereOffline")}</p>}
+          {(live || lv.failed || page.id.startsWith("draft-")) && <LegacyEditor key={live ? `live-${lv.generation}` : "json"} doc={doc} version={version} editable={!lv.failed} lang={lang}
+            live={live ? { doc: live.live.doc, ephemeral: live.presence, user: me ? { name: me.display, color: colorOf(me.subject) } : undefined } : undefined} {...comments.editor} blocks={blocks.blocks} placeholder={t("writeHere")} onChange={onChange}
             onReady={(h) => { handle.current = h; elementStore.set({ api: { setAttrs: (pos, patch) => h.setAttrs(pos, patch) } }); countWords(latest.current); setReady((r) => r + 1); }} stickers={stickers.options}
             onContext={(c) => elementStore.set({ ctx: c as ElementContext | null, pick: 0 })}
             onOpenRef={(kind, rid) => { location.hash = kind === "pages.page" ? (scope.project ? `#/p/${scope.project}?tab=knowledge&page=${rid}` : `#/pages/${rid}`) : `#/today`; }}
             pickRef={askRef}
             preview={preview}
             project={scope.project}
-            turnIntoPage={subpage} newPage={() => subpage(t("untitled"))} />
+            turnIntoPage={subpage} newPage={() => subpage(t("untitled"))} />}
         </div>
       </div>
       {comments.dialog}
