@@ -18,6 +18,7 @@ nuah-shell = { git = "https://github.com/addaui/nuah", tag = "v0.14.1" }
 nuah-console = { git = "https://github.com/addaui/nuah", tag = "v0.14.1" }
 nuah-setup-web = { git = "https://github.com/addaui/nuah", tag = "v0.14.1" }
 nuah-prefs = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.6.1" }
+nuah-entities = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.6.1" }
 nuah-appearance = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.6.1" }
 nuah-metric-prometheus = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.6.1" }
 nuah-emoji = { git = "https://github.com/addaui/nuah-plugins", tag = "v0.6.1" }

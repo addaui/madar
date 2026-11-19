@@ -10,6 +10,18 @@ use serde_json::{json, Value};
 pub const TASKS: &str = "tasks.tasks";
 pub const COUNTERS: &str = "tasks.counters";
 pub const LABELS: &str = "tasks.labels";
+
+/// What the index of entities knows of a task ([ADR 0092]): found by its title and description, with its project and
+/// whether it is done; an archived task is not found.
+///
+/// [ADR 0092]: https://docs.addaui.com/nuah/adr/0092-one-index-of-entities-plugins-announce-them-in-their-events-the-data-port-searches-text-and-permissions-follow-the-events-audience/
+pub fn entity(d: &Doc) -> Value {
+    if d.body["archived"] == json!(true) {
+        return json!({"kind": "tasks.task", "id": d.id, "removed": true});
+    }
+    json!({"kind": "tasks.task", "id": d.id, "title": d.body["title"], "text": richtext::text_of(d.body.get("description").unwrap_or(&Value::Null)),
+        "context": {"project": d.body["project"], "done": !d.body["completed_at"].is_null()}})
+}
 const GAP: f64 = 1024.0;
 
 pub fn view(d: &Doc) -> Value {
@@ -142,7 +154,7 @@ fn spawn_next(tx: &mut Tx, p: &Value, done: Doc) -> Result<Doc> {
     body["repeats_into"] = json!(next.id);
     let done = tx.put(TASKS, &done.id, body, Expect::Rev(done.rev))?;
     tx.emit("tasks.recurred", Audience::scope("projects.members", text(&done.body, "project")),
-        json!({"project": done.body["project"], "from": done.id, "task": view(&next), "refs": richtext::refs_for("tasks.task", &next.id, text(&next.body, "title"), &next.body["description"])}))?;
+        json!({"project": done.body["project"], "from": done.id, "task": view(&next), "entities": [entity(&done), entity(&next)], "refs": richtext::refs_for("tasks.task", &next.id, text(&next.body, "title"), &next.body["description"])}))?;
     notify_assigned(tx, &next)?;
     Ok(done)
 }
@@ -156,7 +168,7 @@ impl Plugin for Tasks {
         let proj = json!({"type":"string"});
         manifest(json!({
             "id": "@madar/tasks", "version": "0.3.0", "name": "Tasks", "namespaces": ["tasks"],
-            "provides": [{"extension_point": "prefs.item", "optional": true}, {"extension_point": "search.source", "optional": true}],
+            "provides": [{"extension_point": "prefs.item", "optional": true}],
             "description": "Tasks on a board: columns, order, subtasks, labels, and a Today view",
             "requires": {"plugins": ["@madar/projects"], "capabilities": ["emit", "call"]},
             "data": {"schema": schema(include_str!("../schema/tasks.json"))},
@@ -232,25 +244,6 @@ impl Plugin for Tasks {
                 json!({"key": "tasks.due_soon_days", "group": "behaviour", "type": "integer", "default": 3, "min": 0, "max": 30, "label": {"en": "Due soon window (days)", "ar": "نافذة الاستحقاق القريب (أيام)"}}),
             ]))
         });
-        b.provide("search.source", |tx, i| {
-            let q = text(&i, "q").to_string();
-            let projects = tx.call("projects.list", json!({}))?;
-            let mut items = vec![];
-            for p in projects["projects"].as_array().cloned().unwrap_or_default() {
-                let pid = text(&p, "id").to_string();
-                for d in tx.query(TASKS, &Query::new().eq("project", pid.as_str()).eq("archived", false).limit(5000))?.items {
-                    let body = richtext::text_of(d.body.get("description").unwrap_or(&Value::Null));
-                    if let Some((score, snippet)) = crate::search::score(&q, text(&d.body, "title"), &body) {
-                        items.push(json!({"kind": "task", "id": d.id, "title": d.body["title"], "snippet": snippet, "score": score,
-                            "project": pid, "project_name": p["name"], "done": !d.body["completed_at"].is_null()}));
-                    }
-                }
-            }
-            items.sort_by(|a, b| b["score"].as_f64().partial_cmp(&a["score"].as_f64()).unwrap_or(std::cmp::Ordering::Equal));
-            items.truncate(50);
-            Ok(json!({"items": items}))
-        });
-
         b.op("tasks.create", |tx, i| {
             let project = text(&i, "project").to_string();
             let p = project_of(tx, &project)?;
@@ -291,7 +284,7 @@ impl Plugin for Tasks {
                 "custom": custom, "description": description, "repeat": i.get("repeat").cloned().unwrap_or(Value::Null),
             }))?;
             let aud = Audience::scope("projects.members", &project);
-            tx.emit("tasks.created", aud, json!({"project": project, "task": view(&d), "refs": richtext::refs_for("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
+            tx.emit("tasks.created", aud, json!({"project": project, "task": view(&d), "entity": entity(&d), "refs": richtext::refs_for("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
             notify_assigned(tx, &d)?;
             tx.metrics().inc("madar_tasks_created_total", &[], 1.0);
             Ok(view(&d))
@@ -387,7 +380,7 @@ impl Plugin for Tasks {
                 body["position"] = json!(end_of(tx, &project, text(&body, "status"))?);
             }
             let d = tx.put(TASKS, &old.id, body, Expect::Rev(old.rev)).map_err(|e| stale(e, "tasks.stale_revision", "The task"))?;
-            tx.emit("tasks.updated", Audience::scope("projects.members", &project), json!({"project": project, "task": view(&d), "changes": changes,
+            tx.emit("tasks.updated", Audience::scope("projects.members", &project), json!({"project": project, "task": view(&d), "changes": changes, "entity": entity(&d),
                 "refs": richtext::refs_for("tasks.task", &d.id, text(&d.body, "title"), &d.body["description"])}))?;
             if changes.contains_key("assignee") {
                 notify_assigned(tx, &d)?;
@@ -459,7 +452,7 @@ impl Plugin for Tasks {
                 positions.insert(t.id.clone(), json!(pos));
                 tx.put(TASKS, &t.id, body, Expect::Rev(t.rev)).map_err(|e| stale(e, "tasks.stale_revision", "The task"))?
             };
-            tx.emit("tasks.moved", Audience::scope("projects.members", &project), json!({"project": project, "task": t.id, "status": status, "positions": positions}))?;
+            tx.emit("tasks.moved", Audience::scope("projects.members", &project), json!({"project": project, "task": t.id, "status": status, "positions": positions, "entity": entity(&moved)}))?;
             if is_done && !was_done {
                 let by = tx.who().subject.clone();
                 tx.emit("tasks.completed", Audience::scope("projects.members", &project), json!({"project": project, "task": t.id, "title": t.body["title"], "created_by": t.body["created_by"], "assignee": t.body["assignee"], "by": by}))?;
@@ -477,7 +470,8 @@ impl Plugin for Tasks {
                 tx.delete(TASKS, s)?;
             }
             tx.delete(TASKS, &t.id)?;
-            tx.emit("tasks.removed", Audience::scope("projects.members", &project), json!({"project": project, "task": t.id, "subtasks": sub_ids, "title": t.body["title"]}))?;
+            tx.emit("tasks.removed", Audience::scope("projects.members", &project), json!({"project": project, "task": t.id, "subtasks": sub_ids, "title": t.body["title"],
+                "entities": std::iter::once(&t.id).chain(&sub_ids).map(|id| json!({"kind": "tasks.task", "id": id, "removed": true})).collect::<Vec<_>>()}))?;
             Ok(json!({}))
         });
 
@@ -683,7 +677,7 @@ impl Plugin for Tasks {
                         let mut body = t.body.clone();
                         body["assignee"] = Value::Null;
                         let nd = tx.put(TASKS, &t.id, body, Expect::Rev(t.rev))?;
-                        tx.emit("tasks.updated", Audience::scope("projects.members", &project), json!({"project": project, "task": view(&nd), "changes": {"assignee": [who, null]}}))?;
+                        tx.emit("tasks.updated", Audience::scope("projects.members", &project), json!({"project": project, "task": view(&nd), "changes": {"assignee": [who, null]}, "entity": entity(&nd)}))?;
                     }
                 }
                 _ => {}

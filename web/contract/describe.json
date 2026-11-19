@@ -1,5 +1,5 @@
 {
-  "contract": "7fef9f76b8b09eca",
+  "contract": "dbd0199d702bcda5",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -747,6 +747,121 @@
       },
       "permission": null,
       "plugin": "@nuah/emoji",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "entities.backlinks": {
+      "allowed": true,
+      "description": "What refers to an entity, from what you can see",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 80,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "required": [
+          "links"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/entities",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "entities.get": {
+      "allowed": true,
+      "description": "What a reference points at: the entity, or that it is private or missing",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 80,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/entities",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "entities.search": {
+      "allowed": true,
+      "description": "Find entities of any kind by words in their title or text, or by a tag: only what you can see, best match first",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "kinds": {
+            "items": {
+              "maxLength": 80,
+              "minLength": 3,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "type": "array"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "q": {
+            "maxLength": 100,
+            "minLength": 2,
+            "type": "string"
+          },
+          "tag": {
+            "maxLength": 60,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/entities",
       "public": false,
       "reasons": {},
       "resource": null
@@ -5454,7 +5569,7 @@
     },
     "refs.mine": {
       "allowed": true,
-      "description": "What refers to one of your own pages",
+      "description": "What refers to one of your own pages, from everything you can see",
       "input": {
         "additionalProperties": false,
         "properties": {
@@ -5488,7 +5603,7 @@
     },
     "refs.to": {
       "allowed": true,
-      "description": "What refers to an item, inside one project",
+      "description": "What refers to an item of a project, from everything you can see",
       "input": {
         "additionalProperties": false,
         "properties": {
@@ -5529,7 +5644,7 @@
     },
     "search.query": {
       "allowed": true,
-      "description": "Find tasks, knowledge and pages by words in their title or text",
+      "description": "Find tasks, knowledge and pages by words in their title or text, or pages by #tag",
       "input": {
         "additionalProperties": false,
         "properties": {

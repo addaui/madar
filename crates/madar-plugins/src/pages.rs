@@ -26,6 +26,19 @@ const GAP: f64 = 1024.0;
 const MAX_DEPTH: usize = 12;
 const KIND: &str = "pages.page";
 
+/// What the index of entities knows of a page ([ADR 0092]): found by its title, text and tags, with its project or
+/// Space; a folder is not found.
+///
+/// [ADR 0092]: https://docs.addaui.com/nuah/adr/0092-one-index-of-entities-plugins-announce-them-in-their-events-the-data-port-searches-text-and-permissions-follow-the-events-audience/
+fn entity(d: &Doc) -> Value {
+    if d.body.get("folder") == Some(&json!(true)) {
+        return json!({"kind": KIND, "id": d.id, "removed": true});
+    }
+    let personal = d.body["project"].is_null();
+    json!({"kind": KIND, "id": d.id, "title": d.body["title"], "text": richtext::text_of(&d.body["body"]), "tags": d.body.get("tags").cloned().unwrap_or_else(|| json!([])),
+        "context": {"project": d.body["project"], "space": if personal { json!(space_of(&d.body)) } else { Value::Null }}})
+}
+
 fn view(d: &Doc, with_body: bool) -> Value {
     let b = &d.body;
     let mut v = json!({
@@ -175,7 +188,7 @@ fn create(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
         "parent": parent, "position": last + GAP, "project": s.project, "space": if s.project.is_none() { json!(space) } else { Value::Null }, "owner": me, "created_by": me, "created_at": now, "updated_at": now
     }))?;
     let aud = s.audience();
-    tx.emit("pages.created", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "parent": d.body["parent"],
+    tx.emit("pages.created", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "parent": d.body["parent"], "entity": entity(&d),
         "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
     Ok(view(&d, true))
 }
@@ -236,7 +249,7 @@ fn restore(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     b["body"] = v.body["body"].clone();
     b["updated_at"] = json!(tx.now());
     let d = tx.put(PAGES, &page.id, b, Expect::Rev(page.rev))?;
-    tx.emit("pages.updated", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": {"body": true, "restored": v.body["at"]},
+    tx.emit("pages.updated", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": {"body": true, "restored": v.body["at"]}, "entity": entity(&d),
         "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
     Ok(view(&d, true))
 }
@@ -373,7 +386,7 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let expect = Expect::Rev(i.get("expected_rev").and_then(|r| r.as_u64()).unwrap_or(old.rev));
     let d = tx.put(PAGES, &old.id, b, expect).map_err(|e| stale(e, "pages.stale_revision", "The page"))?;
     let aud = s.audience();
-    tx.emit("pages.updated", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": changes,
+    tx.emit("pages.updated", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": changes, "entity": entity(&d),
         "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
     Ok(view(&d, true))
 }
@@ -562,6 +575,7 @@ fn set_space(tx: &mut Tx, i: &Value) -> Result<Value> {
     known_space(tx, &space)?;
     let all = subtree(tx, &s, &page)?;
     let mut root = None;
+    let mut moved = vec![];
     for d in all {
         let mut b = d.body.clone();
         b["space"] = json!(space);
@@ -570,12 +584,13 @@ fn set_space(tx: &mut Tx, i: &Value) -> Result<Value> {
             b["position"] = json!(children(tx, &s, &Value::Null)?.last().and_then(|x| x.body["position"].as_f64()).unwrap_or(0.0) + GAP);
         }
         let nd = tx.put(PAGES, &d.id, b, Expect::Rev(d.rev))?;
+        moved.push(entity(&nd));
         if nd.id == page.id {
             root = Some(nd);
         }
     }
     let d = root.expect("the page itself");
-    tx.emit("pages.moved", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "parent": Value::Null, "space": space})))?;
+    tx.emit("pages.moved", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "parent": Value::Null, "space": space, "entities": moved})))?;
     Ok(view(&d, false))
 }
 
@@ -589,7 +604,7 @@ fn remove(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
             tx.delete(VERSIONS, &v.id)?;
         }
         let aud = s.audience();
-        tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "files": richtext::files_of(&shown(&d.body)), "refs": richtext::refs_for(KIND, &d.id, "", &Value::Null)})))?;
+        tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "files": richtext::files_of(&shown(&d.body)), "entity": {"kind": KIND, "id": d.id, "removed": true}, "refs": richtext::refs_for(KIND, &d.id, "", &Value::Null)})))?;
     }
     Ok(json!({"removed": all.len()}))
 }
@@ -739,46 +754,12 @@ impl Plugin for Pages {
             "id": "@madar/pages", "version": "0.1.0", "name": "Pages", "namespaces": ["knowledge", "pages"],
             "description": "A tree of rich-text pages: a project's Knowledge (knowledge.*) and your own Pages (pages.*)",
             "requires": {"plugins": ["@madar/projects", "@madar/spaces"], "capabilities": ["emit", "call"]},
-            "provides": [{"extension_point": "search.source", "optional": true}],
             "data": {"schema": schema(include_str!("../schema/pages.json"))},
             "events": {"pages.created": {}, "pages.updated": {}, "pages.moved": {}, "pages.removed": {}, "pages.style.saved": {}, "pages.style.removed": {}},
             "operations": ops
         }))
     }
     fn bind(&self, b: &mut Bindings) {
-        b.provide("search.source", |tx, i| {
-            let q = text(&i, "q").to_string();
-            // `#name` asks for the pages that carry that tag; anything else searches words
-            let by_tag = q.trim().strip_prefix('#').map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty());
-            let projects = tx.call("projects.list", json!({}))?;
-            let me = tx.who().subject.clone();
-            let mut items = vec![];
-            let mut hit = |d: &Doc, kind: &str, project: Option<&Value>| {
-                if d.body.get("folder") == Some(&json!(true)) {
-                    return;
-                }
-                let found = match &by_tag {
-                    Some(t) => d.body["tags"].as_array().is_some_and(|x| x.iter().any(|y| y.as_str().is_some_and(|y| y.to_lowercase() == *t))).then(|| (10.0, String::new())),
-                    None => crate::search::score(&q, text(&d.body, "title"), &richtext::text_of(&d.body["body"])),
-                };
-                if let Some((score, snippet)) = found {
-                    items.push(json!({"kind": kind, "id": d.id, "title": d.body["title"], "snippet": snippet, "score": score, "tags": d.body.get("tags").cloned().unwrap_or_else(|| json!([])),
-                        "project": project.map(|p| p["id"].clone()).unwrap_or(Value::Null), "project_name": project.map(|p| p["name"].clone()).unwrap_or(Value::Null),
-                        "space": if project.is_none() { json!(space_of(&d.body)) } else { Value::Null }}));
-                }
-            };
-            for p in projects["projects"].as_array().cloned().unwrap_or_default() {
-                for d in tx.query(PAGES, &Query::new().eq("project", text(&p, "id")).limit(2000))?.items {
-                    hit(&d, "knowledge", Some(&p));
-                }
-            }
-            for d in tx.query(PAGES, &Query::new().eq("owner", me.as_str()).eq("project", Value::Null).limit(2000))?.items {
-                hit(&d, "page", None);
-            }
-            items.sort_by(|a, b| b["score"].as_f64().partial_cmp(&a["score"].as_f64()).unwrap_or(std::cmp::Ordering::Equal));
-            items.truncate(50);
-            Ok(json!({"items": items}))
-        });
         b.op("pages.set_space", |tx, i| set_space(tx, &i));
         b.op("pages.styles", |tx, i| styles(tx, &i));
         b.op("pages.style_save", |tx, i| style_save(tx, &i));

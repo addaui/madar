@@ -15,6 +15,7 @@ nuah-shell = { workspace = true }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
 nuah-adapters = { workspace = true }
 nuah-prefs = { workspace = true }
+nuah-entities = { workspace = true }
 nuah-appearance = { workspace = true }
 nuah-emoji = { workspace = true }
 nuah-fonts = { workspace = true }

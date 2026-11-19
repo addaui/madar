@@ -35,7 +35,7 @@ pub fn catalog() -> Catalog {
         Arc::new(projects::Projects), Arc::new(tasks::Tasks), Arc::new(discussion::Discussion),
         Arc::new(small::Audit), Arc::new(small::Quota), Arc::new(nuah_prefs::Prefs), Arc::new(nuah_appearance::Appearance), Arc::new(nuah_metric_prometheus::MetricPrometheus), Arc::new(LogConsole), Arc::new(LogFile), Arc::new(small::Export),
         Arc::new(small::Notify), Arc::new(small::NotifyInbox),
-        Arc::new(content::Editor), Arc::new(content::EditorBasic), Arc::new(taskblock::TaskBlock), Arc::new(content::Refs), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(nuah_emoji::Emoji), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(previews::Previews::default()), Arc::new(nuah_link_analyzer::LinkAnalyzer::default()), Arc::new(nuah_gifs::Gifs), Arc::new(nuah_gifs_giphy::GifsGiphy), Arc::new(NetPublic::default()), Arc::new(spaces::Spaces), Arc::new(shares::Shares), Arc::new(features::Features), 
+        Arc::new(content::Editor), Arc::new(content::EditorBasic), Arc::new(taskblock::TaskBlock), Arc::new(content::Refs), Arc::new(nuah_entities::Entities), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(nuah_emoji::Emoji), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(previews::Previews::default()), Arc::new(nuah_link_analyzer::LinkAnalyzer::default()), Arc::new(nuah_gifs::Gifs), Arc::new(nuah_gifs_giphy::GifsGiphy), Arc::new(NetPublic::default()), Arc::new(spaces::Spaces), Arc::new(shares::Shares), Arc::new(features::Features), 
     ];
     for t in nuah_appearance::themes() {
         list.push(Arc::new(t));
@@ -47,7 +47,7 @@ pub fn catalog() -> Catalog {
     Catalog(list)
 }
 
-const FEATURES: [&str; 22] = ["@madar/projects", "@madar/tasks", "@madar/discussion", "@madar/audit", "@madar/quota", "@nuah/prefs", "@madar/export", "@madar/notify", "@madar/notify-inbox", "@nuah/appearance", "@madar/editor", "@madar/editor-basic", "@madar/refs", "@madar/pages", "@madar/timeline", "@madar/spaces", "@madar/shares", "@madar/search", "@madar/files", "@madar/files-db", "@nuah/emoji", "@madar/task-block"];
+const FEATURES: [&str; 23] = ["@nuah/entities", "@madar/projects", "@madar/tasks", "@madar/discussion", "@madar/audit", "@madar/quota", "@nuah/prefs", "@madar/export", "@madar/notify", "@madar/notify-inbox", "@nuah/appearance", "@madar/editor", "@madar/editor-basic", "@madar/refs", "@madar/pages", "@madar/timeline", "@madar/spaces", "@madar/shares", "@madar/search", "@madar/files", "@madar/files-db", "@nuah/emoji", "@madar/task-block"];
 
 fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     let mut enabled: Vec<String> = adapters.iter().map(|s| s.to_string()).collect();
@@ -65,6 +65,7 @@ fn base_profile(name: &str, adapters: &[&str]) -> Profile {
     p.grants.insert("@nuah/fonts".into(), vec!["net".into(), "call".into()]);
     p.grants.insert("@madar/pages".into(), vec!["emit".into(), "call".into()]);
     p.grants.insert("@madar/search".into(), vec!["call".into()]);
+    p.grants.insert("@madar/refs".into(), vec!["call".into()]);
     p.grants.insert("@nuah/emoji".into(), vec!["call".into()]);
     p.grants.insert("@madar/files".into(), vec!["call".into()]);
     p.grants.insert("@madar/timeline".into(), vec!["call".into()]);

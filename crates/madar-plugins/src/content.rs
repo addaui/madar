@@ -5,7 +5,6 @@
 use crate::util::*;
 use nuah_kernel::*;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 
 // ---- rich text ---------------------------------------------------------------------------------------
 
@@ -362,74 +361,35 @@ impl Plugin for EditorBasic {
     }
 }
 
-// ---- references (ADR 0019) ----------------------------------------------------------------------------------
+// ---- references (ADR 0019, ADR 0092) ------------------------------------------------------------------------
 
-pub const LINKS: &str = "refs.refs";
-
-fn key(kind: &str, id: &str) -> String {
-    format!("{kind}:{id}")
-}
-
+/// What refers to an item. The index of entities (`@nuah/entities`) keeps the links from the `refs` that pages, tasks
+/// and discussion put in their Events, and answers only with links from what the caller can see.
 pub struct Refs;
 impl Plugin for Refs {
     fn manifest(&self) -> Manifest {
         manifest(json!({
-            "id": "@madar/refs", "version": "0.1.0", "name": "References", "namespaces": ["refs"],
-            "description": "Remembers what refers to what, so every item can show what refers to it",
-            "requires": {"plugins": ["@madar/projects"]},
-            "data": {"schema": schema(include_str!("../schema/refs.json"))},
+            "id": "@madar/refs", "version": "0.2.0", "name": "References", "namespaces": ["refs"],
+            "description": "Shows what refers to an item, from everything you can see",
+            "requires": {"plugins": ["@madar/projects", "@nuah/entities"], "capabilities": ["call"]},
             "operations": {
-                "refs.to": {"kind": "query", "description": "What refers to an item, inside one project", "permission": "projects.read",
+                "refs.to": {"kind": "query", "description": "What refers to an item of a project, from everything you can see", "permission": "projects.read",
                     "resource": {"type":"projects.project","id":"project"},
                     "input": {"type":"object","required":["project","kind","id"],"properties":{"project":{"type":"string"},"kind":{"type":"string","maxLength":60},"id":{"type":"string","maxLength":80}},"additionalProperties":false},
                     "output": {"type":"object","required":["links"]}},
-                "refs.mine": {"kind": "query", "description": "What refers to one of your own pages",
+                "refs.mine": {"kind": "query", "description": "What refers to one of your own pages, from everything you can see",
                     "input": {"type":"object","required":["kind","id"],"properties":{"kind":{"type":"string","maxLength":60},"id":{"type":"string","maxLength":80}},"additionalProperties":false},
                     "output": {"type":"object","required":["links"]}}
-            },
-            "listeners": [{"id": "refs.record", "on": ["pages.*", "tasks.*", "discussion.*"], "handler": "refs.record"}]
+            }
         }))
     }
     fn bind(&self, b: &mut Bindings) {
-        // Safe to repeat: the row ids come from the two ends, so a second delivery overwrites itself.
-        b.listener("refs.record", |tx, d| {
-            let l = &d.event.data["refs"];
-            let (kind, id) = (text(&l["from"], "type"), text(&l["from"], "id"));
-            if l.is_null() || kind.is_empty() || id.is_empty() {
-                return Ok(());
-            }
-            let from_key = key(kind, id);
-            loop {
-                let old = tx.query(LINKS, &Query::new().eq("from_key", from_key.as_str()).limit(200))?;
-                if old.items.is_empty() {
-                    break;
-                }
-                for o in old.items {
-                    tx.delete(LINKS, &o.id)?;
-                }
-            }
-            let owner = if d.event.data["project"].is_null() { d.actor.clone() } else { String::new() };
-            for t in l["to"].as_array().cloned().unwrap_or_default() {
-                let to_key = key(text(&t, "type"), text(&t, "id"));
-                let rid = format!("{:x}", Sha256::digest(format!("{from_key}>{to_key}").as_bytes()));
-                tx.put(LINKS, &rid[..32], json!({
-                    "from": l["from"], "to": t, "from_key": from_key, "to_key": to_key, "title": l["title"],
-                    "project": d.event.data["project"], "owner": owner
-                }), Expect::Any)?;
-            }
-            Ok(())
-        });
-        b.op("refs.to", |tx, i| {
-            let to_key = key(text(&i, "kind"), text(&i, "id"));
-            let page = tx.query(LINKS, &Query::new().eq("to_key", to_key.as_str()).eq("project", text(&i, "project")).limit(200))?;
-            Ok(json!({"links": page.items.iter().map(|d| json!({"from": d.body["from"], "title": d.body["title"]})).collect::<Vec<_>>()}))
-        });
-        b.op("refs.mine", |tx, i| {
-            let to_key = key(text(&i, "kind"), text(&i, "id"));
-            let me = tx.who().subject.clone();
-            let page = tx.query(LINKS, &Query::new().eq("to_key", to_key.as_str()).eq("owner", me.as_str()).limit(200))?;
-            Ok(json!({"links": page.items.iter().map(|d| json!({"from": d.body["from"], "title": d.body["title"]})).collect::<Vec<_>>()}))
-        });
+        fn backlinks(tx: &mut Tx, i: &Value) -> Result<Value> {
+            let found = tx.call("entities.backlinks", json!({"kind": text(i, "kind"), "id": text(i, "id")}))?;
+            Ok(json!({"links": found["links"]}))
+        }
+        b.op("refs.to", |tx, i| backlinks(tx, &i));
+        b.op("refs.mine", |tx, i| backlinks(tx, &i));
     }
 }
 

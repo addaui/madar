@@ -1466,6 +1466,8 @@ fn search_finds_what_you_can_see_best_match_first() {
     a.task(&bo, &secret, "milk run for bob");
     a.ok(&al, "knowledge.create", json!({"project": p, "title": "Milk supplier notes", "body": rich("prices of milk")}));
     a.ok(&al, "pages.create", json!({"title": "Shopping", "body": rich("milk, bread")}));
+    // the index of entities takes what was announced once the Events are delivered
+    a.settle();
     let found = a.ok(&al, "search.query", json!({"q": "milk"}));
     let items = found["items"].as_array().unwrap();
     let titles: Vec<&str> = items.iter().map(|x| x["title"].as_str().unwrap()).collect();
@@ -1480,6 +1482,7 @@ fn search_finds_what_you_can_see_best_match_first() {
     assert_eq!(a.ok(&al, "search.query", json!({"q": "milk", "kinds": ["page"]}))["items"].as_array().unwrap().len(), 1);
     // bob's private page is invisible to alice
     a.ok(&bo, "pages.create", json!({"title": "Bob diary", "body": rich("milk")}));
+    a.settle();
     assert_eq!(a.ok(&al, "search.query", json!({"q": "milk"}))["items"].as_array().unwrap().len(), 4);
     assert_eq!(a.err(&al, "search.query", json!({"q": "m"})).category, Category::Invalid);
 }
@@ -1927,6 +1930,7 @@ fn searching_for_a_hash_finds_the_pages_with_that_tag() {
     let p2 = a.ok(&al, "pages.create", json!({"title": "Other"}));
     a.ok(&al, "pages.update", json!({"id": p1["id"], "tags": ["Work"]}));
     a.ok(&al, "pages.update", json!({"id": p2["id"], "tags": ["home"]}));
+    a.settle();
     let hits = a.ok(&al, "search.query", json!({"q": "#work"}));
     let titles: Vec<&str> = hits["items"].as_array().unwrap().iter().map(|x| x["title"].as_str().unwrap()).collect();
     assert_eq!(titles, ["Plan"], "the tag, ignoring case, and only that tag");
@@ -2132,4 +2136,26 @@ fn the_face_contract_snapshot_is_made_from_a_profile_with_every_plugin_on() {
         std::fs::write(&path, &got).unwrap();
     }
     assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), got, "run `UPDATE_FIXTURES=1 cargo test` and `bun run contract` in web/");
+}
+
+#[test]
+fn search_follows_archive_and_removal_and_finds_arabic_as_people_type_it() {
+    let a = app();
+    let al = who("alice");
+    let p = a.project(&al, "Alpha");
+    let t = a.task(&al, &p, "مُراجعة الخُطَّة");
+    let sub = a.ok(&al, "tasks.create", json!({"project": p, "title": "مراجعة الفصل الأول", "parent": t["id"]}));
+    a.settle();
+    let found = |q: &str| -> Vec<String> { a.ok(&al, "search.query", json!({"q": q}))["items"].as_array().unwrap().iter().map(|x| x["id"].as_str().unwrap().to_string()).collect() };
+    assert_eq!(found("الخطة"), vec![t["id"].as_str().unwrap().to_string()], "without diacritics, and taa marbuta as haa");
+    assert_eq!(found("مراجعه").len(), 2);
+    a.ok(&al, "tasks.update", json!({"project": p, "id": sub["id"], "archived": true}));
+    a.settle();
+    assert_eq!(found("مراجعه").len(), 1, "an archived task is not found");
+    a.ok(&al, "tasks.update", json!({"project": p, "id": sub["id"], "archived": false}));
+    a.settle();
+    assert_eq!(found("مراجعه").len(), 2, "and is found again when restored");
+    a.ok(&al, "tasks.remove", json!({"project": p, "id": t["id"]}));
+    a.settle();
+    assert!(found("مراجعه").is_empty(), "a removed task takes its subtasks out of the index");
 }
