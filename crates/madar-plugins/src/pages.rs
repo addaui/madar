@@ -17,11 +17,22 @@ pub fn space_of(body: &Value) -> &str {
 
 pub const PAGES: &str = "pages.pages";
 pub const VERSIONS: &str = "pages.versions";
+pub const BODIES: &str = "pages.bodies";
+pub const BODY_UPDATES: &str = "pages.body_updates";
+/// Page bodies are Live documents ([ADR 0093]): the browser and the server hold the same Loro document; the page keeps a JSON copy.
+/// Links and inline code do not grow when typing at their edge (Tiptap's `inclusive: false`).
+///
+/// [ADR 0093]: https://docs.addaui.com/nuah/adr/0093-page-bodies-are-live-documents-on-loro-in-the-browser-and-on-the-server-edits-travel-as-operations-and-pulse-presence-as-signals-versions-are-points-in-the-history/
+pub const LIVE: nuah_live::LiveStore = nuah_live::LiveStore { bodies: BODIES, updates: BODY_UPDATES, versions: VERSIONS, rejected: "pages.body_rejected",
+    styles: &[("link", nuah_live::Expand::None), ("code", nuah_live::Expand::None)] };
+/// A Signal carries the update itself up to this size (base64); a bigger one tells browsers to pull.
+const SIGNAL_UPDATE_MAX: usize = 12_000;
 pub const COUNTERS: &str = "pages.counters";
 pub const STYLES: &str = "pages.styles";
-/// A page keeps a picture of itself from before an editing spell, at most one per ten minutes, the last forty (ADR 0025).
+/// A Version is marked when someone starts editing after ten minutes without changes (ADR 0093).
 const SPELL_MS: i64 = 600_000;
-const KEEP: usize = 40;
+/// The most Versions a list shows.
+const SHOWN: usize = 100;
 const GAP: f64 = 1024.0;
 const MAX_DEPTH: usize = 12;
 const KIND: &str = "pages.page";
@@ -187,6 +198,7 @@ fn create(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
         "number": number, "title": i["title"].as_str().unwrap_or("").trim(), "body": body, "icon": i.get("icon").cloned().unwrap_or(Value::Null), "folder": folder,
         "parent": parent, "position": last + GAP, "project": s.project, "space": if s.project.is_none() { json!(space) } else { Value::Null }, "owner": me, "created_by": me, "created_at": now, "updated_at": now
     }))?;
+    LIVE.create(tx, &d.id, &body)?;
     let aud = s.audience();
     tx.emit("pages.created", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "parent": d.body["parent"], "entity": entity(&d),
         "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
@@ -206,52 +218,126 @@ fn list(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     Ok(json!({"pages": page.items.iter().filter(|d| want.is_none_or(|w| space_of(&d.body) == w)).map(|d| view(d, false)).collect::<Vec<_>>()}))
 }
 
-fn snapshot(tx: &mut Tx, old: &Doc, force: bool) -> Result<()> {
-    let latest = tx.query(VERSIONS, &Query::new().eq("page", old.id.as_str()).desc("at").limit(KEEP + 1))?.items;
+/// Mark the page's present state as a Version before a change, when nobody changed it for ten minutes (or always, with `force`).
+fn spell(tx: &mut Tx, old: &Doc, force: bool) -> Result<()> {
     let now = tx.now();
-    if !force && latest.first().is_some_and(|v| now - v.body["at"].as_i64().unwrap_or(0) < SPELL_MS) {
+    if !force && now - old.body["updated_at"].as_i64().unwrap_or(0) < SPELL_MS && LIVE.latest(tx, &old.id)?.is_some() {
         return Ok(());
     }
-    if old.body["body"].is_null() && old.body["title"] == "" {
+    if !force && LIVE.latest(tx, &old.id)?.is_some_and(|v| now - v.body["at"].as_i64().unwrap_or(0) < SPELL_MS) {
         return Ok(());
     }
-    tx.create(VERSIONS, json!({"page": old.id, "title": old.body["title"], "body": old.body["body"], "at": now,
-        "by": tx.who().subject, "edited_at": old.body["updated_at"]}))?;
-    for v in latest.iter().skip(KEEP - 1) {
-        tx.delete(VERSIONS, &v.id)?;
+    if richtext::text_of(&old.body["body"]).trim().is_empty() && old.body["title"] == "" {
+        return Ok(());
     }
+    LIVE.mark(tx, &old.id, None, text(&old.body, "title"))?;
     Ok(())
+}
+
+fn version_view(v: &Doc, body: &Value) -> Value {
+    json!({"id": v.id, "at": v.body["at"], "by": v.body["by"], "title": v.body["title"], "name": v.body["name"], "text": richtext::text_of(body).chars().take(160).collect::<String>()})
 }
 
 fn versions(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let page = get(tx, &s, text(i, "id"))?;
-    let rows = tx.query(VERSIONS, &Query::new().eq("page", page.id.as_str()).desc("at").limit(KEEP))?.items;
-    Ok(json!({"versions": rows.iter().map(|v| json!({"id": v.id, "at": v.body["at"], "by": v.body["by"], "title": v.body["title"],
-        "edited_at": v.body["edited_at"], "text": richtext::text_of(&v.body["body"]).chars().take(160).collect::<String>()})).collect::<Vec<_>>()}))
+    let rows = LIVE.versions(tx, &page.id, SHOWN)?;
+    let d = LIVE.load(tx, &page.id)?;
+    let mut out = vec![];
+    for v in &rows {
+        out.push(version_view(v, &LIVE.json_at(&d, v)?));
+    }
+    Ok(json!({"versions": out}))
 }
 
 fn version(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let page = get(tx, &s, text(i, "id"))?;
-    let v = tx.get(VERSIONS, text(i, "version"))?.filter(|v| !v.deleted && text(&v.body, "page") == page.id).ok_or_else(|| Error::not_found("version"))?;
-    Ok(json!({"id": v.id, "at": v.body["at"], "by": v.body["by"], "title": v.body["title"], "body": v.body["body"]}))
+    let v = tx.get(VERSIONS, text(i, "version"))?.filter(|v| !v.deleted && text(&v.body, "key") == page.id).ok_or_else(|| Error::not_found("version"))?;
+    let body = LIVE.at(tx, &page.id, &v.id)?;
+    Ok(json!({"id": v.id, "at": v.body["at"], "by": v.body["by"], "title": v.body["title"], "name": v.body["name"], "body": body}))
 }
 
-/// Put an old picture back. The page as it is now is kept first, so a restore can itself be undone.
+/// Name a Version so it is easy to find again (or clear its name).
+fn version_name(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let name = i["name"].as_str().map(str::trim).filter(|n| !n.is_empty());
+    let v = LIVE.name(tx, &page.id, text(i, "version"), name)?;
+    let body = LIVE.at(tx, &page.id, &v.id)?;
+    Ok(version_view(&v, &body))
+}
+
+/// Bring a Version back as a new change. The page as it is now is marked first, so a restore can itself be undone.
 fn restore(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
     let page = get(tx, &s, text(i, "id"))?;
-    let v = tx.get(VERSIONS, text(i, "version"))?.filter(|v| !v.deleted && text(&v.body, "page") == page.id).ok_or_else(|| Error::not_found("version"))?;
-    snapshot(tx, &page, true)?;
+    let v = tx.get(VERSIONS, text(i, "version"))?.filter(|v| !v.deleted && text(&v.body, "key") == page.id).ok_or_else(|| Error::not_found("version"))?;
+    spell(tx, &page, true)?;
+    let written = LIVE.restore(tx, &page.id, &v.id)?;
     let mut b = page.body.clone();
     b["title"] = v.body["title"].clone();
-    b["body"] = v.body["body"].clone();
+    if let Some(w) = &written {
+        b["body"] = w.json.clone();
+    }
     b["updated_at"] = json!(tx.now());
     let d = tx.put(PAGES, &page.id, b, Expect::Rev(page.rev))?;
+    if let Some(w) = &written {
+        body_signal(tx, &s, &d.id, w, "server")?;
+    }
     tx.emit("pages.updated", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": {"body": true, "restored": v.body["at"]}, "entity": entity(&d),
         "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
     Ok(view(&d, true))
+}
+
+/// Tell the browsers that have the page open about a change to its body (a Signal: not stored; a browser that missed it pulls).
+fn body_signal(tx: &mut Tx, s: &Scope, page: &str, w: &nuah_live::Written, client: &str) -> Result<()> {
+    let update = nuah_live::b64(&w.update);
+    let mut data = s.event_data(json!({"page": page, "client": client, "version": nuah_live::b64(&w.version)}));
+    if update.len() <= SIGNAL_UPDATE_MAX {
+        data["update"] = json!(update);
+    } else {
+        data["pull"] = json!(true);
+    }
+    tx.signal("pages.body", s.audience(), data)
+}
+
+/// What a browser lacks of a page's body: everything (without `since`) or the changes after its version.
+fn body_pull(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let since = i.get("since").and_then(|v| v.as_str()).map(|v| nuah_live::unb64("since", v)).transpose()?;
+    let (update, version) = LIVE.pull(tx, &page.id, since.as_deref())?;
+    Ok(json!({"update": nuah_live::b64(&update), "version": nuah_live::b64(&version)}))
+}
+
+/// A browser's edits to a page's body, as a Loro update. Checked like a whole body; passed on to everyone else on the page.
+fn body_push(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let bytes = nuah_live::unb64("update", text(i, "update"))?;
+    spell(tx, &page, false)?;
+    let w = LIVE.push(tx, &page.id, &bytes, &|j| richtext::check("body", j))?;
+    if w.update.is_empty() {
+        return Ok(json!({"version": nuah_live::b64(&w.version)}));
+    }
+    let mut b = page.body.clone();
+    b["body"] = w.json.clone();
+    b["updated_at"] = json!(tx.now());
+    let d = tx.put(PAGES, &page.id, b, Expect::Any)?;
+    body_signal(tx, &s, &d.id, &w, text(i, "client"))?;
+    tx.emit("pages.updated", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": {"body": true}, "entity": entity(&d),
+        "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
+    Ok(json!({"version": nuah_live::b64(&w.version)}))
+}
+
+/// Who is on the page and where their cursor is (Presence): a Loro ephemeral update passed on as a Signal, never stored.
+fn presence(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let data = s.event_data(json!({"page": page.id, "state": i["state"]}));
+    tx.signal("pages.presence", s.audience(), data)?;
+    Ok(json!({}))
 }
 
 /// How this page is shown: text (font, size, line height, colour), layout (width, spacing between blocks), colours (the page and its backdrop), a background image,
@@ -350,12 +436,17 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
         b["title"] = json!(t.as_str().unwrap_or("").trim());
         changes.insert("title".into(), json!([old.body["title"], b["title"]]));
     }
+    let mut written = None;
     if let Some(body) = i.get("body") {
         richtext::check("body", body)?;
         if body != &old.body["body"] {
-            changes.insert("body".into(), json!(true));
+            spell(tx, &old, false)?;
+            if let Some(w) = LIVE.write(tx, &old.id, body)? {
+                changes.insert("body".into(), json!(true));
+                b["body"] = w.json.clone();
+                written = Some(w);
+            }
         }
-        b["body"] = body.clone();
     }
     if let Some(icon) = i.get("icon") {
         icon_ok(Some(icon))?;
@@ -380,11 +471,14 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
         return Ok(view(&old, true));
     }
     b["updated_at"] = json!(tx.now());
-    if changes.contains_key("body") || changes.contains_key("title") {
-        snapshot(tx, &old, false)?;
+    if changes.contains_key("title") && !changes.contains_key("body") {
+        spell(tx, &old, false)?;
     }
     let expect = Expect::Rev(i.get("expected_rev").and_then(|r| r.as_u64()).unwrap_or(old.rev));
     let d = tx.put(PAGES, &old.id, b, expect).map_err(|e| stale(e, "pages.stale_revision", "The page"))?;
+    if let Some(w) = &written {
+        body_signal(tx, &s, &d.id, w, "server")?;
+    }
     let aud = s.audience();
     tx.emit("pages.updated", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": changes, "entity": entity(&d),
         "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
@@ -600,9 +694,7 @@ fn remove(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let all = subtree(tx, &s, &page)?;
     for d in all.iter().rev() {
         tx.delete(PAGES, &d.id)?;
-        for v in tx.query(VERSIONS, &Query::new().eq("page", d.id.as_str()).limit(100))?.items {
-            tx.delete(VERSIONS, &v.id)?;
-        }
+        LIVE.remove(tx, &d.id)?;
         let aud = s.audience();
         tx.emit("pages.removed", aud, s.event_data(json!({"page": d.id, "title": d.body["title"], "files": richtext::files_of(&shown(&d.body)), "entity": {"kind": KIND, "id": d.id, "removed": true}, "refs": richtext::refs_for(KIND, &d.id, "", &Value::Null)})))?;
     }
@@ -728,16 +820,22 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
     add("update", "command", true, "Change a page's title, body, icon or tags", json!({"id": id, "title": title, "body": doc, "icon": nullable, "settings": {"type":"object"}, "tags": {"type":"array","maxItems":20,"items":{"type":"string","minLength":1,"maxLength":40}}, "expected_rev": {"type":"integer","minimum":1}}), vec!["id"]);
     add("move", "command", true, "Move a page under another (or to the top), before a sibling", json!({"id": id, "parent": nullable, "before": nullable}), vec!["id"]);
     add("delete", "command", true, "Delete a page and everything under it", json!({"id": id}), vec!["id"]);
-    add("versions", "query", false, "The saved earlier pictures of a page, newest first", json!({"id": id}), vec!["id"]);
-    add("version", "query", false, "One earlier picture of a page, with its body", json!({"id": id, "version": id}), vec!["id", "version"]);
-    add("restore", "command", true, "Put an earlier picture back", json!({"id": id, "version": id}), vec!["id", "version"]);
+    add("versions", "query", false, "The Versions of a page, newest first", json!({"id": id}), vec!["id"]);
+    add("version", "query", false, "One Version of a page, with its body as it was", json!({"id": id, "version": id}), vec!["id", "version"]);
+    add("restore", "command", true, "Bring an earlier Version back as a new change", json!({"id": id, "version": id}), vec!["id", "version"]);
+    add("version_name", "command", true, "Name a Version (or clear its name)", json!({"id": id, "version": id, "name": {"type": ["string", "null"], "maxLength": 60}}), vec!["id", "version"]);
+    let bytes = |max: usize| json!({"type": "string", "maxLength": max});
+    add("body.pull", "query", false, "What a browser lacks of the page's Live document: all of it, or the changes after its version (base64 Loro)", json!({"id": id, "since": bytes(4096)}), vec!["id"]);
+    add("body.push", "command", true, "A browser's edits to the page's Live document (a base64 Loro update, at most 1 MB)", json!({"id": id, "update": bytes(1_398_104), "client": {"type": "string", "maxLength": 64}}), vec!["id", "update", "client"]);
+    add("presence", "command", false, "Tell the others on the page where you are (a base64 Loro ephemeral update; not stored)", json!({"id": id, "state": bytes(21_848)}), vec!["id", "state"]);
     add("tags", "query", false, &format!("The tags in use on {scope}, most used first"), json!({}), vec![]);
     add("search", "query", false, &format!("Find pages in {scope} by title or tag (#tag for a tag)"), json!({"q": {"type":"string","minLength":1,"maxLength":100}}), vec!["q"]);
     // what each operation returns, from `schemas` (the Core checks it; the Face's client is generated from it)
     for (name, out) in [("create", crate::schemas::page()), ("get", crate::schemas::page()), ("list", crate::schemas::pages()), ("update", crate::schemas::page()),
         ("move", crate::schemas::page_item()), ("delete", crate::schemas::removed()), ("restore", crate::schemas::page()), ("tasks", crate::schemas::page_tasks()),
         ("set_space", crate::schemas::page_item()), ("tags", crate::schemas::page_tags()), ("styles", crate::schemas::page_styles()), ("style_delete", crate::schemas::removed()),
-        ("set_task", crate::schemas::page()), ("search", crate::schemas::pages()), ("versions", crate::schemas::page_versions()), ("version", crate::schemas::page_version()), ("style_save", crate::schemas::page_style())] {
+        ("set_task", crate::schemas::page()), ("search", crate::schemas::pages()), ("versions", crate::schemas::page_versions()), ("version", crate::schemas::page_version()), ("style_save", crate::schemas::page_style()),
+        ("version_name", crate::schemas::page_version_item()), ("body.pull", crate::schemas::live_pull()), ("body.push", crate::schemas::live_version()), ("presence", json!({"type": "object"}))] {
         if let Some(op) = m.get_mut(&format!("{prefix}.{name}")) {
             op["output"] = out;
         }
@@ -768,7 +866,7 @@ impl Plugin for Pages {
         b.op("pages.set_task", |tx, i| set_task(tx, &i, true));
         b.op("knowledge.set_task", |tx, i| set_task(tx, &i, false));
         type H = fn(&mut Tx, &Value, bool) -> Result<Value>;
-        let all: [(&str, H); 11] = [("versions", versions), ("version", version), ("restore", restore), ("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search), ("tags", tags)];
+        let all: [(&str, H); 15] = [("versions", versions), ("version", version), ("restore", restore), ("version_name", version_name), ("body.pull", body_pull), ("body.push", body_push), ("presence", presence), ("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search), ("tags", tags)];
         for (prefix, personal) in [("knowledge", false), ("pages", true)] {
             for (name, f) in all {
                 b.op(&format!("{prefix}.{name}"), move |tx, i| f(tx, &i, personal));

@@ -1,5 +1,5 @@
 {
-  "contract": "dbd0199d702bcda5",
+  "contract": "ca83bb4af1a140b5",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -1776,6 +1776,108 @@
       "reasons": {},
       "resource": null
     },
+    "knowledge.body.pull": {
+      "allowed": true,
+      "description": "What a browser lacks of the page's Live document: all of it, or the changes after its version (base64 Loro)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "since": {
+            "maxLength": 4096,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "update": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "update",
+          "version"
+        ],
+        "type": "object"
+      },
+      "permission": "projects.read",
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
+    },
+    "knowledge.body.push": {
+      "allowed": true,
+      "description": "A browser's edits to the page's Live document (a base64 Loro update, at most 1 MB)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "client": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "update": {
+            "maxLength": 1398104,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "id",
+          "update",
+          "client"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "type": "object"
+      },
+      "permission": "projects.write",
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
+    },
     "knowledge.create": {
       "allowed": true,
       "description": "Add a page to this project's knowledge",
@@ -2288,9 +2390,48 @@
         "type": "projects.project"
       }
     },
+    "knowledge.presence": {
+      "allowed": true,
+      "description": "Tell the others on the page where you are (a base64 Loro ephemeral update; not stored)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 21848,
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "id",
+          "state"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": "projects.read",
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
+    },
     "knowledge.restore": {
       "allowed": true,
-      "description": "Put an earlier picture back",
+      "description": "Bring an earlier Version back as a new change",
       "input": {
         "additionalProperties": false,
         "properties": {
@@ -2831,7 +2972,7 @@
     },
     "knowledge.version": {
       "allowed": true,
-      "description": "One earlier picture of a page, with its body",
+      "description": "One Version of a page, with its body as it was",
       "input": {
         "additionalProperties": false,
         "properties": {
@@ -2873,6 +3014,12 @@
           "id": {
             "type": "string"
           },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "title": {
             "type": "string"
           }
@@ -2895,9 +3042,87 @@
         "type": "projects.project"
       }
     },
+    "knowledge.version_name": {
+      "allowed": true,
+      "description": "Name a Version (or clear its name)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 60,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "id",
+          "version"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "at": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "permission": "projects.write",
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
+    },
     "knowledge.versions": {
       "allowed": true,
-      "description": "The saved earlier pictures of a page, newest first",
+      "description": "The Versions of a page, newest first",
       "input": {
         "additionalProperties": false,
         "properties": {
@@ -2932,14 +3157,14 @@
                     "null"
                   ]
                 },
-                "edited_at": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
                 "id": {
                   "type": "string"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "text": {
                   "type": "string"
@@ -3106,6 +3331,90 @@
         "links.too_big": "That picture is larger than 4 MiB",
         "links.unavailable": "Nothing could be read from that address"
       },
+      "resource": null
+    },
+    "pages.body.pull": {
+      "allowed": true,
+      "description": "What a browser lacks of the page's Live document: all of it, or the changes after its version (base64 Loro)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "since": {
+            "maxLength": 4096,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "update": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "update",
+          "version"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "pages.body.push": {
+      "allowed": true,
+      "description": "A browser's edits to the page's Live document (a base64 Loro update, at most 1 MB)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "client": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "update": {
+            "maxLength": 1398104,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "update",
+          "client"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {},
       "resource": null
     },
     "pages.create": {
@@ -3578,9 +3887,39 @@
       "reasons": {},
       "resource": null
     },
+    "pages.presence": {
+      "allowed": true,
+      "description": "Tell the others on the page where you are (a base64 Loro ephemeral update; not stored)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 21848,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
     "pages.restore": {
       "allowed": true,
-      "description": "Put an earlier picture back",
+      "description": "Bring an earlier Version back as a new change",
       "input": {
         "additionalProperties": false,
         "properties": {
@@ -4403,7 +4742,7 @@
     },
     "pages.version": {
       "allowed": true,
-      "description": "One earlier picture of a page, with its body",
+      "description": "One Version of a page, with its body as it was",
       "input": {
         "additionalProperties": false,
         "properties": {
@@ -4441,6 +4780,12 @@
           "id": {
             "type": "string"
           },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "title": {
             "type": "string"
           }
@@ -4458,9 +4803,78 @@
       "reasons": {},
       "resource": null
     },
+    "pages.version_name": {
+      "allowed": true,
+      "description": "Name a Version (or clear its name)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 60,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "at": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
     "pages.versions": {
       "allowed": true,
-      "description": "The saved earlier pictures of a page, newest first",
+      "description": "The Versions of a page, newest first",
       "input": {
         "additionalProperties": false,
         "properties": {
@@ -4491,14 +4905,14 @@
                     "null"
                   ]
                 },
-                "edited_at": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
                 "id": {
                   "type": "string"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "text": {
                   "type": "string"

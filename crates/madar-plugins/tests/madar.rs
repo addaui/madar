@@ -2159,3 +2159,203 @@ fn search_follows_archive_and_removal_and_finds_arabic_as_people_type_it() {
     a.settle();
     assert!(found("مراجعه").is_empty(), "a removed task takes its subtasks out of the index");
 }
+
+// ---- Live documents (ADR 0093): page bodies as Loro documents shared by browsers and the server ----
+
+mod live {
+    use super::*;
+    use nuah_live::loro::{ExportMode, LoroDoc};
+    use nuah_live::{b64, new_doc, to_json, unb64, write_json, TextStyles};
+
+    pub fn para(id: &str, t: &str) -> Value {
+        json!({"type": "paragraph", "attrs": {"blockId": id}, "content": [{"type": "text", "text": t}]})
+    }
+    pub fn doc(paras: &[(&str, &str)]) -> Value {
+        json!({"type": "doc", "content": paras.iter().map(|(i, t)| para(i, t)).collect::<Vec<_>>()})
+    }
+
+    /// A browser's copy of a page: what `body.pull` gives.
+    pub struct Browser { pub doc: LoroDoc, pub client: String }
+    impl Browser {
+        pub fn open(a: &App, who: &Identity, prefix: &str, scope: Value) -> Browser {
+            let mut input = scope.clone();
+            let out = a.ok(who, &format!("{prefix}.body.pull"), input.take());
+            let d = new_doc(&TextStyles::default());
+            d.import(&unb64("u", out["update"].as_str().unwrap()).unwrap()).unwrap();
+            Browser { doc: d, client: format!("c{}", rand_id()) }
+        }
+        /// Change the copy to `to` and give the update to send.
+        pub fn edit(&self, to: &Value) -> String {
+            let before = self.doc.oplog_vv();
+            write_json(&self.doc, to).unwrap();
+            b64(&self.doc.export(ExportMode::updates(&before)).unwrap())
+        }
+        pub fn json(&self) -> Value { to_json(&self.doc) }
+        pub fn take(&self, update: &str) { self.doc.import(&unb64("u", update).unwrap()).unwrap(); }
+    }
+    fn rand_id() -> u64 { use std::sync::atomic::*; static N: AtomicU64 = AtomicU64::new(1); N.fetch_add(1, Ordering::Relaxed) }
+
+    pub fn with(scope: &Value, extra: Value) -> Value {
+        let mut v = scope.clone();
+        for (k, x) in extra.as_object().unwrap() { v[k] = x.clone(); }
+        v
+    }
+}
+use live::*;
+use nuah_live::b64;
+
+fn knowledge_page(a: &App, al: &Identity, body: Value) -> (String, Value) {
+    let p = a.project(al, "Docs");
+    let page = a.ok(al, "knowledge.create", json!({"project": p, "title": "Plan", "body": body}));
+    (p.clone(), json!({"project": p, "id": page["id"]}))
+}
+
+#[test]
+fn two_people_push_to_one_page_and_both_edits_are_kept() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let (p, at) = knowledge_page(&a, &al, doc(&[("a", "hello world")]));
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let (ba, bb) = (Browser::open(&a, &al, "knowledge", at.clone()), Browser::open(&a, &bo, "knowledge", at.clone()));
+    let ua = ba.edit(&doc(&[("a", "hello big world")]));
+    let ub = bb.edit(&doc(&[("a", "hello world!")]));
+    a.ok(&al, "knowledge.body.push", with(&at, json!({"update": ua, "client": ba.client})));
+    a.ok(&bo, "knowledge.body.push", with(&at, json!({"update": ub, "client": bb.client})));
+    let page = a.ok(&al, "knowledge.get", at.clone());
+    assert_eq!(page["body"]["content"][0]["content"][0]["text"], "hello big world!", "{}", page["body"]);
+    // each browser catches up from its own version
+    let since = b64(&ba.doc.oplog_vv().encode());
+    let more = a.ok(&al, "knowledge.body.pull", with(&at, json!({"since": since})));
+    ba.take(more["update"].as_str().unwrap());
+    assert_eq!(ba.json(), page["body"]);
+}
+
+#[test]
+fn a_viewer_cannot_push_but_can_read_the_document() {
+    let a = app();
+    let al = who("alice");
+    let (p, at) = knowledge_page(&a, &al, doc(&[("a", "hi")]));
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "vera", "level": "viewer"}));
+    let vera = viewer("vera");
+    let b = Browser::open(&a, &vera, "knowledge", at.clone());
+    let up = b.edit(&doc(&[("a", "hijacked")]));
+    assert_eq!(a.err(&vera, "knowledge.body.push", with(&at, json!({"update": up, "client": b.client}))).category, Category::Denied);
+    assert_eq!(a.ok(&al, "knowledge.get", at.clone())["body"], doc(&[("a", "hi")]));
+    assert_eq!(a.err(&who("mallory"), "knowledge.body.pull", at.clone()).category, Category::NotFound);
+}
+
+#[test]
+fn body_changes_reach_members_as_signals_and_stop_after_they_leave() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let (p, at) = knowledge_page(&a, &al, doc(&[("a", "x")]));
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "editor"}));
+    let b = Browser::open(&a, &al, "knowledge", at.clone());
+    let from = a.core.signal_now();
+    let up = b.edit(&doc(&[("a", "xy")]));
+    a.ok(&al, "knowledge.body.push", with(&at, json!({"update": up, "client": b.client})));
+    let (got, next) = a.core.signals(&bo, from).unwrap();
+    let body: Vec<_> = got.iter().filter(|s| s.kind == "pages.body").collect();
+    assert_eq!(body.len(), 1);
+    assert_eq!((body[0].data["page"].clone(), body[0].data["client"].as_str()), (at["id"].clone(), Some(b.client.as_str())));
+    assert!(!body[0].data["update"].as_str().unwrap().is_empty());
+    assert!(a.core.signals(&who("carol"), from).unwrap().0.is_empty());
+    a.ok(&bo, "projects.leave", json!({"project": p}));
+    let up = b.edit(&doc(&[("a", "xyz")]));
+    a.ok(&al, "knowledge.body.push", with(&at, json!({"update": up, "client": b.client})));
+    assert!(a.core.signals(&bo, next).unwrap().0.is_empty(), "someone who left hears nothing more");
+}
+
+#[test]
+fn a_push_that_breaks_the_page_is_refused_and_changes_nothing() {
+    let a = app();
+    let al = who("alice");
+    let (_p, at) = knowledge_page(&a, &al, doc(&[("a", "fine")]));
+    let b = Browser::open(&a, &al, "knowledge", at.clone());
+    let mut deep = json!({"type": "paragraph", "content": [{"type": "text", "text": "deep"}]});
+    for _ in 0..30 { deep = json!({"type": "blockquote", "content": [deep]}); }
+    let up = b.edit(&json!({"type": "doc", "content": [deep]}));
+    let e = a.err(&al, "knowledge.body.push", with(&at, json!({"update": up, "client": b.client})));
+    assert_eq!((e.category, e.reason.as_deref()), (Category::Invalid, Some("pages.body_rejected")));
+    assert_eq!(a.ok(&al, "knowledge.get", at.clone())["body"], doc(&[("a", "fine")]));
+}
+
+#[test]
+fn the_same_push_twice_changes_nothing_the_second_time() {
+    let a = app();
+    let al = who("alice");
+    let (_p, at) = knowledge_page(&a, &al, doc(&[("a", "one")]));
+    let b = Browser::open(&a, &al, "knowledge", at.clone());
+    let up = b.edit(&doc(&[("a", "one two")]));
+    a.ok(&al, "knowledge.body.push", with(&at, json!({"update": up, "client": b.client})));
+    let rev = a.ok(&al, "knowledge.get", at.clone())["rev"].clone();
+    a.ok(&al, "knowledge.body.push", with(&at, json!({"update": up, "client": b.client})));
+    let page = a.ok(&al, "knowledge.get", at.clone());
+    assert_eq!((page["rev"].clone(), page["body"].clone()), (rev, doc(&[("a", "one two")])));
+}
+
+#[test]
+fn presence_reaches_project_members_only() {
+    let a = app();
+    let (al, bo) = (who("alice"), who("bob"));
+    let (p, at) = knowledge_page(&a, &al, doc(&[("a", "x")]));
+    a.ok(&al, "projects.share", json!({"project": p, "subject": "bob", "level": "viewer"}));
+    let from = a.core.signal_now();
+    a.ok(&viewer("bob"), "knowledge.presence", with(&at, json!({"state": b64(b"cursor here")})));
+    let (got, _) = a.core.signals(&al, from).unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!((got[0].kind.as_str(), got[0].actor.as_str(), got[0].data["state"].as_str()), ("pages.presence", "bob", Some(b64(b"cursor here").as_str())));
+    assert!(a.core.signals(&who("carol"), from).unwrap().0.is_empty());
+    let _ = bo;
+}
+
+#[test]
+fn ticking_a_task_block_is_a_change_in_the_document() {
+    let a = app();
+    let al = who("alice");
+    let item = json!({"type": "taskBlock", "attrs": {"blockId": "t1", "checked": false}, "content": [{"type": "text", "text": "buy milk"}]});
+    let (_p, at) = knowledge_page(&a, &al, json!({"type": "doc", "content": [item]}));
+    let b = Browser::open(&a, &al, "knowledge", at.clone());
+    let since = b64(&b.doc.oplog_vv().encode());
+    a.ok(&al, "knowledge.set_task", with(&at, json!({"block": "t1", "checked": true})));
+    let more = a.ok(&al, "knowledge.body.pull", with(&at, json!({"since": since})));
+    b.take(more["update"].as_str().unwrap());
+    assert_eq!(b.json(), a.ok(&al, "knowledge.get", at.clone())["body"]);
+}
+
+#[test]
+fn a_version_is_made_after_a_pause_and_can_be_named() {
+    let a = app();
+    let al = who("alice");
+    let (_p, at) = knowledge_page(&a, &al, doc(&[("a", "first")]));
+    let b = Browser::open(&a, &al, "knowledge", at.clone());
+    a.clock.advance(1000);
+    a.ok(&al, "knowledge.body.push", with(&at, json!({"update": b.edit(&doc(&[("a", "first edit")])), "client": b.client})));
+    a.clock.advance(1000);
+    a.ok(&al, "knowledge.body.push", with(&at, json!({"update": b.edit(&doc(&[("a", "first edit again")])), "client": b.client})));
+    let list = a.ok(&al, "knowledge.versions", at.clone());
+    assert_eq!(list["versions"].as_array().unwrap().len(), 1, "one Version per editing spell: {list}");
+    assert_eq!(list["versions"][0]["text"], "first");
+    a.clock.advance(11 * 60 * 1000);
+    a.ok(&al, "knowledge.body.push", with(&at, json!({"update": b.edit(&doc(&[("a", "later")])), "client": b.client})));
+    let list = a.ok(&al, "knowledge.versions", at.clone());
+    let vs = list["versions"].as_array().unwrap();
+    assert_eq!((vs.len(), vs[0]["text"].as_str()), (2, Some("first edit again")));
+    let named = a.ok(&al, "knowledge.version_name", with(&at, json!({"version": vs[0]["id"], "name": "Before the rewrite"})));
+    assert_eq!(named["name"], "Before the rewrite");
+    assert_eq!(a.ok(&al, "knowledge.versions", at.clone())["versions"][0]["name"], "Before the rewrite");
+    let one = a.ok(&al, "knowledge.version", with(&at, json!({"version": vs[0]["id"]})));
+    assert_eq!(one["body"], doc(&[("a", "first edit again")]));
+}
+
+#[test]
+fn search_finds_text_typed_through_pushes() {
+    let a = app();
+    let al = who("alice");
+    let (_p, at) = knowledge_page(&a, &al, doc(&[("a", "nothing yet")]));
+    let b = Browser::open(&a, &al, "knowledge", at.clone());
+    a.ok(&al, "knowledge.body.push", with(&at, json!({"update": b.edit(&doc(&[("a", "the zebra crossing")])), "client": b.client})));
+    a.settle();
+    let hits = a.ok(&al, "search.query", json!({"q": "zebra"}));
+    assert_eq!(hits["items"].as_array().unwrap().len(), 1, "{hits}");
+}

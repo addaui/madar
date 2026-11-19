@@ -88,19 +88,16 @@
     },
     "pages.versions": {
       "type": "object",
+      "description": "A Version: a marked point in a page body's history (ADR 0093)",
       "properties": {
-        "page": {
+        "key": {
           "type": "string",
-          "index": true
+          "index": true,
+          "description": "the page"
         },
-        "title": {
-          "type": "string"
-        },
-        "body": {
-          "type": [
-            "object",
-            "null"
-          ]
+        "frontiers": {
+          "type": "string",
+          "description": "base64 Loro frontiers"
         },
         "at": {
           "type": "integer"
@@ -108,17 +105,20 @@
         "by": {
           "type": "string"
         },
-        "edited_at": {
+        "name": {
           "type": [
-            "integer",
+            "string",
             "null"
           ]
+        },
+        "title": {
+          "type": "string"
         }
       },
       "required": [
-        "page",
-        "at",
-        "by"
+        "key",
+        "frontiers",
+        "at"
       ]
     },
     "pages.counters": {
@@ -157,6 +157,60 @@
         "name",
         "settings",
         "owner"
+      ]
+    },
+    "pages.bodies": {
+      "type": "object",
+      "description": "A page body's Live document: its snapshot (ADR 0093)",
+      "properties": {
+        "key": {
+          "type": "string",
+          "index": true
+        },
+        "snapshot": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "pending": {
+          "type": "integer"
+        },
+        "size": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "snapshot",
+        "version"
+      ]
+    },
+    "pages.body_updates": {
+      "type": "object",
+      "description": "Updates to a page body's Live document since its snapshot",
+      "properties": {
+        "key": {
+          "type": "string",
+          "index": true
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "update": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        },
+        "at": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "seq",
+        "update"
       ]
     }
   }

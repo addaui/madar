@@ -178,12 +178,27 @@ pub fn done() -> Value {
 
 /// The earlier pictures of a page, newest first, each with the first words of its text.
 pub fn page_versions() -> Value {
-    obj(&["versions"], json!({"versions": list(obj(&["id", "title"], json!({"id": s(), "at": nullable("number"), "by": nullable(STR), "title": s(), "edited_at": nullable("number"), "text": s()})))}))
+    obj(&["versions"], json!({"versions": list(page_version_item())}))
 }
 
-/// One earlier picture of a page, with its body.
+/// One Version in a page's list: when, by whom, its name and the start of its text (ADR 0093).
+pub fn page_version_item() -> Value {
+    obj(&["id", "title"], json!({"id": s(), "at": nullable("number"), "by": nullable(STR), "title": s(), "name": nullable(STR), "text": s()}))
+}
+
+/// One Version of a page, with its body as it was.
 pub fn page_version() -> Value {
-    obj(&["id", "title", "body"], json!({"id": s(), "at": nullable("number"), "by": nullable(STR), "title": s(), "body": {"type": "object"}}))
+    obj(&["id", "title", "body"], json!({"id": s(), "at": nullable("number"), "by": nullable(STR), "title": s(), "name": nullable(STR), "body": {"type": "object"}}))
+}
+
+/// What a browser lacks of a Live document, and the server's version (both base64 Loro).
+pub fn live_pull() -> Value {
+    obj(&["update", "version"], json!({"update": s(), "version": s()}))
+}
+
+/// The server's version of a Live document after a push.
+pub fn live_version() -> Value {
+    obj(&["version"], json!({"version": s()}))
 }
 
 /// One saved page style.
