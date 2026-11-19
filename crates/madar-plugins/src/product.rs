@@ -72,23 +72,8 @@ pub fn routes() -> impl Fn(Core) -> Router + Send + Sync + 'static {
     move |core| Router::new().route("/files/{id}", get(file).with_state(core.clone())).route("/share-files/{share}/{file}", get(shared_file).with_state(core))
 }
 
-/// The plugin that publishes the web Face (`./faces/madar/web`, under the faces directory).
-pub struct Web;
-
-impl Plugin for Web {
-    fn manifest(&self) -> Manifest {
-        serde_json::from_value(json!({
-            "id": "@madar/web", "version": "0.3.0", "name": "Web", "runtime": "data",
-            "description": "Madar's web app, published as the Face `web`, shown at /",
-            "requires": {"plugins": ["@nuah/http"]},
-            "face": "web"
-        }))
-        .unwrap()
-    }
-}
-
-/// The plugin that publishes the React web Face (`./faces/madar/web-react`), built from `web/`. It lives beside the
-/// frozen `@madar/web` until it does everything that Face does (ADR 0058); enable it to see it at `/faces/web-react/`.
+/// The plugin that publishes Madar's web app, the React Face (`./faces/madar/web-react`), built from `web/` (ADR 0058). It is shown at `/`
+/// and opens shared pages at `/share`. The first, vanilla Face was retired; it is kept at the tag `web-frozen-vanilla`.
 pub struct WebReact;
 
 impl Plugin for WebReact {
@@ -107,7 +92,6 @@ impl Plugin for WebReact {
 pub fn full_catalog() -> Catalog {
     let mut c = crate::catalog();
     c.0.push(Arc::new(Http::new().with_routes(routes())));
-    c.0.push(Arc::new(Web));
     c.0.push(Arc::new(WebReact));
     c.0.push(Arc::new(nuah_console::Console));
     c

@@ -20,7 +20,7 @@ pub mod shares;
 pub mod spaces;
 pub mod util;
 pub mod product;
-pub use product::{full_catalog, routes, Madar, Web};
+pub use product::{full_catalog, routes, Madar, WebReact};
 
 use nuah_adapters::*;
 use nuah_kernel::*;

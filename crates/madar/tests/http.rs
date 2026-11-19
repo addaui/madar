@@ -287,17 +287,6 @@ fn failed_sign_ins_are_throttled_per_account_and_a_success_clears_them() {
     assert_eq!(sign_in("bob", "correct horse").0, 429);
 }
 
-#[test]
-fn the_web_board_declares_every_slot_madar_fills() {
-    // ADR 0016: what plugins put into Slots must be something the board says it can show.
-    let decl: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../faces/madar/web/slots.json")).unwrap()).unwrap();
-    let core = Core::start(&madar_plugins::distribution(madar_plugins::profile_embedded(":memory:"))).unwrap();
-    let me = nuah_kernel::Identity::new("me", "me", &["admin"]);
-    let d = core.describe(&me);
-    assert!(d["slots"].as_array().unwrap().iter().any(|i| i["id"] == "export.project" && i["slot"] == "project.actions"), "{}", d["slots"]);
-    assert_eq!(nuah_kernel::contract::slot_warnings(&d, &decl), Vec::<String>::new());
-}
-
 /// Open a Pulse stream and hand back its lines as they arrive.
 fn open_stream(s: &Server, token: &str) -> Result<mpsc::Receiver<String>, u16> {
     let res = agent().get(&format!("{}/pulse", s.base)).header("Authorization", &format!("Bearer {token}")).call().unwrap();

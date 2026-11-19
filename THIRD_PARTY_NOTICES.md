@@ -4,7 +4,7 @@ Madar itself is under the [Apache License 2.0](LICENSE). It bundles the followin
 
 ## Fonts
 
-Bundled in `faces/madar/web/fonts/`, each under the SIL Open Font License 1.1. The license text of each font is in the same folder (`OFL-*.txt`).
+Bundled in `web/src/styles/fonts/` (built into the web app), each under the SIL Open Font License 1.1. The license text of each font is in the same folder (`OFL-*.txt`).
 
 | Font | Copyright |
 |---|---|
@@ -26,7 +26,7 @@ Madar uses the `@nuah/emoji` plugin from the nuah-plugins repository, which ship
 
 ## Icons
 
-The bell, heading, list, code, callout, attachment, video, bookmark and mention icons in `faces/madar/web/ui.js` follow the shapes of the Lucide icons of the same names (https://lucide.dev, ISC License, Copyright Lucide Contributors; parts by Cole Bemis 2013-2022 under the MIT License).
+The bell, heading, list, code, callout, attachment, video, bookmark and mention icons in `web/src/ui/icons.ts` follow the shapes of the Lucide icons of the same names (https://lucide.dev, ISC License, Copyright Lucide Contributors; parts by Cole Bemis 2013-2022 under the MIT License).
 
 ## Editor bundle
 
@@ -41,6 +41,9 @@ The bell, heading, list, code, callout, attachment, video, bookmark and mention 
 | devlop | MIT | 2023 Titus Wormer |
 | linkifyjs | MIT | 2024 Nick Frasser |
 | highlight.js | BSD-3-Clause | 2006 Ivan Sagalaev |
+| loro-crdt (with its WebAssembly, `web/public/loro.wasm`) | MIT | 2022 Zixuan Chen |
+| loro-prosemirror | MIT | 2019 Kevin Jahns |
+| lib0, pulled in by loro-prosemirror | MIT | Kevin Jahns |
 
 ### MIT License
 
