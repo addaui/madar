@@ -27,6 +27,10 @@ import History from '@tiptap/extension-history'
 import { common, createLowlight } from 'lowlight'
 import { Plugin, PluginKey, NodeSelection, TextSelection, Selection } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
+// Live documents (ADR 0093): the page body is a Loro document; the build points `loro-crdt` at its `web` build, whose WebAssembly is a separate file
+// (`loro.wasm`, next to this bundle) loaded by `ready()`.
+import * as LoroNS from 'loro-crdt'
+import { LoroSyncPlugin, LoroUndoPlugin, LoroEphemeralCursorPlugin, CursorEphemeralStore, undo as loroUndo, redo as loroRedo } from 'loro-prosemirror'
 
 type Json = any
 const safeUrl = (u: string) => /^(https?:\/\/|\/|#|mailto:)/i.test(u || '')
@@ -295,9 +299,31 @@ const UnknownBlock = Node.create({
 
 const lowlight = createLowlight(common)
 
-function extensions(placeholder: string, calloutTitle: string): any[] {
+/** With a Live document the editor's content is the Loro document's, kept in step both ways; undo is the person's own (Loro's), not Tiptap's. */
+export interface Live { doc: LoroNS.LoroDoc; ephemeral?: CursorEphemeralStore; user?: { name: string; color: string } }
+const liveExtension = (live: Live) => Extension.create({
+  name: 'live',
+  priority: 1000,
+  addProseMirrorPlugins() {
+    const out = [LoroSyncPlugin({ doc: live.doc as any }), LoroUndoPlugin({ doc: live.doc as any })]
+    if (live.ephemeral) out.push(LoroEphemeralCursorPlugin(live.ephemeral, { user: live.user }) as any)
+    return out
+  },
+  addKeyboardShortcuts() {
+    const run = (cmd: any) => () => cmd(this.editor.state, this.editor.view.dispatch, this.editor.view)
+    return { 'Mod-z': run(loroUndo), 'Mod-y': run(loroRedo), 'Shift-Mod-z': run(loroRedo) }
+  },
+})
+
+/** Whether every node of a Live document is one this editor can draw (a block of a plugin that is off cannot be edited live). */
+function liveDrawable(doc: LoroNS.LoroDoc): boolean {
+  const ok = (n: any): boolean => !n || typeof n !== 'object' || ((!n.nodeName || NODES.has(n.nodeName)) && (n.children || []).every((c: any) => typeof c === 'string' || ok(c)))
+  try { return ok((doc.toJSON() as any).doc) } catch { return false }
+}
+
+function extensions(placeholder: string, calloutTitle: string, live?: Live): any[] {
   return [
-    Document, Paragraph, Text, HardBreak, History, Bold, Italic, Underline, Strike, Code, Highlight,
+    Document, Paragraph, Text, HardBreak, ...(live ? [liveExtension(live)] : [History]), Bold, Italic, Underline, Strike, Code, Highlight,
     Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' }, isAllowedUri: (u: string) => safeUrl(u) }),
     Heading.configure({ levels: [1, 2, 3] }), Blockquote, BulletList, OrderedList, ListItem, TaskList, TaskItem.configure({ nested: true }),
     HorizontalRule, CodeBlockLowlight.configure({ lowlight }), Placeholder.configure({ includeChildren: true, placeholder: ({ editor, node, pos }: { editor: any; node: any; pos: number }) => {
@@ -379,6 +405,9 @@ export interface Spot { left: number; top: number; bottom: number }
 
 export interface Opts {
   content?: Json; editable?: boolean; lang?: string; placeholder?: string
+  // The page body as a Live document: the content comes from it, and edits go into it (ADR 0093). `content` is then only the fallback when the
+  // document holds a block this editor cannot draw: it opens read-only from `content` instead.
+  live?: Live
   // The slash menu's blocks, as the Core lists them. `icon` is a name the Face draws (see `icon`); a block with `variants` opens a submenu.
   blocks?: { id: string; label: Json; group: string; keywords?: string; icon?: string; variants?: { id: string; label: Json; keywords?: string; icon?: string }[] }[]
   icon?: (name: string) => Node | null
@@ -517,7 +546,8 @@ function create(host: HTMLElement, o: Opts) {
   const menu = document.createElement('div'); menu.className = 'ed-slash'; menu.hidden = true; menu.setAttribute('role', 'listbox')
   host.append(bar, body, menu)
   const lang = o.lang === 'ar' ? 'ar' : 'en'
-  let editable = o.editable !== false
+  const live = o.live && liveDrawable(o.live.doc) ? o.live : undefined
+  let editable = o.editable !== false && !(o.live && !live)
   let silent = true
   let lastStickers: any[] = []
   let lastCtx = ''
@@ -560,8 +590,8 @@ function create(host: HTMLElement, o: Opts) {
   const spot = (): Spot => { const c = editor.view.coordsAtPos(editor.state.selection.from); return { left: c.left, top: c.top, bottom: c.bottom } }
 
   const editor = new Editor({
-    element: body, extensions: extensions(o.placeholder || '', (LBL[lang] || LBL.en).calloutTitle), editable,
-    content: wrapUnknown(o.content && o.content.type === 'doc' ? o.content : EMPTY),
+    element: body, extensions: extensions(o.placeholder || '', (LBL[lang] || LBL.en).calloutTitle, live), editable,
+    content: live ? EMPTY : wrapUnknown(o.content && o.content.type === 'doc' ? o.content : EMPTY),
     editorProps: {
       attributes: { dir: document.documentElement.dir === 'rtl' ? 'rtl' : 'ltr', class: 'ed-content', spellcheck: 'true' },   // the blocks decide their own direction; the page is only where a block with no letters starts
       handlePaste: (view, ev) => {
@@ -1191,6 +1221,8 @@ function create(host: HTMLElement, o: Opts) {
     schema: () => editor.schema,
     // the TipTap editor itself, for tests and diagnostics only (the Face does not use it)
     tiptap: () => editor,
+    // whether edits go into the Live document (false when there is none, or it holds a block this editor cannot draw)
+    live: () => !!live,
     set: (doc: Json) => { silent = true; editor.commands.setContent(wrapUnknown(doc && doc.type === 'doc' ? doc : EMPTY), { emitUpdate: false }); silent = false },
     setEditable: (b: boolean) => { editable = b; editor.setEditable(b); host.classList.toggle('ed-editable', b); paintBar() },
     isEmpty: () => editor.isEmpty,
@@ -1199,4 +1231,10 @@ function create(host: HTMLElement, o: Opts) {
   }
 }
 
-;(window as any).MadarEditor = { create, text: (doc: Json) => { const out: string[] = []; const go = (n: Json) => { if (n.text) out.push(n.text); (n.content || []).forEach(go); if (n.type && n.type !== 'text' && n.type !== 'doc') out.push('\n') }; go(doc || {}); return out.join('').trim() } }
+;(window as any).MadarEditor = {
+  create,
+  // Loro for the app, from this bundle, so the app's documents and the editor's binding share one WebAssembly instance
+  loro: { LoroDoc: LoroNS.LoroDoc, VersionVector: LoroNS.VersionVector, LoroList: LoroNS.LoroList, LoroMap: LoroNS.LoroMap, CursorEphemeralStore },
+  // load the WebAssembly (once); the node build used by tests needs none
+  ready: (() => { let p: Promise<void> | null = null; return (url?: string) => (p ??= (async () => { const init = (LoroNS as any).default; if (typeof init === 'function') await init({ module_or_path: url }) })()) })(),
+  text: (doc: Json) => { const out: string[] = []; const go = (n: Json) => { if (n.text) out.push(n.text); (n.content || []).forEach(go); if (n.type && n.type !== 'text' && n.type !== 'doc') out.push('\n') }; go(doc || {}); return out.join('').trim() } }

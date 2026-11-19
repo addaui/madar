@@ -2359,3 +2359,42 @@ fn search_finds_text_typed_through_pushes() {
     let hits = a.ok(&al, "search.query", json!({"q": "zebra"}));
     assert_eq!(hits["items"].as_array().unwrap().len(), 1, "{hits}");
 }
+
+/// The other half of the editor's layout test: what the browser binding wrote (fixtures/live-layout.json) is read by the server into the same JSON,
+/// and that JSON passes the body check, so a browser's push is never refused for its shape.
+#[test]
+fn the_server_reads_the_browser_bindings_documents_as_the_editor_does() {
+    fn norm(v: &Value) -> Value {
+        match v {
+            Value::Object(m) => {
+                let mut out = serde_json::Map::new();
+                for (k, x) in m {
+                    if k == "attrs" {
+                        let a: serde_json::Map<String, Value> = x.as_object().unwrap().iter().filter(|(k, v)| !v.is_null() && k.as_str() != "dirAuto" && !(k.as_str() == "stickers" && v.as_array().is_some_and(|a| a.is_empty()))).map(|(k, v)| (k.clone(), norm(v))).collect();
+                        if !a.is_empty() { out.insert(k.clone(), Value::Object(a)); }
+                    } else if k == "marks" {
+                        let mut ms: Vec<Value> = x.as_array().unwrap().iter().map(norm).collect();
+                        ms.sort_by(|a, b| a["type"].as_str().cmp(&b["type"].as_str()));
+                        out.insert(k.clone(), Value::Array(ms));
+                    } else {
+                        out.insert(k.clone(), norm(x));
+                    }
+                }
+                Value::Object(out)
+            }
+            Value::Array(a) => Value::Array(a.iter().map(norm).collect()),
+            x => x.clone(),
+        }
+    }
+    let f: Value = serde_json::from_str(include_str!("../../../fixtures/live-layout.json")).unwrap();
+    let list = f["documents"].as_array().unwrap();
+    assert!(list.len() > 10);
+    for d in list {
+        let name = d["name"].as_str().unwrap();
+        let doc = nuah_live::new_doc(&nuah_live::TextStyles::default());
+        doc.import(&nuah_live::unb64("s", d["snapshot"].as_str().unwrap()).unwrap()).unwrap();
+        let json = nuah_live::to_json(&doc);
+        madar_plugins::content::richtext::check("body", &json).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(norm(&json), norm(&d["json"]), "{name}");
+    }
+}

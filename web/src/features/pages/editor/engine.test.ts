@@ -318,3 +318,107 @@ describe("the direction of a block", () => {
     document.documentElement.dir = "";
   });
 });
+
+// ---- Live documents (ADR 0093): the editor's content is a Loro document, kept in step both ways ----
+describe("the editor on a Live document", () => {
+  const L = () => (window as any).MadarEditor.loro;
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+  const liveEditor = async (doc: any, user?: string) => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const ed = (window as any).MadarEditor.create(host, { editable: true, live: { doc, user: user ? { name: user, color: "#c00" } : undefined } });
+    await tick();
+    return ed;
+  };
+  const textIn = (doc: any) => JSON.stringify(doc.toJSON());
+  const typeAtEnd = (ed: any, text: string) => { const t = ed.tiptap(); t.commands.focus("end"); t.commands.insertContent(text); };
+
+  it("typing into a live editor changes the Loro document", async () => {
+    const doc = new (L().LoroDoc)();
+    const ed = await liveEditor(doc);
+    expect(ed.live()).toBe(true);
+    typeAtEnd(ed, "hello live");
+    expect(textIn(doc)).toContain("hello live");
+    ed.destroy();
+  });
+
+  it("a remote update shows in the editor", async () => {
+    const a = new (L().LoroDoc)(), b = new (L().LoroDoc)();
+    const ea = await liveEditor(a);
+    typeAtEnd(ea, "from a");
+    b.import(a.export({ mode: "snapshot" }));
+    const eb = await liveEditor(b);
+    expect(JSON.stringify(eb.json())).toContain("from a");
+    const v = b.oplogVersion();
+    typeAtEnd(eb, " and b");
+    a.import(b.export({ mode: "update", from: v }));
+    await tick();
+    expect(JSON.stringify(ea.json())).toContain("from a and b");
+    ea.destroy(); eb.destroy();
+  });
+
+  it("undo undoes only my change", async () => {
+    const a = new (L().LoroDoc)(), b = new (L().LoroDoc)();
+    const ea = await liveEditor(a);
+    typeAtEnd(ea, "mine");
+    a.commit();
+    b.import(a.export({ mode: "snapshot" }));
+    const v = b.oplogVersion();
+    const eb = await liveEditor(b);
+    typeAtEnd(eb, " theirs");
+    a.import(b.export({ mode: "update", from: v }));
+    await tick();
+    await new Promise((r) => setTimeout(r, 1100)); // Loro's undo merges steps closer than one second
+    typeAtEnd(ea, " again");
+    const t = ea.tiptap();
+    t.commands.keyboardShortcut("Mod-z");
+    await tick();
+    const after = JSON.stringify(ea.json());
+    expect(after).toContain("mine");
+    expect(after).toContain("theirs");
+    expect(after).not.toContain("again");
+    ea.destroy(); eb.destroy();
+  });
+
+  it("block ids are kept in the document", async () => {
+    const doc = new (L().LoroDoc)();
+    const ed = await liveEditor(doc);
+    typeAtEnd(ed, "block");
+    const id = ed.json().content[0].attrs.blockId;
+    expect(id).toMatch(/^b/);
+    expect(textIn(doc)).toContain(id);
+    ed.destroy();
+  });
+
+  it("a document with a block this editor cannot draw opens read-only from the JSON copy", async () => {
+    // the binding's layout, with a node the editor does not know
+    const fresh = new (L().LoroDoc)();
+    const m = fresh.getMap("doc");
+    m.set("nodeName", "doc");
+    const list = m.setContainer("children", new (L().LoroList)());
+    list.insertContainer(0, new (L().LoroMap)()).set("nodeName", "someoneElsesBlock");
+    fresh.commit();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const ed = (window as any).MadarEditor.create(host, { editable: true, content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "copy" }] }] }, live: { doc: fresh } });
+    expect(ed.live()).toBe(false);
+    expect(JSON.stringify(ed.json())).toContain("copy");
+    ed.destroy();
+  });
+
+  it("the browser binding and the server read the same JSON (writes fixtures/live-layout.json for the Rust side)", async () => {
+    const out: { name: string; snapshot: string; json: any }[] = [];
+    for (const f of docs.filter((d) => d.model && d.server)) {
+      const doc = new (L().LoroDoc)();
+      const ed = await liveEditor(doc);
+      ed.set(f.doc);
+      await tick();
+      const bytes: Uint8Array = doc.export({ mode: "snapshot" });
+      out.push({ name: f.name, snapshot: Buffer.from(bytes).toString("base64"), json: ed.json() });
+      ed.destroy();
+    }
+    expect(out.length).toBeGreaterThan(10);
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(resolve(root, "fixtures", "live-layout.json"), JSON.stringify({ note: "Written by web/src/features/pages/editor/engine.test.ts: Loro snapshots made by the browser binding, read by the server in crates/madar-plugins/tests.", documents: out }, null, 1) + "\n");
+  });
+});
