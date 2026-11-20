@@ -152,12 +152,21 @@ fn unavailable() -> Error {
     Error::reason(Category::NotFound, "previews.unavailable", "No preview could be made for that address")
 }
 
+const PREVIEWS_FILES: &[(&str, &[u8])] = include!("../browser/previews/files.rs");
+const PREVIEWS_KINDS: &str = include_str!("../browser/previews/kinds.json");
+
 impl Plugin for Previews {
+    fn browser_files(&self) -> &'static [(&'static str, &'static [u8])] {
+        PREVIEWS_FILES
+    }
     fn manifest(&self) -> Manifest {
         serde_json::from_value(json!({
             "id": "@madar/previews", "version": "0.2.0", "name": "Link previews", "namespaces": ["previews"],
             "description": "Title, summary and picture of a web address, for the editor's link block. Makes outbound web requests through the net Port.",
             "requires": {"capabilities": ["net"]},
+            // its elements, when an editor is on (ADR 0094)
+            "browser": {"editor.element": "index.js"},
+            "provides": [{"extension_point": "editor.element", "optional": true, "data": serde_json::from_str::<Value>(PREVIEWS_KINDS).expect("kinds.json is JSON")}],
             "operations": {
                 "previews.get": {"kind": "outbound", "description": "The card for a public http/https address: its own title, summary and picture.",
                     "reasons": {"previews.unavailable": "No preview could be made for that address"},

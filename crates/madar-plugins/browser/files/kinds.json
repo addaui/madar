@@ -1,0 +1,86 @@
+{
+ "kinds": [
+  {
+   "kind": "@madar/files/image",
+   "version": 1,
+   "shape": "content",
+   "placement": "block",
+   "label": {
+    "en": "Image",
+    "ar": "صورة"
+   },
+   "icon": "image",
+   "group": "media",
+   "keywords": "picture photo image",
+   "nodes": [
+    "image"
+   ],
+   "accepts": [
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp"
+   ],
+   "options": [
+    {
+     "id": "size",
+     "type": "choice",
+     "attr": "size",
+     "inherit": true,
+     "pinned": true,
+     "default": "auto",
+     "label": {
+      "en": "Size",
+      "ar": "الحجم"
+     },
+     "choices": [
+      {
+       "value": "auto",
+       "label": {
+        "en": "auto"
+       }
+      },
+      {
+       "value": "small",
+       "label": {
+        "en": "small"
+       }
+      },
+      {
+       "value": "medium",
+       "label": {
+        "en": "medium"
+       }
+      },
+      {
+       "value": "large",
+       "label": {
+        "en": "large"
+       }
+      },
+      {
+       "value": "full",
+       "label": {
+        "en": "full"
+       }
+      }
+     ]
+    },
+    {
+     "id": "alt",
+     "type": "text",
+     "attr": "alt",
+     "label": {
+      "en": "Description",
+      "ar": "الوصف"
+     }
+    }
+   ]
+  }
+ ]
+}

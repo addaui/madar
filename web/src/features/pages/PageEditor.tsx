@@ -7,6 +7,7 @@ import { askText, openContextMenu, openDomModal, openDomPopover, toast, type Men
 import { startLoading } from "../../ui/Toast";
 import { uploadFile } from "../../lib/upload";
 import { loadEditorHost, needsPluginFor } from "./editorHost";
+import { useImageInsert } from "./useImageInsert";
 import "./legacy-editor.css";
 
 /**
@@ -68,6 +69,10 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<EditorHandle | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  // the Image element asks the Face for a picture (a popover to drop, pick or give an address): ADR 0068
+  const images = useImageInsert({ project, editor: () => api.current });
+  const imagesNow = useRef(images);
+  useEffect(() => { imagesNow.current = images; });
   const who = useDescribe().who as { roles?: string[] };
   const prefs = usePrefs() as unknown as Record<string, unknown>;
   const canManage = useHasOp("features.list");
@@ -92,7 +97,8 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
           files: { upload: async (b: Blob, name?: string) => (await uploadFile(new File([b], name ?? "file", { type: b.type }), () => undefined, { project })).url },
           needsPlugin: needsPluginFor(features, who.roles ?? [], async (id) => { await link.call("features.enable" as never, { id } as never); toast(t("saved")); }),
           pref: (k: string) => latest.current.prefs[k],
-          services: { openRef: (k: string, i: string) => latest.current.onOpenRef?.(k, i), pickRef, preview, turnIntoPage, newPage, comments },
+          services: { openRef: (k: string, i: string) => latest.current.onOpenRef?.(k, i), pickRef, preview, turnIntoPage, newPage, comments,
+            ...(images.pickImage ? { pickImage: (at: Spot) => imagesNow.current.pickImage!(at) } : {}) },
           ui: {
             menu: (x: number, y: number, items: MenuItems) => openContextMenu(x, y, items),
             popover: (at: Spot, render: (el: HTMLElement) => (() => void) | void) => openDomPopover(at, render),
@@ -119,5 +125,5 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
   useEffect(() => { api.current?.refreshComments(); }, [commentsVersion]);
 
   if (failed) return <p role="alert" className="m-0 text-sm text-muted-foreground">{failed === "noEditor" || failed === "editorVersion" ? t(failed) : failed}</p>;
-  return <div ref={host} className="ed-host" />;
+  return <><div ref={host} className="ed-host" />{images.view}</>;
 }

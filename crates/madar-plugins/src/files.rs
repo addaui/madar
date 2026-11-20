@@ -53,12 +53,21 @@ fn info(d: &Doc) -> Value {
 }
 
 pub struct Files;
+const FILES_FILES: &[(&str, &[u8])] = include!("../browser/files/files.rs");
+const FILES_KINDS: &str = include_str!("../browser/files/kinds.json");
+
 impl Plugin for Files {
+    fn browser_files(&self) -> &'static [(&'static str, &'static [u8])] {
+        FILES_FILES
+    }
     fn manifest(&self) -> Manifest {
         manifest(json!({
             "id": "@madar/files", "version": "0.1.0", "name": "Files", "namespaces": ["files"],
             "description": "Uploaded images, PDFs and text files, kept by whichever plugin provides files.store",
             "requires": {"plugins": ["@madar/projects"], "capabilities": ["call"], "extension_points": ["files.store"]},
+            // its elements, when an editor is on (ADR 0094)
+            "browser": {"editor.element": "index.js"},
+            "provides": [{"extension_point": "editor.element", "optional": true, "data": serde_json::from_str::<Value>(FILES_KINDS).expect("kinds.json is JSON")}],
             "defines": {"extension_points": {"files.store": {"policy": "single",
                 "description": "Keep and return bytes. {action: put|get|delete, id, data (base64, for put)}; get answers {data}.",
                 "input": {"type":"object","required":["action","id"]}}}},
