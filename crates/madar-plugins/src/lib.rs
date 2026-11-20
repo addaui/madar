@@ -11,9 +11,7 @@ pub mod projects;
 pub mod small;
 pub mod taskblock;
 pub mod tasks;
-pub mod features;
 pub mod files;
-pub mod previews;
 pub mod search;
 pub mod timeline;
 pub mod shares;
@@ -35,7 +33,7 @@ pub fn catalog() -> Catalog {
         Arc::new(projects::Projects), Arc::new(tasks::Tasks), Arc::new(discussion::Discussion),
         Arc::new(small::Audit), Arc::new(small::Quota), Arc::new(nuah_prefs::Prefs), Arc::new(nuah_appearance::Appearance), Arc::new(nuah_metric_prometheus::MetricPrometheus), Arc::new(LogConsole), Arc::new(LogFile), Arc::new(small::Export),
         Arc::new(small::Notify), Arc::new(small::NotifyInbox),
-        Arc::new(nuah_editor::Editor), Arc::new(nuah_editor_basic::EditorBasic), Arc::new(nuah_mermaid::Mermaid), Arc::new(nuah_excalidraw::Excalidraw), Arc::new(nuah_python::Python), Arc::new(nuah_notebook::Notebook), Arc::new(taskblock::TaskBlock), Arc::new(content::Refs), Arc::new(nuah_entities::Entities), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(nuah_emoji::Emoji), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(previews::Previews::default()), Arc::new(nuah_link_analyzer::LinkAnalyzer::default()), Arc::new(nuah_gifs::Gifs), Arc::new(nuah_gifs_giphy::GifsGiphy), Arc::new(NetPublic::default()), Arc::new(spaces::Spaces), Arc::new(shares::Shares), Arc::new(features::Features), 
+        Arc::new(nuah_editor::Editor), Arc::new(nuah_editor_basic::EditorBasic), Arc::new(nuah_mermaid::Mermaid), Arc::new(nuah_excalidraw::Excalidraw), Arc::new(nuah_python::Python), Arc::new(nuah_notebook::Notebook), Arc::new(taskblock::TaskBlock), Arc::new(content::Refs), Arc::new(nuah_entities::Entities), Arc::new(pages::Pages), Arc::new(timeline::Timeline), Arc::new(search::Search), Arc::new(nuah_emoji::Emoji), Arc::new(files::Files), Arc::new(files::FilesDb), Arc::new(nuah_previews::Previews::default()), Arc::new(nuah_link_analyzer::LinkAnalyzer::default()), Arc::new(nuah_gifs::Gifs), Arc::new(nuah_gifs_giphy::GifsGiphy), Arc::new(NetPublic::default()), Arc::new(spaces::Spaces), Arc::new(shares::Shares), Arc::new(nuah_features::Features), 
     ];
     for t in nuah_appearance::themes() {
         list.push(Arc::new(t));

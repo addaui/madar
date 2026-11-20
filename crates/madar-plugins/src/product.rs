@@ -113,14 +113,18 @@ impl nuah_shell::Product for Madar {
     }
     /// The editor became @nuah/editor and its basic elements @nuah/editor-basic (ADR 0094): instances set up before move to them.
     fn replaced(&self) -> Vec<(String, String)> {
-        vec![("@madar/editor".into(), "@nuah/editor".into()), ("@madar/editor-basic".into(), "@nuah/editor-basic".into())]
+        // plugins that moved to nuah-plugins under @nuah (ADR 0094, ADR 0099): an instance's Profile follows them when it starts
+        vec![
+            ("@madar/editor".into(), "@nuah/editor".into()), ("@madar/editor-basic".into(), "@nuah/editor-basic".into()),
+            ("@madar/features".into(), "@nuah/features".into()), ("@madar/previews".into(), "@nuah/previews".into()),
+        ]
     }
     /// What setup starts from: Madar on SQLite in the home directory, with the web app and the console. No
     /// accounts: the first administrator is asked for during setup.
     fn starting_point(&self, home: &std::path::Path) -> Profile {
         let db = home.join("madar.db");
         let mut p = crate::profile_server(&db.to_string_lossy(), json!([]));
-        p.enabled.extend(["@nuah/http", "@madar/web-react", "@nuah/console", "@madar/features"].map(String::from));
+        p.enabled.extend(["@nuah/http", "@madar/web-react", "@nuah/console", "@nuah/features"].map(String::from));
         p.grants.insert("@nuah/http".into(), vec!["serve".into()]);
         // the app is the React Face, at `/`; `/share/<id>` opens the same Face in its reader (ADR 0084)
         let http = p.settings.entry("@nuah/http".into()).or_insert_with(|| json!({}));
@@ -129,7 +133,7 @@ impl nuah_shell::Product for Madar {
         // the console changes the identity file (administrators only) and asks the shell to restart
         p.grants.insert("@nuah/console".into(), vec!["shell".into()]);
         // the Owner switches feature plugins from the app's settings (ADR 0080); the plugin refuses every platform plugin itself
-        p.grants.insert("@madar/features".into(), vec!["shell".into()]);
+        p.grants.insert("@nuah/features".into(), vec!["shell".into()]);
         p
     }
     fn bootstrap(&self) -> Option<Box<dyn nuah_shell::Bootstrap>> {

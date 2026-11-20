@@ -1,5 +1,5 @@
 {
-  "contract": "a923e3cf74e22a89",
+  "contract": "09179318dde06d14",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -222,7 +222,24 @@
         "type": "object"
       },
       "kind": "query",
-      "output": null,
+      "output": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "required": [
+                "subject",
+                "username"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "type": "object"
+      },
       "permission": "auth.manage",
       "plugin": "@nuah/auth-password",
       "public": false,
@@ -252,7 +269,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "auth.manage",
       "plugin": "@nuah/auth-password",
       "public": false,
@@ -297,7 +316,9 @@
         "type": "object"
       },
       "kind": "command",
-      "output": null,
+      "output": {
+        "type": "object"
+      },
       "permission": "auth.manage",
       "plugin": "@nuah/auth-password",
       "public": false,
@@ -959,7 +980,7 @@
         "type": "object"
       },
       "permission": "features.manage",
-      "plugin": "@madar/features",
+      "plugin": "@nuah/features",
       "public": false,
       "reasons": {
         "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
@@ -1011,7 +1032,7 @@
         "type": "object"
       },
       "permission": "features.manage",
-      "plugin": "@madar/features",
+      "plugin": "@nuah/features",
       "public": false,
       "reasons": {
         "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
@@ -1062,7 +1083,7 @@
         "type": "object"
       },
       "permission": "features.manage",
-      "plugin": "@madar/features",
+      "plugin": "@nuah/features",
       "public": false,
       "reasons": {
         "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
@@ -1110,7 +1131,7 @@
         "type": "object"
       },
       "permission": "features.manage",
-      "plugin": "@madar/features",
+      "plugin": "@nuah/features",
       "public": false,
       "reasons": {
         "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
@@ -1253,7 +1274,7 @@
         "type": "object"
       },
       "permission": "features.manage",
-      "plugin": "@madar/features",
+      "plugin": "@nuah/features",
       "public": false,
       "reasons": {
         "features.no_shell": "This instance does not let the app change its configuration"
@@ -1302,7 +1323,7 @@
         "type": "object"
       },
       "permission": "features.manage",
-      "plugin": "@madar/features",
+      "plugin": "@nuah/features",
       "public": false,
       "reasons": {
         "features.needed_by": "Other features need this one; switching it off switches them off too, and the call must confirm with cascade",
@@ -5063,7 +5084,7 @@
         "type": "object"
       },
       "permission": null,
-      "plugin": "@madar/previews",
+      "plugin": "@nuah/previews",
       "public": false,
       "reasons": {
         "previews.unavailable": "No preview could be made for that address"

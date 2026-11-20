@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! `@madar/features` (ADR 0080): the Owner changes feature plugins from the product, never a platform plugin, and the class
+//! `@nuah/features` in Madar (ADR 0080, 0099): the Owner changes feature plugins from the product, never a platform plugin, and the class
 //! is the Core's, not the caller's.
 
 use madar_plugins::*;
@@ -20,8 +20,8 @@ fn admin() -> Identity {
 
 fn rig(name: &str) -> Rig {
     let mut p = profile_test(&[]);
-    p.enabled.push("@madar/features".into());
-    p.grants.insert("@madar/features".into(), vec!["shell".into()]);
+    p.enabled.push("@nuah/features".into());
+    p.grants.insert("@nuah/features".into(), vec!["shell".into()]);
     let dir = std::env::temp_dir().join(format!("madar-features-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -64,7 +64,7 @@ fn the_list_splits_the_catalog_by_the_class_the_core_worked_out() {
     for f in ["@madar/pages", "@madar/task-block", "@nuah/emoji", "@nuah/gifs", "@nuah/gifs-giphy"] {
         assert!(features.contains(&f.to_string()), "{f} should be a feature");
     }
-    for p in ["@nuah/db-sqlite", "@nuah/link-analyzer", "@madar/features", "@nuah/auth-password", "@nuah/metric-prometheus"] {
+    for p in ["@nuah/db-sqlite", "@nuah/link-analyzer", "@nuah/features", "@nuah/auth-password", "@nuah/metric-prometheus"] {
         assert!(platform.contains(&p.to_string()), "{p} should be platform");
     }
     let reasons = l["platform"].as_array().unwrap().iter().find(|p| p["id"] == "@nuah/link-analyzer").unwrap()["reasons"].clone();
@@ -120,7 +120,7 @@ fn enabling_a_feature_grants_the_safe_capabilities_it_asks_for_and_nothing_else(
 fn a_platform_plugin_is_refused_by_every_operation_and_the_file_is_untouched() {
     let r = rig("platform");
     let before = std::fs::read_to_string(&r.path).unwrap();
-    for id in ["@nuah/db-memory", "@nuah/link-analyzer", "@madar/features", "@nuah/auth-local"] {
+    for id in ["@nuah/db-memory", "@nuah/link-analyzer", "@nuah/features", "@nuah/auth-local"] {
         for (op, input) in [("features.enable", json!({"id": id})), ("features.disable", json!({"id": id})), ("features.configure", json!({"id": id, "settings": {}}))] {
             let e = r.err(op, input);
             assert_eq!(e.reason.as_deref(), Some("features.platform_plugin"), "{op} {id}: {e}");
@@ -194,7 +194,7 @@ fn the_class_of_every_plugin_in_the_catalog_is_the_one_written_down() {
     const PLATFORM: &[&str] = &[
         "@nuah/db-memory", "@nuah/db-sqlite", "@nuah/db-postgres", "@nuah/auth-local", "@nuah/auth-open", "@nuah/auth-password", "@nuah/policy-allow-all",
         "@nuah/policy-roles", "@nuah/clock-system", "@nuah/ids-random", "@nuah/metric-prometheus", "@nuah/log-console", "@nuah/log-file", "@nuah/net-public",
-        "@nuah/link-analyzer", "@nuah/fonts", "@madar/previews", "@madar/quota", "@madar/features",
+        "@nuah/link-analyzer", "@nuah/fonts", "@nuah/previews", "@madar/quota", "@nuah/features",
     ];
     const FEATURE: &[&str] = &[
         "@madar/projects", "@madar/tasks", "@madar/discussion", "@madar/audit", "@nuah/prefs", "@nuah/appearance", "@madar/export", "@madar/notify", "@madar/notify-inbox",
@@ -228,6 +228,26 @@ fn a_profile_with_the_old_editor_plugins_starts() {
     assert!(!Core::check(&Distribution { name: "t".into(), catalog: Catalog(cat.0.clone()), profile: p.clone() }).is_empty());
     let moved = nuah_kernel::successors(&cat, &mut p, &Madar.replaced());
     assert_eq!(moved.len(), 2);
+    let problems = Core::check(&Distribution { name: "t".into(), catalog: cat, profile: p });
+    assert!(problems.is_empty(), "{problems:#?}");
+}
+
+/// An instance set up while Features and Previews were Madar's (ADR 0099) still starts: its Profile moves to @nuah/features and
+/// @nuah/previews, grants included.
+#[test]
+fn a_profile_with_madars_old_features_and_previews_starts() {
+    use nuah_shell::Product;
+    let mut p = profile_server(":memory:", json!([]));
+    p.enabled.retain(|x| x != "@nuah/features" && x != "@nuah/previews");
+    p.enabled.extend(["@madar/features".to_string(), "@madar/previews".to_string(), "@nuah/net-public".to_string()]);
+    p.grants.remove("@nuah/features");
+    p.grants.insert("@madar/features".into(), vec!["shell".into()]);
+    p.grants.insert("@madar/previews".into(), vec!["net".into()]);
+    let cat = Madar.catalog();
+    assert!(!Core::check(&Distribution { name: "t".into(), catalog: Catalog(cat.0.clone()), profile: p.clone() }).is_empty());
+    let moved = nuah_kernel::successors(&cat, &mut p, &Madar.replaced());
+    assert_eq!(moved.len(), 2, "{moved:?}");
+    assert_eq!(p.grants.get("@nuah/previews"), Some(&vec!["net".to_string()]));
     let problems = Core::check(&Distribution { name: "t".into(), catalog: cat, profile: p });
     assert!(problems.is_empty(), "{problems:#?}");
 }

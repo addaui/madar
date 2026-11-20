@@ -2067,12 +2067,12 @@ fn every_plugin_core() -> Core {
     p.enabled.retain(|e| e != "@nuah/auth-local");
     p.enabled.push("@nuah/auth-password".into());
     p.settings.insert("@nuah/auth-password".into(), json!({"accounts": []}));
-    for id in ["@nuah/link-analyzer", "@madar/previews", "@nuah/gifs", "@nuah/gifs-giphy", "@madar/features"] {
+    for id in ["@nuah/link-analyzer", "@nuah/previews", "@nuah/gifs", "@nuah/gifs-giphy", "@nuah/features"] {
         p.enabled.push(id.into());
     }
-    p.grants.insert("@madar/features".into(), vec!["shell".into()]);
+    p.grants.insert("@nuah/features".into(), vec!["shell".into()]);
     p.grants.insert("@nuah/link-analyzer".into(), vec!["net".into()]);
-    p.grants.insert("@madar/previews".into(), vec!["net".into()]);
+    p.grants.insert("@nuah/previews".into(), vec!["net".into()]);
     let clock = FixedClock::at(1_700_000_000_000);
     Core::start(&distribution_with(p, vec![Arc::new(TestClock(clock)), Arc::new(TestIds)])).unwrap_or_else(|e| panic!("{e:#?}"))
 }
@@ -2081,7 +2081,7 @@ fn every_plugin_core() -> Core {
 /// plugin that owns them (a request to that repository), so a new Madar operation cannot be added without a result shape.
 #[test]
 fn every_operation_declares_what_it_returns() {
-    const NOT_OURS: &[&str] = &["auth.account.list", "auth.account.set_password", "auth.account.update"];
+    const NOT_OURS: &[&str] = &[]; // Nuah 0.16.1 gave auth-password's account operations their schemas
     let d = every_plugin_core().describe(&Identity::new("root", "root", &["admin"]));
     let missing: Vec<&String> = d["operations"].as_object().unwrap().iter().filter(|(k, v)| v["output"].is_null() && !NOT_OURS.contains(&k.as_str())).map(|(k, _)| k).collect();
     assert!(missing.is_empty(), "operations with no output schema: {missing:?}");
