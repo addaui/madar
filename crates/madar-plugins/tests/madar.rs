@@ -2399,6 +2399,18 @@ fn bad_element_data_refused_with_reason() {
 }
 
 #[test]
+fn an_older_element_does_not_block_editing_its_page() {
+    // stored by an earlier version of the plugin, not yet brought up to date (that happens in a writer's browser)
+    let a = app();
+    let al = who("al");
+    let mut body = diagram("neon", "x");
+    body["content"][1]["attrs"]["v"] = json!(0);
+    let p = a.ok(&al, "pages.create", json!({"title": "Flows", "body": body.clone()}));
+    body["content"][0]["content"][0]["text"] = json!("Intro, edited");
+    a.ok(&al, "pages.update", json!({"id": p["id"], "body": body}));
+}
+
+#[test]
 fn search_finds_fallback_text() {
     let a = app();
     let al = who("al");

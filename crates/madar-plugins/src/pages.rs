@@ -319,7 +319,8 @@ fn body_push(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let bytes = nuah_live::unb64("update", text(i, "update"))?;
     spell(tx, &page, false)?;
     let kinds = element_kinds(tx);
-    let w = LIVE.push(tx, &page.id, &bytes, &|j| check_body(j, &kinds))?;
+    let before = page.body["body"].clone();
+    let w = LIVE.push(tx, &page.id, &bytes, &|j| check_body_since(j, Some(&before), &kinds))?;
     if w.update.is_empty() {
         return Ok(json!({"version": nuah_live::b64(&w.version)}));
     }
@@ -441,7 +442,7 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let mut written = None;
     if let Some(body) = i.get("body") {
         let kinds = element_kinds(tx);
-        check_body(body, &kinds)?;
+        check_body_since(body, Some(&old.body["body"]), &kinds)?;
         if body != &old.body["body"] {
             spell(tx, &old, false)?;
             if let Some(w) = LIVE.write(tx, &old.id, body)? {
@@ -565,8 +566,14 @@ fn element_kinds(tx: &mut Tx) -> std::collections::BTreeMap<String, Value> {
 
 /// Checks a body: its structure, and its elements against their kinds (ADR 0094).
 fn check_body(body: &Value, kinds: &std::collections::BTreeMap<String, Value>) -> Result<()> {
+    check_body_since(body, None, kinds)
+}
+
+/// The same for an edit to a stored body: elements whose settings did not change are not checked again, so one element stored
+/// under an older or looser schema never blocks the rest of the page.
+fn check_body_since(body: &Value, before: Option<&Value>, kinds: &std::collections::BTreeMap<String, Value>) -> Result<()> {
     richtext::check("body", body)?;
-    nuah_editor::check_elements(body, kinds)
+    nuah_editor::check_elements_since(body, before, kinds)
 }
 
 /// One task block of a document: its block id, whether it is done, its title (the first line), and its details.
