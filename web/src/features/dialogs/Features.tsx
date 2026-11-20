@@ -9,6 +9,7 @@ import { Disclosure } from "../../ui/Disclosure";
 import { NumberField, TextField } from "../../ui/Field";
 import { Select } from "../../ui/Select";
 import { notify } from "../../ui/Toast";
+import { startAgain } from "./startAgain";
 import { Window } from "./Dialog";
 
 type Feature = FeaturesListOutput["features"][number];
@@ -47,17 +48,10 @@ export function Features({ onClose }: { onClose: () => void }) {
   const apply = async () => {
     setPending(true);
     try {
-      await link.call("features.apply", {});
+      if (await startAgain()) return;
     } catch (e) {
       setPending(false);
       return setError(errorOf(e).message ?? String(e));
-    }
-    // the instance starts again; come back when it answers
-    for (let i = 0; i < 60; i++) {
-      await new Promise((r) => setTimeout(r, 500));
-      try {
-        if (i > 1 && (await fetch("/healthz", { cache: "no-store" })).ok) return void location.reload();
-      } catch { /* still starting */ }
     }
     setPending(false);
     setError(t("featuresNotBack"));

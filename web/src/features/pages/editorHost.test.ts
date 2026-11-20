@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { loadEditorHost, needsPluginFor, resetEditorHostForTests } from "./editorHost";
+import { enableFromPage, loadEditorHost, needsPluginFor, resetEditorHostForTests } from "./editorHost";
 
 const describeWith = (browser: unknown[]) => async () => ({ browser }) as never;
 
@@ -36,5 +36,24 @@ describe("the editor host (face.editor@1)", () => {
     expect(needsPluginFor(features, ["member"], vi.fn())("@nuah/excalidraw")).toMatchObject({ known: true, canEnable: false });
     expect(needsPluginFor(features, ["owner"], vi.fn())("@acme/unknown")).toMatchObject({ known: false, canEnable: false });
     expect(needsPluginFor([{ id: "@nuah/python", class: "platform" }], ["owner"], vi.fn())("@nuah/python")).toMatchObject({ known: true, canEnable: false });
+  });
+});
+
+describe("enabling a plugin from a page", () => {
+  it("asks_to_start_again_when_the_change_needs_it_and_starts_again_on_yes", async () => {
+    const startAgain = vi.fn(async () => {});
+    const ask = vi.fn(async () => true);
+    await enableFromPage("@nuah/excalidraw", { enable: async () => ({ restart_required: true }), ask, startAgain, saved: vi.fn() });
+    expect(ask).toHaveBeenCalled();
+    expect(startAgain).toHaveBeenCalled();
+  });
+
+  it("only_says_saved_when_nothing_needs_starting_again_or_the_person_waits", async () => {
+    const startAgain = vi.fn(async () => {});
+    const saved = vi.fn();
+    await enableFromPage("@x/y", { enable: async () => ({ restart_required: false }), ask: vi.fn(), startAgain, saved });
+    await enableFromPage("@x/y", { enable: async () => ({ restart_required: true }), ask: async () => false, startAgain, saved });
+    expect(startAgain).not.toHaveBeenCalled();
+    expect(saved).toHaveBeenCalledTimes(2);
   });
 });

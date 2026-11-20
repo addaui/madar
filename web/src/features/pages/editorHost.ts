@@ -57,3 +57,18 @@ export function needsPluginFor(features: { id: string; class?: string }[], roles
     return { known: !!f, canEnable: !!f && allowed && f.class !== "platform", enable: () => enable(plugin) };
   };
 }
+
+/**
+ * The missing-plugin bar's Enable: switch the plugin on, and when the instance must start again for it to load,
+ * ask (the same choice the Features window offers) and start again on yes. Otherwise it says the change is saved.
+ */
+export async function enableFromPage(id: string, d: {
+  enable: (id: string) => Promise<{ restart_required?: boolean }>;
+  ask: () => Promise<boolean>;
+  startAgain: () => Promise<void>;
+  saved: () => void;
+}): Promise<void> {
+  const r = await d.enable(id);
+  if (r.restart_required && (await d.ask())) return d.startAgain();
+  d.saved();
+}

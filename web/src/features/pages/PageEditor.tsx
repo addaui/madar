@@ -3,10 +3,11 @@ import { link } from "../../api/link";
 import { useDescribe, usePrefs, useHasOp } from "../../api/session";
 import { useI18n } from "../../i18n/i18n";
 import { icons } from "../../ui/icons";
-import { askText, openContextMenu, openDomModal, openDomPopover, toast, type MenuItems } from "../../ui/overlays";
+import { askConfirm, askText, openContextMenu, openDomModal, openDomPopover, toast, type MenuItems } from "../../ui/overlays";
+import { startAgain } from "../dialogs/startAgain";
 import { startLoading } from "../../ui/Toast";
 import { uploadFile } from "../../lib/upload";
-import { loadEditorHost, needsPluginFor } from "./editorHost";
+import { enableFromPage, loadEditorHost, needsPluginFor } from "./editorHost";
 import { useImageInsert } from "./useImageInsert";
 import "./editor.css";
 
@@ -95,7 +96,12 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
           elements: () => (elements ? Promise.resolve(elements) : link.call("editor.elements", {})),
           call: (op: string, input: unknown) => link.call(op as never, input as never),
           files: { upload: async (b: Blob, name?: string) => (await uploadFile(new File([b], name ?? "file", { type: b.type }), () => undefined, { project })).url },
-          needsPlugin: needsPluginFor(features, who.roles ?? [], async (id) => { await link.call("features.enable" as never, { id } as never); toast(t("saved")); }),
+          needsPlugin: needsPluginFor(features, who.roles ?? [], (id) => enableFromPage(id, {
+            enable: async (x) => (await link.call("features.enable" as never, { id: x } as never)) as { restart_required?: boolean },
+            ask: () => askConfirm(t("featuresSaved"), { action: t("featuresApply"), danger: false }),
+            startAgain: async () => { if (!(await startAgain())) toast(t("featuresNotBack")); },
+            saved: () => toast(t("saved")),
+          })),
           pref: (k: string) => latest.current.prefs[k],
           services: { openRef: (k: string, i: string) => latest.current.onOpenRef?.(k, i), pickRef, preview, turnIntoPage, newPage, comments,
             ...(images.pickImage ? { pickImage: (at: Spot) => imagesNow.current.pickImage!(at) } : {}) },
