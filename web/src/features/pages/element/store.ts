@@ -9,7 +9,7 @@ export interface ElementApi {
   setAttrs: (pos: number, patch: Record<string, unknown>) => void;
   setOption?: (blockId: string, option: string, value: unknown) => void;
   format?: (blockId: string) => ElementFormat[];
-  applyFormat?: (blockId: string, id: string) => void;
+  applyFormat?: (blockId: string, id: string) => void | Promise<void>;
 }
 interface State { ctx: ElementContext | null; api: ElementApi | null; pick: number }
 

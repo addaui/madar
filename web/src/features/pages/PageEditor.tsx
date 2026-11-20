@@ -27,7 +27,7 @@ export interface EditorHandle {
   /** The floating layer (stickers, ADR 0071). */
   floating(): unknown[]; setFloating(list: unknown[]): void; blockAt(x: number, y: number): { id: string; at?: number } | null; lineTop(id: string, at: number): number | null;
   stickers(): unknown[]; setStickers(list: unknown[]): void; setWraps(list: unknown[]): void;
-  format(blockId: string): import("./element/store").ElementFormat[]; applyFormat(blockId: string, id: string): void;
+  format?(blockId: string): import("./element/store").ElementFormat[]; applyFormat?(blockId: string, id: string): Promise<void>;
   replaceUrl(url: string, content: unknown): void;
 }
 
@@ -110,7 +110,7 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
           pref: (k: string) => latest.current.prefs[k],
           formatBar: bar.current ?? undefined,
           // the Face's own Format item: a sticker, where stickers are on
-          format: stickers ? [{ id: "sticker", label: { en: t("addSticker"), ar: t("addSticker") }, icon: "sticker", group: "insert", applies: "block", run: () => stickerStore.get().control?.addAtCenter() }] : [],
+          format: stickers ? [{ id: "sticker", label: { en: t("addSticker"), ar: t("addSticker") }, icon: "sticker", group: "insert", applies: "insert", run: () => stickerStore.get().control?.addAtCenter() }] : [],
           services: { openRef: (k: string, i: string) => latest.current.onOpenRef?.(k, i), pickRef, preview, turnIntoPage, newPage, comments,
             ...(images.pickImage ? { pickImage: (at: Spot) => imagesNow.current.pickImage!(at) } : {}) },
           ui: {

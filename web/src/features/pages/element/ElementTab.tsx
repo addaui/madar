@@ -149,9 +149,10 @@ const TEXT_NODES = new Set(["paragraph", "heading", "blockquote", "callout", "bu
 function TextFormat({ id, api, writer }: { id: string; api: Required<import("./store").ElementApi>; writer: boolean }) {
   const { t } = useI18n();
   // the items are read from the editor at each draw: after applying one, draw again
-  const [n, setN] = useState(0);
-  const redraw = () => setN(n + 1);
-  const items = api.format(id);
+  const [drawn, setDrawn] = useState(0);
+  const redraw = () => setDrawn((n) => n + 1);
+  // `drawn` is an input of the read, so a cached result is never reused after a change
+  const items = readFormat(api, id, drawn);
   if (items.length === 0) return null;
   return (
     <Section title={t("elementText")}>
@@ -159,7 +160,7 @@ function TextFormat({ id, api, writer }: { id: string; api: Required<import("./s
         {items.map((f, i) => (
           <span key={f.id} className="contents">
             {i > 0 && items[i - 1]!.group !== f.group && <span aria-hidden className="mx-0.5 w-px self-stretch bg-line" />}
-            <BaseButton aria-label={f.label} aria-pressed={f.active} isDisabled={!writer} onPress={() => { api.applyFormat(id, f.id); redraw(); }}
+            <BaseButton aria-label={f.label} aria-pressed={f.active} isDisabled={!writer} onPress={() => { void Promise.resolve(api.applyFormat(id, f.id)).then(redraw); }}
               className={cn("grid size-8 place-items-center rounded-md hoverable", f.active ? "bg-soft text-text" : "text-muted-foreground")}>
               {f.icon ? <Icon name={f.icon} className="size-4" /> : <span className="text-xs">{f.label}</span>}
             </BaseButton>
@@ -168,4 +169,9 @@ function TextFormat({ id, api, writer }: { id: string; api: Required<import("./s
       </div>
     </Section>
   );
+}
+
+/** The editor's items for an element; `_drawn` counts the changes made from the tab, so each one reads afresh. */
+function readFormat(api: Required<import("./store").ElementApi>, id: string, _drawn: number) {
+  return api.format(id);
 }
