@@ -3,7 +3,14 @@ import { useStickerState } from "../stickers/store";
 
 /** The element the cursor is in, or that is selected: the block and the blocks around it, innermost first (reported by the editor). */
 export interface ElementContext { chain: { node: string; pos: number; attrs: Record<string, unknown>; id: string | null; kind?: string | null; options?: import("./options").OptionDecl[] }[]; selected: boolean }
-export interface ElementApi { setAttrs: (pos: number, patch: Record<string, unknown>) => void; setOption?: (blockId: string, option: string, value: unknown) => void }
+/** One Format item for a whole element (ADR 0097), with whether it is on for all of its text. */
+export interface ElementFormat { id: string; label: string; icon?: string; group?: string; applies: string; active: boolean }
+export interface ElementApi {
+  setAttrs: (pos: number, patch: Record<string, unknown>) => void;
+  setOption?: (blockId: string, option: string, value: unknown) => void;
+  format?: (blockId: string) => ElementFormat[];
+  applyFormat?: (blockId: string, id: string) => void;
+}
 interface State { ctx: ElementContext | null; api: ElementApi | null; pick: number }
 
 let state: State = { ctx: null, api: null, pick: 0 };

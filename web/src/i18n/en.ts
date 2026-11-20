@@ -239,6 +239,8 @@ export const en = {
   "taskDetails": "Task details",
   "toggleInfo": "Show or hide the side panel",
   "infoTab": "Info",
+  "styleTab": "Style",
+  "elementText": "Text",
   "pageTab": "Page",
   "activityTab": "Activity",
   "created": "Created",

@@ -241,6 +241,8 @@ export const ar: Record<keyof typeof en, string> = {
   "taskDetails": "تفاصيل المهمة",
   "toggleInfo": "إظهار اللوحة الجانبية أو إخفاؤها",
   "infoTab": "معلومات",
+  "styleTab": "النمط",
+  "elementText": "النص",
   "pageTab": "الصفحة",
   "activityTab": "النشاط",
   "created": "أُنشئت",

@@ -330,3 +330,22 @@
 .nuah-cell-output pre { margin:0; white-space:pre-wrap; font:12.5px/1.5 var(--mono, ui-monospace, monospace); }
 .nuah-cell-output pre.is-error { color:var(--danger, #c0392b); }
 .nuah-cell-output img { max-inline-size:100%; }
+
+/* Formatting (ADR 0097). The Format bar: a floating card under the title that sticks to the top and turns flat when it does. */
+.ed-format-mark { block-size:1px; margin-block-end:-1px; }
+.ed-format-bar { position:sticky; inset-block-start:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:2px; margin-block:8px 14px; padding:5px; background:var(--surface); border:var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius:14px; box-shadow:var(--shadow-1); transition:border-radius .2s ease, box-shadow .2s ease, margin .2s ease, border-color .2s ease; }
+.ed-format-bar.is-stuck { border-radius:0; box-shadow:none; border-inline-color:transparent; border-block-start-color:transparent; margin-inline:calc(var(--page-pad, 0px) * -1); }
+.ed-format-bar[hidden] { display:none; }
+.nuah-format-item { display:grid; place-items:center; min-inline-size:30px; min-block-size:30px; padding:0 6px; border:0; border-radius:8px; background:none; color:var(--muted); cursor:pointer; font:inherit; font-size:12px; font-weight:600; }
+.nuah-format-item:hover { background:var(--soft); color:var(--text); }
+.nuah-format-item.is-on { background:var(--soft); color:var(--accent); }
+.nuah-format-item .ico { inline-size:16px; block-size:16px; }
+.nuah-format-sep { inline-size:1px; align-self:stretch; margin:4px 3px; background:var(--line); }
+/* The Selection bar: the basic items over selected text, fading in. */
+.nuah-selection-bar { z-index:40; display:flex; gap:2px; padding:4px; background:var(--surface); border:var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius:12px; box-shadow:var(--shadow-2); opacity:0; transform:translateY(4px); transition:opacity .14s ease, transform .14s ease; }
+.nuah-selection-bar.is-shown { opacity:1; transform:none; }
+.nuah-selection-bar[hidden] { display:none; }
+@media (prefers-reduced-motion: reduce) { .ed-format-bar, .nuah-selection-bar { transition:none; } }
+/* The line after the last element: room to click and start writing. */
+.nuah-tail { min-block-size:2.4em; cursor:text; }
+.nuah-tail[hidden] { display:none; }

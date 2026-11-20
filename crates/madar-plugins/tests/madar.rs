@@ -1987,6 +1987,7 @@ fn kinds_declare_their_options_and_a_page_keeps_defaults_for_a_type() {
     // the choice to show the type in the tab is a preference
     let prefs = a.ok(&al, "prefs.schema", json!({}));
     assert!(prefs["items"].as_array().unwrap().iter().any(|i| i["key"] == "editor.element_type_in_tab" && i["type"] == "boolean"));
+    assert!(prefs["items"].as_array().unwrap().iter().any(|i| i["key"] == "editor.selection_bar" && i["type"] == "boolean" && i["group"] == "appearance"));
     // a page's defaults for a type
     let pg = a.ok(&al, "pages.create", json!({"title": "Defaults"}))["id"].as_str().unwrap().to_string();
     let good = json!({"elements": {"image": {"size": "large"}, "youtube": {"size": "small", "start": 30}, "paragraph": {"align": "center"}}});

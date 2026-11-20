@@ -14,6 +14,7 @@ import { OptionControl } from "./OptionControl";
 import { blocksOf, optionsOf, resetValueOf, resolveOption, type OptionDecl, type PageDefaults } from "./options";
 import { elementStore, useElementState } from "./store";
 import { shownIn, STICKER_OPTIONS } from "./stickerOptions";
+import { StickerList } from "../stickers/StickerList";
 
 /** The icon of each kind of element, for its options' heading. */
 const ICONS: Record<string, string> = { paragraph: "type", heading: "heading-1", blockquote: "quote", codeBlock: "code", bulletList: "list-bullet", orderedList: "list-ordered", taskList: "list-check", callout: "callout", toggle: "toggle", image: "image", youtube: "video", linkPreview: "bookmark", horizontalRule: "divider", taskBlock: "task", sticker: "sticker" };
@@ -58,6 +59,7 @@ export function ElementTab({ page, writer }: { page: Page; scope?: PageScope; wr
         </nav>
       )}
       <Heading kind={el.node} title={label(el.node, el.kind)} />
+      {!el.kind && el.id && TEXT_NODES.has(el.node) && api.format && api.applyFormat && <TextFormat id={el.id} api={api as Required<typeof api>} writer={writer} />}
       {all.length === 0 ? <p className="m-0 text-[13px] text-muted-foreground">{t("elementNoOptions")}</p> : (
         <Section title={t("elementThis", { type: label(el.node, el.kind) })}>
           {(pinned.length ? pinned : all.slice(0, 2)).map((o) => {
@@ -120,6 +122,8 @@ function StickerOptionsPanel({ sticker, writer }: { sticker: import("../stickers
         </Section>
       )}
       <div className="mt-2"><Button size="sm" icon="close" onPress={() => stickerStore.set({ selected: null })}>{t("elementDeselect")}</Button></div>
+      {/* the page's stickers, their order and the preview width: shown with a selected sticker (it was the Page tab's) */}
+      <div className="mt-5"><StickerList /></div>
     </div>
   );
 }
@@ -137,3 +141,31 @@ function Source({ source }: { source: "element" | "page" | "default" }) {
 /** A control that needs the whole row: a few choices side by side, or a label too long for the narrow column. */
 const isWide = (o: OptionDecl) => (o.type === "choice" && (o.choices?.length ?? 0) > 2 && (o.choices?.length ?? 0) <= 4 && (o.choices ?? []).every((c) => c.label.en.length <= 9)) || o.label.en.length > 16;
 const optionLabel = (o: OptionDecl, lang: string): string => (lang === "ar" && o.label.ar) || o.label.en;
+
+/** The elements that hold text, whose Text section formats all of it (ADR 0097). */
+const TEXT_NODES = new Set(["paragraph", "heading", "blockquote", "callout", "bulletList", "orderedList", "taskList", "listItem", "taskItem", "toggle", "taskBlock"]);
+
+/** The Format items for the whole element: a row of buttons per group, on when all of its text has it. */
+function TextFormat({ id, api, writer }: { id: string; api: Required<import("./store").ElementApi>; writer: boolean }) {
+  const { t } = useI18n();
+  // the items are read from the editor at each draw: after applying one, draw again
+  const [n, setN] = useState(0);
+  const redraw = () => setN(n + 1);
+  const items = api.format(id);
+  if (items.length === 0) return null;
+  return (
+    <Section title={t("elementText")}>
+      <div className="flex flex-wrap gap-1">
+        {items.map((f, i) => (
+          <span key={f.id} className="contents">
+            {i > 0 && items[i - 1]!.group !== f.group && <span aria-hidden className="mx-0.5 w-px self-stretch bg-line" />}
+            <BaseButton aria-label={f.label} aria-pressed={f.active} isDisabled={!writer} onPress={() => { api.applyFormat(id, f.id); redraw(); }}
+              className={cn("grid size-8 place-items-center rounded-md hoverable", f.active ? "bg-soft text-text" : "text-muted-foreground")}>
+              {f.icon ? <Icon name={f.icon} className="size-4" /> : <span className="text-xs">{f.label}</span>}
+            </BaseButton>
+          </span>
+        ))}
+      </div>
+    </Section>
+  );
+}

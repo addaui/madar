@@ -132,7 +132,7 @@ export function PageBody({ page, scope, onWords, onSave }: { page: Page; scope: 
           {lv.failed && <p className="mb-2 rounded-md bg-sunken px-3 py-2 text-[13px] text-muted-foreground">{t("pageNotHereOffline")}</p>}
           {(live || lv.failed || page.id.startsWith("draft-")) && <PageEditor key={live ? `live-${lv.generation}` : "json"} doc={doc} version={version} editable={!lv.failed} lang={lang}
             live={live ? { doc: live.live.doc, ephemeral: live.presence, user: me ? { name: me.display, color: colorOf(me.subject) } : undefined } : undefined} {...comments.editor} placeholder={t("writeHere")} onChange={onChange}
-            onReady={(h) => { handle.current = h; elementStore.set({ api: { setAttrs: (pos, patch) => h.setAttrs(pos, patch), setOption: (id, option, value) => h.setOption(id, option, value) } }); countWords(latest.current); setReady((r) => r + 1); }} stickers={stickers.options}
+            onReady={(h) => { handle.current = h; elementStore.set({ api: { setAttrs: (pos, patch) => h.setAttrs(pos, patch), setOption: (id, option, value) => h.setOption(id, option, value), format: (id) => h.format(id), applyFormat: (id, f) => h.applyFormat(id, f) } }); countWords(latest.current); setReady((r) => r + 1); }} stickers={stickers.options}
             onContext={(c) => elementStore.set({ ctx: c as ElementContext | null, pick: 0 })}
             onOpenRef={(kind, rid) => { location.hash = kind === "pages.page" ? (scope.project ? `#/p/${scope.project}?tab=knowledge&page=${rid}` : `#/pages/${rid}`) : `#/today`; }}
             pickRef={askRef}

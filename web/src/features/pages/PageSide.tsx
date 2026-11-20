@@ -16,16 +16,18 @@ import { PageElementDefaults } from "./element/PageElementDefaults";
 import { useElementKind } from "./element/store";
 import { usePrefs } from "../../api/session";
 import { isDraftId } from "./draft";
-import { StickerList } from "./stickers/StickerList";
 import { PageTags } from "./PageTags";
 import type { PageScope } from "./scope";
 
-type Tab = "info" | "page" | "element";
+type Tab = "info" | "style" | "element";
+
+/** The tabs, in order: what is selected first, then how the page looks, then its facts. */
+export const sideTabs = (t: (k: never) => string, kindSuffix: string) => [{ id: "element", label: t("elementTab" as never) + kindSuffix }, { id: "style", label: t("styleTab" as never) }, { id: "info", label: t("infoTab" as never) }];
 
 /** The side panel of a page: its facts and links (Info), and how it is shown (Page). It is a column of the frame, beside the header and the sheet. */
 export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
   const { t } = useI18n();
-  const [tab, setTab] = useState<Tab>("info");
+  const [tab, setTab] = useState<Tab>("element");
   // the tab can name the kind of element in it (a preference under Appearance)
   const kind = useElementKind(), showKind = !!(usePrefs() as Record<string, unknown>)["editor.element_type_in_tab"];
   const f = useDateFormat();
@@ -36,7 +38,7 @@ export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
   const [sharing, setSharing] = useState(false);
   return (
     <div className="flex h-full min-h-0 flex-col workspace:bg-transparent panels:rounded-lg panels:border panels:border-[var(--bc,transparent)] panels:bg-surface panels:shadow-1 flush:bg-surface">
-      <Tabs variant="compact" label={t("toggleInfo")} selected={tab} onSelect={(k) => setTab(k as Tab)} items={[{ id: "info", label: t("infoTab") }, { id: "page", label: t("pageTab") }, { id: "element", label: t("elementTab") + (showKind && kind ? " · " + t(("node_" + kind) as Key) : "") }]}
+      <Tabs variant="compact" label={t("toggleInfo")} selected={tab} onSelect={(k) => setTab(k as Tab)} items={sideTabs(t as never, showKind && kind ? " · " + t(("node_" + kind) as Key) : "")}
         className="flex min-h-0 flex-1 flex-col" panelClassName="min-h-0 flex-1 overflow-auto p-5">
         {tab === "info" ? (
           <>
@@ -54,7 +56,7 @@ export function PageSide({ page, scope }: { page: Page; scope: PageScope }) {
               <ul className="m-0 grid list-none gap-1.5 p-0">{links.map((l) => <li key={l.from.id}><a href={`#/pages/${l.from.id}`} className="block rounded-sm px-2.5 py-1.5 hoverable">{l.title ?? l.from.id}</a></li>)}</ul>
             )}
           </>
-        ) : tab === "element" ? <ElementTab page={page} scope={scope} writer /> : <><StickerList /><PageStyleTab page={page} scope={scope} writer /><PageElementDefaults page={page} scope={scope} writer /></>}
+        ) : tab === "element" ? <ElementTab page={page} scope={scope} writer /> : <><PageStyleTab page={page} scope={scope} writer /><PageElementDefaults page={page} scope={scope} writer /></>}
       </Tabs>
     </div>
   );

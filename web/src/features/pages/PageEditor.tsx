@@ -8,6 +8,7 @@ import { startLoading } from "../../ui/Toast";
 import { uploadFile } from "../../lib/upload";
 import { enableFromPage, loadEditorHost, needsPluginFor } from "./editorHost";
 import { elementIcon } from "./elementIcon";
+import { stickerStore } from "./stickers/store";
 import { useImageInsert } from "./useImageInsert";
 import "./editor.css";
 
@@ -26,6 +27,7 @@ export interface EditorHandle {
   /** The floating layer (stickers, ADR 0071). */
   floating(): unknown[]; setFloating(list: unknown[]): void; blockAt(x: number, y: number): { id: string; at?: number } | null; lineTop(id: string, at: number): number | null;
   stickers(): unknown[]; setStickers(list: unknown[]): void; setWraps(list: unknown[]): void;
+  format(blockId: string): import("./element/store").ElementFormat[]; applyFormat(blockId: string, id: string): void;
   replaceUrl(url: string, content: unknown): void;
 }
 
@@ -62,6 +64,15 @@ export interface PageEditorProps {
 export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady, project, comments, commentsVersion, stickers, onContext, version, live, onOpenRef, pickRef, preview, turnIntoPage, newPage, elements }: PageEditorProps) {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
+  // the Format bar (ADR 0097): between the title and the content, sticky; a mark just above it tells when it has stuck
+  const bar = useRef<HTMLDivElement>(null), above = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = above.current, b = bar.current;
+    if (!el || !b || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => b.classList.toggle("is-stuck", !e!.isIntersecting), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   const api = useRef<EditorHandle | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   // the Image element asks the Face for a picture (a popover to drop, pick or give an address): ADR 0068
@@ -97,6 +108,9 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
             saved: () => toast(t("saved")),
           })),
           pref: (k: string) => latest.current.prefs[k],
+          formatBar: bar.current ?? undefined,
+          // the Face's own Format item: a sticker, where stickers are on
+          format: stickers ? [{ id: "sticker", label: { en: t("addSticker"), ar: t("addSticker") }, icon: "sticker", group: "insert", applies: "block", run: () => stickerStore.get().control?.addAtCenter() }] : [],
           services: { openRef: (k: string, i: string) => latest.current.onOpenRef?.(k, i), pickRef, preview, turnIntoPage, newPage, comments,
             ...(images.pickImage ? { pickImage: (at: Spot) => imagesNow.current.pickImage!(at) } : {}) },
           ui: {
@@ -125,5 +139,5 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
   useEffect(() => { api.current?.refreshComments(); }, [commentsVersion]);
 
   if (failed) return <p role="alert" className="m-0 text-sm text-muted-foreground">{failed === "noEditor" || failed === "editorVersion" ? t(failed) : failed}</p>;
-  return <><div ref={host} className="ed-host" />{images.view}</>;
+  return <><div ref={above} aria-hidden className="ed-format-mark" /><div ref={bar} className="ed-format-bar" hidden /><div ref={host} className="ed-host" />{images.view}</>;
 }
