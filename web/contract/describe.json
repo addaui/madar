@@ -1,5 +1,5 @@
 {
-  "contract": "10c9ca49786b06e6",
+  "contract": "a923e3cf74e22a89",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -665,7 +665,8 @@
       "output": {
         "required": [
           "kinds",
-          "runners"
+          "runners",
+          "modules"
         ],
         "type": "object"
       },

@@ -107,9 +107,9 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
             loading: () => startLoading((n) => t("loadingElements", { n })),
             icon: svgIcon,
           },
-        })) as Omit<EditorHandle, "stickers" | "setStickers" | "setWraps" | "replaceUrl"> & { replaceUrl?: (url: string, c: unknown) => void };
+        })) as Omit<EditorHandle, "stickers" | "setStickers" | "replaceUrl"> & { replaceUrl?: (url: string, c: unknown) => void };
         if (dead) { raw.destroy(); return; }
-        api.current = { ...raw, stickers: () => raw.floating(), setStickers: (l) => raw.setFloating(l), setWraps: () => undefined, replaceUrl: (u, c) => raw.replaceUrl?.(u, c) };
+        api.current = { ...raw, stickers: () => raw.floating(), setStickers: (l) => raw.setFloating(l), setWraps: (l) => raw.setWraps(l), replaceUrl: (u, c) => raw.replaceUrl?.(u, c) };
         onReady?.(api.current);
       } catch (e) {
         if (!dead) setFailed(e instanceof Error ? e.message : String(e));

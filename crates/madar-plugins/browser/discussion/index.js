@@ -1,0 +1,1 @@
+function m(e){let o=e.service("comments");o&&e.margin({id:"comments",icon:"comment",label:{en:"Comments",ar:"\u0627\u0644\u062A\u0639\u0644\u064A\u0642\u0627\u062A"},count:n=>o.counts()[n.blockId]??0,run:(n,t)=>o.open(n.blockId,t)})}export{m as default};

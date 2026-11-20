@@ -44,14 +44,21 @@ fn check_body(v: &Value) -> Result<()> {
 
 pub struct Discussion;
 
+const DISCUSSION_FILES: &[(&str, &[u8])] = include!("../browser/discussion/files.rs");
+
 impl Plugin for Discussion {
+    fn browser_files(&self) -> &'static [(&'static str, &'static [u8])] {
+        DISCUSSION_FILES
+    }
     fn manifest(&self) -> Manifest {
         let pr = json!({"type":"string"});
         manifest(json!({
             "id": "@madar/discussion", "version": "0.3.0", "name": "Discussion", "namespaces": ["discussion"],
             "description": "Comments on tasks and pages with threads (one level of replies), and updates",
-            "provides": [{"extension_point": "timeline.source", "optional": true}],
+            "provides": [{"extension_point": "timeline.source", "optional": true}, {"extension_point": "editor.element", "optional": true, "data": {"kinds": []}}],
             "requires": {"plugins": ["@madar/projects", "@madar/tasks"], "capabilities": ["emit", "call"]},
+            // comments on a block, as a margin action, when an editor is on (ADR 0094)
+            "browser": {"editor.element": "index.js"},
             "data": {"schema": schema(include_str!("../schema/discussion.json"))},
             "events": {"discussion.added": {}, "discussion.removed": {}},
             "operations": {
