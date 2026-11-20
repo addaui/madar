@@ -478,3 +478,27 @@ fn a_stranger_reads_a_shared_page_and_its_picture_without_signing_in_and_nothing
     assert_eq!(s.call("pages.get", json!({"id": page}), &[]).status, 401);
     assert_eq!(agent().get(&format!("{}/files/{fid}", s.base)).call().unwrap().status().as_u16(), 401);
 }
+
+/// An agent with a person's API key uses Madar through MCP at /mcp (ADR 0101): the person's Operations are its tools.
+#[test]
+fn an_agent_with_an_api_key_uses_madar_through_mcp() {
+    let s = start();
+    let token = s.sign_in("alice");
+    let made = s.call("auth.keys.create", json!({"name": "my agent"}), &[("Authorization", &format!("Bearer {token}"))]);
+    assert_eq!(made.status, 200, "{:?}", made.body);
+    let key = made.body["output"]["key"].as_str().unwrap().to_string();
+    let mcp = |body: Value| read(agent().post(&format!("{}/mcp", s.base)).header("Content-Type", "application/json").header("Accept", "application/json, text/event-stream").header("Authorization", &format!("Bearer {key}")).send(body.to_string()).unwrap());
+    let init = mcp(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}}}));
+    assert_eq!(init.status, 200, "{:?}", init.body);
+    assert!(init.body["result"]["serverInfo"]["name"].as_str().is_some_and(|n| !n.is_empty()), "{:?}", init.body);
+    let tools = mcp(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
+    let names: Vec<&str> = tools.body["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(names.contains(&"projects_create") && names.contains(&"tasks_create") && names.contains(&"pages_create"), "{names:?}");
+    let made = mcp(json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "projects_create", "arguments": {"name": "From an agent"}}}));
+    assert_eq!(made.body["result"]["isError"], false, "{:?}", made.body);
+    let list = mcp(json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "projects_list", "arguments": {}}}));
+    assert!(list.body["result"]["content"][0]["text"].as_str().unwrap().contains("From an agent"), "{:?}", list.body);
+    // the same key works for the HTTP API too
+    let who = s.call("auth.who", json!({}), &[("Authorization", &format!("Bearer {key}"))]);
+    assert_eq!(who.body["output"]["display"], "alice");
+}

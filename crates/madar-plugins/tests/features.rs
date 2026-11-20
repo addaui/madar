@@ -196,7 +196,7 @@ fn the_class_of_every_plugin_in_the_catalog_is_the_one_written_down() {
         "@nuah/policy-roles", "@nuah/clock-system", "@nuah/ids-random", "@nuah/metric-prometheus", "@nuah/log-console", "@nuah/log-file", "@nuah/net-public",
         "@nuah/link-analyzer", "@nuah/fonts", "@nuah/previews", "@madar/quota", "@nuah/features",
     ];
-    const FEATURE: &[&str] = &[
+    const FEATURE: &[&str] = &["@nuah/mcp", 
         "@madar/projects", "@madar/tasks", "@madar/discussion", "@madar/audit", "@nuah/prefs", "@nuah/appearance", "@madar/export", "@madar/notify", "@madar/notify-inbox",
         "@nuah/editor", "@nuah/editor-basic", "@nuah/mermaid", "@nuah/excalidraw", "@nuah/notebook", "@nuah/python", "@madar/task-block", "@madar/refs", "@madar/pages", "@madar/timeline", "@madar/search", "@nuah/emoji", "@madar/files",
         "@madar/files-db", "@nuah/gifs", "@nuah/gifs-giphy", "@madar/spaces", "@madar/shares", "@nuah/entities",

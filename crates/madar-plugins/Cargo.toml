@@ -16,6 +16,7 @@ tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "s
 nuah-adapters = { workspace = true }
 nuah-prefs = { workspace = true }
 nuah-features = { workspace = true }
+nuah-mcp = { workspace = true }
 nuah-previews = { workspace = true }
 nuah-entities = { workspace = true }
 nuah-live = { workspace = true }

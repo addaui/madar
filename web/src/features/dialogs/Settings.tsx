@@ -10,6 +10,7 @@ import { ColorField } from "../../ui/ColorField";
 import { NumberField, TextField } from "../../ui/Field";
 import { Select } from "../../ui/Select";
 import { About } from "./About";
+import { ApiKeys } from "./ApiKeys";
 import { Window } from "./Dialog";
 
 interface Item { key: string; group?: string; type: string; label: { en: string; ar?: string }; default?: unknown; choices?: { value: string; label: { en: string; ar?: string } }[]; min?: number; max?: number }
@@ -51,6 +52,7 @@ export function Settings({ onClose, onAppearance, onFeatures }: { onClose: () =>
           {g === "appearance" && describe.operations["appearance.schema"] && <div className="flex items-center justify-between gap-3 py-1.5"><label>{t("customize")}</label><Button onPress={onAppearance}>{t("customizeBtn")}</Button></div>}
         </section>
       ))}
+      <ApiKeys />
       <About />
     </Window>
   );

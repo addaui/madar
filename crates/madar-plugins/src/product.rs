@@ -69,7 +69,8 @@ async fn shared_file(State(core): State<Core>, Path((share, file)): Path<(String
 
 /// Madar's extra routes for the `http` Projection: file downloads and the files of shared pages. Everything else is an Operation.
 pub fn routes() -> impl Fn(Core) -> Router + Send + Sync + 'static {
-    move |core| Router::new().route("/files/{id}", get(file).with_state(core.clone())).route("/share-files/{share}/{file}", get(shared_file).with_state(core))
+    // /mcp: agents with a person's API key (ADR 0101); it answers 404 while @nuah/mcp is switched off
+    move |core| Router::new().route("/files/{id}", get(file).with_state(core.clone())).route("/share-files/{share}/{file}", get(shared_file).with_state(core.clone())).merge(nuah_mcp::routes(core))
 }
 
 /// The plugin that publishes Madar's web app, the React Face (`./faces/madar/web-react`), built from `web/` (ADR 0058). It is shown at `/`

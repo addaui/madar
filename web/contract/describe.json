@@ -1,5 +1,5 @@
 {
-  "contract": "09179318dde06d14",
+  "contract": "cb9251f28516d531",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -327,6 +327,100 @@
         "auth.last_admin": "At least one enabled administrator must remain",
         "auth.no_account": "There is no such account",
         "auth.username_taken": "That username is already used"
+      },
+      "resource": null
+    },
+    "auth.keys.create": {
+      "allowed": true,
+      "description": "Make an API key that acts as you (for an agent or a script); the key is shown this once",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "required": [
+          "id",
+          "key",
+          "name",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/auth-password",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "auth.keys.list": {
+      "allowed": true,
+      "description": "Your API keys, by name (never the keys themselves)",
+      "input": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "keys": {
+            "items": {
+              "required": [
+                "id",
+                "name",
+                "created_at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/auth-password",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "auth.keys.revoke": {
+      "allowed": true,
+      "description": "Revoke one of your API keys; whatever used it is signed out at once",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/auth-password",
+      "public": false,
+      "reasons": {
+        "auth.no_key": "You have no API key with that id"
       },
       "resource": null
     },
