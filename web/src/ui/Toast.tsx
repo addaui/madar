@@ -1,4 +1,6 @@
 import { Toaster, toast } from "sonner";
+// Sonner puts its styles in a <style> tag, which the security policy refuses: they come as a file instead
+import "sonner/dist/styles.css";
 
 /** Short notices ("Saved", "Moved"). Sonner keeps them in order, announces them politely, and pauses the timer while one is hovered. */
 export const notify = (text: string) => { toast(text, { duration: 4000 }); };
