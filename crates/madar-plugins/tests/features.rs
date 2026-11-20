@@ -214,3 +214,20 @@ fn the_class_of_every_plugin_in_the_catalog_is_the_one_written_down() {
         assert_eq!(c.class, want, "{}: {:?}", m.id, c.reasons);
     }
 }
+
+/// An instance set up before the editor became @nuah/editor (ADR 0094) still starts: its Profile moves to the successors.
+#[test]
+fn a_profile_with_the_old_editor_plugins_starts() {
+    use nuah_shell::Product;
+    let mut p = profile_server(":memory:", json!([]));
+    for (new, old) in [("@nuah/editor", "@madar/editor"), ("@nuah/editor-basic", "@madar/editor-basic")] {
+        p.enabled.retain(|x| x != new);
+        p.enabled.push(old.into());
+    }
+    let cat = Madar.catalog();
+    assert!(!Core::check(&Distribution { name: "t".into(), catalog: Catalog(cat.0.clone()), profile: p.clone() }).is_empty());
+    let moved = nuah_kernel::successors(&cat, &mut p, &Madar.replaced());
+    assert_eq!(moved.len(), 2);
+    let problems = Core::check(&Distribution { name: "t".into(), catalog: cat, profile: p });
+    assert!(problems.is_empty(), "{problems:#?}");
+}

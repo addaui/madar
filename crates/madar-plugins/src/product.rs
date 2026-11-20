@@ -111,6 +111,10 @@ impl nuah_shell::Product for Madar {
     fn catalog(&self) -> Catalog {
         full_catalog()
     }
+    /// The editor became @nuah/editor and its basic elements @nuah/editor-basic (ADR 0094): instances set up before move to them.
+    fn replaced(&self) -> Vec<(String, String)> {
+        vec![("@madar/editor".into(), "@nuah/editor".into()), ("@madar/editor-basic".into(), "@nuah/editor-basic".into())]
+    }
     /// What setup starts from: Madar on SQLite in the home directory, with the web app and the console. No
     /// accounts: the first administrator is asked for during setup.
     fn starting_point(&self, home: &std::path::Path) -> Profile {
