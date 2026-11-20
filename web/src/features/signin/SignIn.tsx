@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { startSession } from "../../app/session-change";
 import { NuahError } from "@nuah/link-client";
 import { useActionState } from "react";
 import { link } from "../../api/link";
@@ -14,7 +15,7 @@ export function SignIn() {
   const [error, submit, pending] = useActionState(async (_prev: string | null, form: FormData): Promise<string | null> => {
     try {
       await link.call("auth.sign_in", { username: String(form.get("username") ?? ""), password: String(form.get("password") ?? "") }, { headers: { "X-Nuah-Session": "cookie" } });
-      await client.invalidateQueries({ queryKey: ["describe"] });
+      await startSession(client);
       return null;
     } catch (e) {
       return e instanceof NuahError ? e.message : t("offline");

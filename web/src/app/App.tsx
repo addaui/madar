@@ -13,7 +13,7 @@ import { lazy } from "react";
 const OverlayHost = lazy(() => import("../ui/OverlayHost").then((m) => ({ default: m.OverlayHost })));
 import { AppRouter } from "./router";
 import { link } from "../api/link";
-import { forgetThisDevice } from "./offline";
+import { onRefused } from "./session-change";
 import { siteSubdomain } from "../features/reader/host";
 const Reader = lazy(() => import("../features/reader/Reader").then((m) => ({ default: m.Reader })));
 
@@ -23,13 +23,15 @@ function Gate() {
   const describe = useDescribe();
   useEffect(() => {
     // the session is gone: what this device kept for the person goes too (ADR 0093)
-    const out = () => void forgetThisDevice(qc).then(() => qc.invalidateQueries({ queryKey: ["describe"] }));
+    const out = () => void onRefused(qc);
     const reload = () => location.reload();
     addEventListener("madar:unauthenticated", out);
     addEventListener("madar:incompatible", reload);
     return () => { removeEventListener("madar:unauthenticated", out); removeEventListener("madar:incompatible", reload); };
   }, [qc]);
-  return describe.who ? <Signed /> : <SignIn />;
+  // a session's reads never outlive it: the signed-in app starts afresh for each person
+  const who = describe.who as { subject?: string } | null | undefined;
+  return who ? <Signed key={who.subject ?? "signed"} /> : <SignIn />;
 }
 
 function Signed() {

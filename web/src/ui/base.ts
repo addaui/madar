@@ -7,7 +7,7 @@
 export const interactive = "outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45 data-[pending]:cursor-progress";
 
 /** The surface of a popup that lists choices (select, combo box, menu): one look, so they do not drift apart. */
-export const popup = "z-[80] rounded-md border border-line-strong bg-surface p-1.5 shadow-2";
+export const popup = "z-[80] rounded-md border border-line bg-float p-1.5 shadow-float";
 
 /** One row in such a list. */
 export const popupItem = "flex cursor-pointer items-center gap-2.5 rounded-inner px-2.5 py-1.5 outline-none data-[highlighted]:bg-hover data-[selected]:font-semibold data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45";

@@ -78,7 +78,7 @@
 .link-card[data-mode="side"] .lc-main { padding:12px 14px; }
 @media (max-width:560px) { .lc-pic { inline-size:64px; block-size:64px; } .link-card[data-mode="stack"] .lc-pic { block-size:120px; } .link-card[data-mode="side"] .lc-pic { inline-size:84px; block-size:auto; } }
 .unknown-block { border:1px dashed var(--muted); border-radius:10px; padding:8px 12px; color:var(--muted); font-size:13px; }
-.nuah-slash { position:absolute; z-index:30; background:var(--surface); border:var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius:14px; box-shadow:var(--shadow-2); min-inline-size:220px; max-block-size:280px; overflow:auto; padding:6px; }
+.nuah-slash { position:absolute; z-index:30; background:var(--float-bg); border:var(--bw, 1px) var(--bstyle, solid) var(--line); border-radius:14px; box-shadow:var(--shadow-float); min-inline-size:220px; max-block-size:280px; overflow:auto; padding:6px; }
 .nuah-slash-item { padding:8px 10px; border-radius:9px; cursor:pointer; }
 .nuah-slash-item.is-active, .nuah-slash-item:hover { background:var(--soft); }
 .embed { max-inline-size:100%; }
@@ -333,8 +333,8 @@
 
 /* Formatting (ADR 0097). The Format bar: a floating card under the title that sticks to the top and turns flat when it does. */
 .ed-format-mark { block-size:1px; margin-block-end:-1px; }
-.ed-format-bar { position:sticky; inset-block-start:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:2px; margin-block:8px 14px; padding:5px; background:var(--surface); border:var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius:14px; box-shadow:var(--shadow-1); transition:border-radius .2s ease, box-shadow .2s ease, margin .2s ease, border-color .2s ease; }
-.ed-format-bar.is-stuck { border-radius:0; box-shadow:none; border-inline-color:transparent; border-block-start-color:transparent; margin-inline:calc(var(--page-pad, 0px) * -1); }
+.ed-format-bar { position:sticky; inset-block-start:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:2px; margin-block:8px 14px; padding:5px; background:var(--float-bg); border:var(--bw, 1px) var(--bstyle, solid) var(--line); border-radius:14px; box-shadow:var(--shadow-float); transition:border-radius .2s ease, box-shadow .2s ease, margin .2s ease, border-color .2s ease; }
+.ed-format-bar.is-stuck { background:var(--surface); border-radius:0; box-shadow:none; border-color:transparent; border-block-end-color:var(--line); margin-inline:calc(var(--page-pad, 0px) * -1); }
 .ed-format-bar[hidden] { display:none; }
 .nuah-format-item { display:grid; place-items:center; min-inline-size:30px; min-block-size:30px; padding:0 6px; border:0; border-radius:8px; background:none; color:var(--muted); cursor:pointer; font:inherit; font-size:12px; font-weight:600; }
 .nuah-format-item:hover { background:var(--soft); color:var(--text); }
@@ -342,10 +342,14 @@
 .nuah-format-item .ico { inline-size:16px; block-size:16px; }
 .nuah-format-sep { inline-size:1px; align-self:stretch; margin:4px 3px; background:var(--line); }
 /* The Selection bar: the basic items over selected text, fading in. */
-.nuah-selection-bar { z-index:40; display:flex; gap:2px; padding:4px; background:var(--surface); border:var(--bw, 1px) var(--bstyle, solid) var(--line-strong); border-radius:12px; box-shadow:var(--shadow-2); opacity:0; transform:translateY(4px); transition:opacity .14s ease, transform .14s ease; }
+.nuah-selection-bar { z-index:40; display:flex; gap:2px; padding:4px; background:var(--float-bg); border:var(--bw, 1px) var(--bstyle, solid) var(--line); border-radius:12px; box-shadow:var(--shadow-float); opacity:0; transform:translateY(4px); transition:opacity .14s ease, transform .14s ease; }
 .nuah-selection-bar.is-shown { opacity:1; transform:none; }
 .nuah-selection-bar[hidden] { display:none; }
 @media (prefers-reduced-motion: reduce) { .ed-format-bar, .nuah-selection-bar { transition:none; } }
 /* The line after the last element: room to click and start writing. */
 .nuah-tail { min-block-size:2.4em; cursor:text; }
 .nuah-tail[hidden] { display:none; }
+
+/* Moving a block: one line in the gap it will land in. */
+.nuah-drop-line { z-index:50; block-size:3px; margin-block-start:-1px; border-radius:2px; background:var(--accent); pointer-events:none; box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.nuah-drop-line[hidden] { display:none; }

@@ -36,7 +36,9 @@ export function ElementTab({ page, writer }: { page: Page; scope?: PageScope; wr
   const at = Math.min(pick, ctx.chain.length - 1), el = ctx.chain[at]!;
   // an element (a card) is known by its kind; its options come with the context, its values live in its settings (ADR 0094)
   const key = el.kind ?? el.node;
-  const all = el.options ?? optionsOf(blocks, key);
+  // an option of an attribute the Text section already sets (alignment, level) is shown there only
+  const covered = new Set(!el.kind && el.id && TEXT_NODES.has(el.node) ? (api.format?.(el.id) ?? []).map((f) => f.attr).filter(Boolean) : []);
+  const all = (el.options ?? optionsOf(blocks, key)).filter((o) => !covered.has(o.attr ?? o.id));
   const pinned = all.filter((o) => o.pinned), rest = all.filter((o) => !o.pinned);
   const values = (el.kind ? (el.attrs.data as Record<string, unknown> | undefined) ?? {} : el.attrs);
   const write = (o: OptionDecl, v: unknown) => { if (el.id && api.setOption) api.setOption(el.id, o.id, v); else api.setAttrs(el.pos, { [o.attr ?? o.id]: v }); };
@@ -154,17 +156,27 @@ function TextFormat({ id, api, writer }: { id: string; api: Required<import("./s
   // `drawn` is an input of the read, so a cached result is never reused after a change
   const items = readFormat(api, id, drawn);
   if (items.length === 0) return null;
+  // one row per group, under the group's name
+  const groups: { key: string; label: string; items: typeof items }[] = [];
+  for (const f of items) {
+    const g = groups.find((x) => x.key === (f.group ?? ""));
+    if (g) g.items.push(f); else groups.push({ key: f.group ?? "", label: f.groupLabel ?? "", items: [f] });
+  }
   return (
     <Section title={t("elementText")}>
-      <div className="flex flex-wrap gap-1">
-        {items.map((f, i) => (
-          <span key={f.id} className="contents">
-            {i > 0 && items[i - 1]!.group !== f.group && <span aria-hidden className="mx-0.5 w-px self-stretch bg-line" />}
-            <BaseButton aria-label={f.label} aria-pressed={f.active} isDisabled={!writer} onPress={() => { void Promise.resolve(api.applyFormat(id, f.id)).then(redraw); }}
-              className={cn("grid size-8 place-items-center rounded-md hoverable", f.active ? "bg-soft text-text" : "text-muted-foreground")}>
-              {f.icon ? <Icon name={f.icon} className="size-4" /> : <span className="text-xs">{f.label}</span>}
-            </BaseButton>
-          </span>
+      <div className="grid gap-2.5">
+        {groups.map((g) => (
+          <div key={g.key} role="group" aria-label={g.label || undefined} className="grid gap-1">
+            {g.label && <span className="text-xs text-muted-foreground">{g.label}</span>}
+            <div className="flex flex-wrap gap-1">
+              {g.items.map((f) => (
+                <BaseButton key={f.id} aria-label={f.label} aria-pressed={f.active} isDisabled={!writer} onPress={() => { void Promise.resolve(api.applyFormat(id, f.id)).then(redraw); }}
+                  className={cn("grid size-8 place-items-center rounded-md hoverable", f.active ? "bg-soft text-text" : "text-muted-foreground")}>
+                  {f.icon ? <Icon name={f.icon} className="size-4" /> : <span className="text-xs">{f.label}</span>}
+                </BaseButton>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </Section>

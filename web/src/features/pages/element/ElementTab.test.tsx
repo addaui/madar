@@ -29,6 +29,24 @@ describe("the Element tab (ADR 0097)", () => {
     act(() => elementStore.set({ ctx: null, api: null }));
   });
 
+  it("groups_the_text_formats_by_name_and_leaves_out_an_option_they_already_cover", () => {
+    act(() => elementStore.set({
+      ctx: { chain: [{ node: "paragraph", pos: 0, attrs: {}, id: "b2", options: [{ id: "align", type: "choice", attr: "align", label: { en: "Alignment" }, choices: [{ value: "start", label: { en: "start" } }] }, { id: "spacing", type: "toggle", attr: "spacing", label: { en: "Spacing" } }] as never }], selected: false },
+      api: { setAttrs: () => {}, format: () => [
+        { id: "bold", label: "Bold", group: "marks", groupLabel: "Text effects", applies: "text", active: false },
+        { id: "align-center", label: "Center", group: "align", groupLabel: "Alignment", attr: "align", applies: "block", active: false },
+      ], applyFormat: () => {} } as never,
+      pick: 0,
+    }));
+    show();
+    expect(screen.getByRole("group", { name: "Text effects" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Alignment" })).toBeTruthy();
+    // the element's own Alignment option is left out (the Alignment group covers it); its other options stay
+    expect(screen.queryByText("start")).toBeNull();
+    expect(screen.getAllByText("Spacing").length).toBeGreaterThan(0);
+    act(() => elementStore.set({ ctx: null, api: null }));
+  });
+
   it("shows_the_sticker_list_with_a_selected_stickers_options", () => {
     const control = { apply: () => {}, addAtCenter: () => {}, entries: () => [], set: () => {}, sizeClass: () => "wide" } as never;
     act(() => stickerStore.set({ list: [{ id: "s1", kind: "emoji", value: "🙂" } as never], selected: "s1", control, editable: true }));

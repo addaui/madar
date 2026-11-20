@@ -56,6 +56,8 @@
   --radius-inner: max(0px, calc(var(--r-sm) - 3px));   /* a control inside a padded group: concentric with it */
   --shadow-1: var(--shadow-1);
   --shadow-2: var(--shadow-2);
+  --shadow-float: var(--shadow-float);
+  --color-float: var(--float-bg);
   --color-scrim: var(--scrim);
   --font-sans: var(--font);
   --font-head: var(--head);
@@ -80,6 +82,9 @@
   --r-lg: 22px; --r-md: 14px; --r-sm: 10px; --r-btn: 999px; --r-chip: 999px;
   --shadow-1: 0 1px 2px rgb(18 40 36 / 0.05), 0 6px 18px -8px rgb(18 40 36 / 0.16);
   --shadow-2: 0 2px 6px rgb(18 40 36 / 0.08), 0 24px 56px -16px rgb(18 40 36 / 0.28);
+  /* a floating surface (menus, popovers, the Format bar before it sticks): its own background and a medium shadow, whatever the material */
+  --float-bg: color-mix(in srgb, #fff 70%, var(--surface));
+  --shadow-float: 0 1px 2px rgb(var(--sh) / 0.06), 0 6px 16px -4px rgb(var(--sh) / 0.16);
   /* what a theme may tune beyond the engine's own tokens (every one has a default, so a theme sets only what differs) */
   --sh: 20,24,40;                                   /* shadow tint, as r,g,b (the theme's own hue; the engine writes it) */
   --shadow-lift: 0 1px 2px rgb(var(--sh) / 0.06), 0 8px 20px -10px rgb(var(--sh) / 0.22);   /* a raised thing under the pointer */
