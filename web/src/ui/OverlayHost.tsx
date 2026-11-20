@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { PointPopover } from "./PointPopover";
 import { useT } from "../i18n/i18n";
-import { Button } from "./Button";
+import { Button, IconButton } from "./Button";
 import { TextField } from "./Field";
 import { ImageDialog } from "./ImageDialog";
 import { RefDialog } from "./RefDialog";
@@ -82,25 +82,26 @@ function Countdown({ label, seconds, done }: { label: string; seconds: number; d
   );
 }
 
-/** Calls a plugin's `render` on an element of ours once, and its cleanup when closed. */
+/** Calls a plugin's `render` on an element of ours once it is in the page (a dialog mounts its content after opening), and its cleanup when closed. */
 function useDrawn(render: (el: HTMLElement, close: () => void) => (() => void) | void, close: () => void, handle: { close: () => void }) {
-  const box = useRef<HTMLDivElement>(null);
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     handle.close = close;
-    const el = box.current;
-    const cleanup = el ? render(el, close) : undefined;
+    if (!el) return;
+    const cleanup = render(el, close);
     return () => { if (typeof cleanup === "function") cleanup(); };
-    // drawn once per request
+    // drawn once per request, when its element arrives
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return box;
+  }, [el]);
+  return setEl;
 }
 
 function DomModal({ req, close }: { req: Extract<OverlayRequest, { kind: "domModal" }>; close: () => void }) {
+  const t = useT();
   const box = useDrawn(req.render, close, req.handle);
   return (
     <ModalFrame title={req.title} onClose={close} size={req.size === "page" ? "page" : "wide"} top="4vh">
-      <ModalTitle className="mb-2 text-base">{req.title}</ModalTitle>
+      <div className="mb-2 flex items-center gap-2"><ModalTitle className="grow text-base">{req.title}</ModalTitle><IconButton icon="close" label={t("close")} onPress={close} /></div>
       <div ref={box} className={req.size === "page" ? "h-[80vh] min-h-0" : "min-h-0"} />
     </ModalFrame>
   );
