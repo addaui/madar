@@ -8,7 +8,7 @@ import { startLoading } from "../../ui/Toast";
 import { uploadFile } from "../../lib/upload";
 import { loadEditorHost, needsPluginFor } from "./editorHost";
 import { useImageInsert } from "./useImageInsert";
-import "./legacy-editor.css";
+import "./editor.css";
 
 /**
  * The page's editor (ADR 0094, 0095): whichever plugin provides `face.editor@1`, mounted with what this Face gives every editor: its
