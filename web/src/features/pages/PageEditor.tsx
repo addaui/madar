@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { link } from "../../api/link";
 import { useDescribe, usePrefs, useHasOp } from "../../api/session";
 import { useI18n } from "../../i18n/i18n";
-import { icons } from "../../ui/icons";
 import { askConfirm, askText, openContextMenu, openDomModal, openDomPopover, toast, type MenuItems } from "../../ui/overlays";
 import { startAgain } from "../dialogs/startAgain";
 import { startLoading } from "../../ui/Toast";
 import { uploadFile } from "../../lib/upload";
 import { enableFromPage, loadEditorHost, needsPluginFor } from "./editorHost";
+import { elementIcon } from "./elementIcon";
 import { useImageInsert } from "./useImageInsert";
 import "./editor.css";
 
@@ -29,12 +29,6 @@ export interface EditorHandle {
   replaceUrl(url: string, content: unknown): void;
 }
 
-const svgIcon = (name: string): Node | null => {
-  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "1.8"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round"); s.setAttribute("aria-hidden", "true"); s.setAttribute("focusable", "false"); s.setAttribute("class", "ico");
-  s.innerHTML = icons[name] ?? "";
-  return s;
-};
 
 export interface PageEditorProps {
   doc: EditorJson | null;
@@ -111,7 +105,7 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
             modal: (title: string, render: (el: HTMLElement, close: () => void) => (() => void) | void) => openDomModal(title, render),
             toast, askText, askUrl: (label: string) => askText(label),
             loading: () => startLoading((n) => t("loadingElements", { n })),
-            icon: svgIcon,
+            icon: elementIcon,
           },
         })) as Omit<EditorHandle, "stickers" | "setStickers" | "replaceUrl"> & { replaceUrl?: (url: string, c: unknown) => void };
         if (dead) { raw.destroy(); return; }

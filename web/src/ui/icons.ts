@@ -28,6 +28,8 @@ export const icons: Record<string, string> = {
   "rule": "<path d=\"M4 7h16M4 12h16M4 17h16\" stroke-dasharray=\"0\"/><path d=\"M4 20h16\" stroke-dasharray=\"2 3\"/>",
   "fit": "<path d=\"M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5\"/>",
   "scale": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M14 10l-4 4M10 10h4v4\"/>",
+  "pen": "<path d=\"M12 20h9\"/><path d=\"M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z\"/>",
+  "flow": "<rect x=\"3\" y=\"3\" width=\"8\" height=\"8\" rx=\"2\"/><path d=\"M7 11v4a2 2 0 0 0 2 2h4\"/><rect x=\"13\" y=\"13\" width=\"8\" height=\"8\" rx=\"2\"/>",
   "pin": "<path d=\"M9 3h6l-1 6 3 3H7l3-3zM12 12v9\"/>",
   "heading-1": "<path d=\"M4 12h8M4 18V6M12 18V6M17 12l3-2v8\"/>",
   "heading-2": "<path d=\"M4 12h8M4 18V6M12 18V6M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1\"/>",
