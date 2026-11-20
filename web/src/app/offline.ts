@@ -34,11 +34,16 @@ export const throttled: Persister = (() => {
 export const saveQueries = (qc: QueryClient) => persistQueryClientSave({ queryClient: qc, persister, buster: BUSTER });
 export const restoreQueries = (qc: QueryClient) => persistQueryClientRestore({ queryClient: qc, persister, buster: BUSTER, maxAge: MAX_AGE });
 
+/** Forget what this device stored for the person: the saved reads and the pages kept for offline (the reads in memory are the caller's). */
+export async function forgetStored() {
+  await throttled.removeClient();
+  try { indexedDB?.deleteDatabase("madar-live"); } catch { /* nothing kept */ }
+}
+
 /** Forget everything this device kept for the person: the reads, and the pages kept for offline. */
 export async function forgetThisDevice(qc: QueryClient) {
   qc.clear();
-  await throttled.removeClient();
-  try { indexedDB?.deleteDatabase("madar-live"); } catch { /* nothing kept */ }
+  await forgetStored();
 }
 
 /** The service worker, from the app's own folder and for the whole site (the server allows it), so the app opens at `/` offline too. */

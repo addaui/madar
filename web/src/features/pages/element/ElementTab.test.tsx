@@ -47,6 +47,17 @@ describe("the Element tab (ADR 0097)", () => {
     act(() => elementStore.set({ ctx: null, api: null }));
   });
 
+  it("keeps_a_quotes_own_alignment_which_the_text_formats_do_not_set", () => {
+    act(() => elementStore.set({
+      ctx: { chain: [{ node: "blockquote", pos: 0, attrs: {}, id: "q1", options: [{ id: "align", type: "choice", attr: "align", label: { en: "Alignment" }, choices: [{ value: "start", label: { en: "start" } }] }] as never }], selected: false },
+      api: { setAttrs: () => {}, format: () => [{ id: "align-center", label: "Center", group: "align", groupLabel: "Alignment", attr: "align", applies: "block", active: false }], applyFormat: () => {} } as never,
+      pick: 0,
+    }));
+    show();
+    expect(screen.getAllByText("start").length).toBeGreaterThan(0);
+    act(() => elementStore.set({ ctx: null, api: null }));
+  });
+
   it("shows_the_sticker_list_with_a_selected_stickers_options", () => {
     const control = { apply: () => {}, addAtCenter: () => {}, entries: () => [], set: () => {}, sizeClass: () => "wide" } as never;
     act(() => stickerStore.set({ list: [{ id: "s1", kind: "emoji", value: "🙂" } as never], selected: "s1", control, editable: true }));

@@ -37,7 +37,8 @@ export function ElementTab({ page, writer }: { page: Page; scope?: PageScope; wr
   // an element (a card) is known by its kind; its options come with the context, its values live in its settings (ADR 0094)
   const key = el.kind ?? el.node;
   // an option of an attribute the Text section already sets (alignment, level) is shown there only
-  const covered = new Set(!el.kind && el.id && TEXT_NODES.has(el.node) ? (api.format?.(el.id) ?? []).map((f) => f.attr).filter(Boolean) : []);
+  // (the formats set attributes of text blocks only: a quote or a list keeps its own options)
+  const covered = new Set(!el.kind && el.id && (el.node === "paragraph" || el.node === "heading") ? (api.format?.(el.id) ?? []).map((f) => f.attr).filter(Boolean) : []);
   const all = (el.options ?? optionsOf(blocks, key)).filter((o) => !covered.has(o.attr ?? o.id));
   const pinned = all.filter((o) => o.pinned), rest = all.filter((o) => !o.pinned);
   const values = (el.kind ? (el.attrs.data as Record<string, unknown> | undefined) ?? {} : el.attrs);
