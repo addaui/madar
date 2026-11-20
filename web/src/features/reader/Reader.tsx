@@ -156,7 +156,7 @@ function Shown({ data, shareId, pin, page, go }: { data: Opened; shareId: string
               {open.icon && <span aria-hidden="true" className="text-[32px] leading-none">{open.icon}</span>}
               <h1 className="page-title m-0 text-[32px] font-bold leading-tight tracking-tight text-[var(--page-fg,var(--text))]" dir="auto">{open.title}</h1>
             </div>
-            <PageEditor doc={doc} version={0} editable={false} lang={document.documentElement.lang || "en"} placeholder="" onChange={() => undefined}
+            <PageEditor elements={(data as { elements?: unknown }).elements} doc={doc} version={0} editable={false} lang={document.documentElement.lang || "en"} placeholder="" onChange={() => undefined}
               onReady={(h) => { handle.current = h; setReady((r) => r + 1); }} stickers={stickers.options}
               onOpenRef={(kind, id) => { if (kind === "pages.page" && data.tree.some((n) => n.id === id)) go(id); }} />
           </div>

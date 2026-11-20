@@ -1002,22 +1002,14 @@ fn references_remember_what_refers_to_what_and_follow_edits() {
 }
 
 #[test]
-fn the_editor_offers_the_blocks_plugins_declare() {
+fn every_element_kind_has_an_icon_and_a_label_in_both_languages() {
     let a = app();
-    let blocks = a.ok(&who("alice"), "editor.blocks", json!({}));
-    let ids: Vec<&str> = blocks["blocks"].as_array().unwrap().iter().map(|b| b["id"].as_str().unwrap()).collect();
-    for want in ["heading1", "codeBlock", "taskList", "taskBlock", "toggle", "callout", "image", "youtube", "entityRef"] {
-        assert!(ids.contains(&want), "{want} in {ids:?}");
+    let all = a.ok(&who("alice"), "editor.elements", json!({}));
+    for k in all["kinds"].as_array().unwrap() {
+        assert!(k["icon"].as_str().is_some_and(|i| !i.is_empty()), "{} has an icon", k["kind"]);
+        assert!(k["label"]["en"].as_str().is_some_and(|l| !l.is_empty()) && k["label"]["ar"].as_str().is_some_and(|l| !l.is_empty()), "{} has both labels", k["kind"]);
+        assert!(k["module"].as_str().is_some_and(|m| m.starts_with("/plugins/")), "{} has a module", k["kind"]);
     }
-    assert_eq!(blocks["blocks"][0]["plugin"], "@madar/editor-basic");
-    // every block names an icon a Face can draw; a callout is one entry with a submenu
-    for b in blocks["blocks"].as_array().unwrap() {
-        assert!(b["icon"].as_str().is_some_and(|i| !i.is_empty()), "{} has an icon", b["id"]);
-    }
-    let callout = blocks["blocks"].as_array().unwrap().iter().find(|b| b["id"] == "callout").unwrap();
-    let tones: Vec<&str> = callout["variants"].as_array().unwrap().iter().map(|v| v["id"].as_str().unwrap()).collect();
-    assert_eq!(tones, ["calloutInfo", "calloutTip", "calloutWarning", "calloutDanger"]);
-    assert!(callout["variants"].as_array().unwrap().iter().all(|v| v["icon"].is_string()));
 }
 
 #[test]
@@ -1982,19 +1974,16 @@ fn stickers_on_a_page_are_checked_and_keep_their_pictures_alive() {
 }
 
 #[test]
-fn blocks_declare_their_options_and_a_page_keeps_defaults_for_a_type() {
+fn kinds_declare_their_options_and_a_page_keeps_defaults_for_a_type() {
     let a = app();
     let al = who("alice");
-    let blocks = a.ok(&al, "editor.blocks", json!({}));
-    let list = blocks["blocks"].as_array().unwrap();
-    let opts = |node: &str| -> Vec<String> { list.iter().filter(|b| b["node"] == node).flat_map(|b| b["options"].as_array().cloned().unwrap_or_default()).map(|o| o["id"].as_str().unwrap().to_string()).collect() };
-    assert_eq!(opts("image"), ["size", "alt"]);
-    assert_eq!(opts("youtube"), ["size", "ratio", "start"]);
-    assert!(opts("paragraph").contains(&"align".to_string()), "plain text has options though it is not in the slash menu");
-    let para = list.iter().find(|b| b["node"] == "paragraph").unwrap();
-    assert_eq!(para["insert"], false);
-    let size = list.iter().find(|b| b["node"] == "image").unwrap()["options"][0].clone();
-    assert_eq!((size["type"].as_str(), size["inherit"].as_bool(), size["default"].as_str()), (Some("choice"), Some(true), Some("auto")));
+    let all = a.ok(&al, "editor.elements", json!({}));
+    let list = all["kinds"].as_array().unwrap();
+    let opts = |kind: &str| -> Vec<String> { list.iter().filter(|k| k["kind"] == kind).flat_map(|k| k["options"].as_array().cloned().unwrap_or_default()).map(|o| o["id"].as_str().unwrap().to_string()).collect() };
+    assert_eq!(opts("@nuah/editor-basic/paragraph"), ["align"]);
+    assert_eq!(opts("@nuah/mermaid/diagram"), ["theme"]);
+    let theme = list.iter().find(|k| k["kind"] == "@nuah/mermaid/diagram").unwrap()["options"][0].clone();
+    assert_eq!((theme["type"].as_str(), theme["inherit"].as_bool(), theme["pinned"].as_bool()), (Some("choice"), Some(true), Some(true)));
     // the choice to show the type in the tab is a preference
     let prefs = a.ok(&al, "prefs.schema", json!({}));
     assert!(prefs["items"].as_array().unwrap().iter().any(|i| i["key"] == "editor.element_type_in_tab" && i["type"] == "boolean"));
@@ -2047,25 +2036,6 @@ fn the_server_check_gives_the_verdicts_the_shared_fixtures_record() {
     }
 }
 
-/// The blocks the Core declares, with their options, are written to `fixtures/editor-blocks.json`; the editor's compliance tests declare the same blocks from it.
-/// Change a block's options and this fails until the file is regenerated with `UPDATE_FIXTURES=1 cargo test`.
-#[test]
-fn the_declared_blocks_match_the_golden_file_the_editor_tests_read() {
-    let a = app();
-    let blocks = a.ok(&who("alice"), "editor.blocks", json!({}));
-    let mut seen = std::collections::BTreeMap::new();
-    for b in blocks["blocks"].as_array().unwrap() {
-        let node = b["node"].as_str().unwrap().to_string();
-        let options = if b["options"].is_null() { json!([]) } else { b["options"].clone() };
-        seen.entry(node).or_insert(options);
-    }
-    let got = serde_json::to_string_pretty(&json!({"about": "Written by the Rust test `the_declared_blocks_match_the_golden_file_the_editor_tests_read`; do not edit by hand.", "blocks": seen})).unwrap() + "\n";
-    let path = fixture_path("editor-blocks.json");
-    if std::env::var("UPDATE_FIXTURES").is_ok() {
-        std::fs::write(&path, &got).unwrap();
-    }
-    assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), got, "run `UPDATE_FIXTURES=1 cargo test` to regenerate fixtures/editor-blocks.json");
-}
 
 /// Every event the Core can announce, written to `fixtures/events.json`; the Face's table of which reads each event makes stale is tested against it,
 /// so an event added by a plugin cannot be forgotten there. Regenerate with `UPDATE_FIXTURES=1 cargo test`.
@@ -2127,7 +2097,7 @@ fn the_face_contract_snapshot_is_made_from_a_profile_with_every_plugin_on() {
     let core = every_plugin_core();
     let d = core.describe(&Identity::new("root", "root", &["admin"]));
     let ops = d["operations"].as_object().unwrap();
-    for must in ["auth.sign_in", "auth.account.create", "links.analyze", "links.fetch", "gifs.provider", "pages.tasks", "pages.set_task", "files.upload", "editor.blocks", "fonts.fetch", "fonts.status"] {
+    for must in ["auth.sign_in", "auth.account.create", "links.analyze", "links.fetch", "gifs.provider", "pages.tasks", "pages.set_task", "files.upload", "editor.elements", "fonts.fetch", "fonts.status"] {
         assert!(ops.contains_key(must), "{must} is missing from the snapshot");
     }
     let got = serde_json::to_string_pretty(&json!({"contract": d["contract"], "operations": d["operations"]})).unwrap() + "\n";
@@ -2396,5 +2366,56 @@ fn the_server_reads_the_browser_bindings_documents_as_the_editor_does() {
         let json = nuah_live::to_json(&doc);
         madar_plugins::content::richtext::check("body", &json).unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(norm(&json), norm(&d["json"]), "{name}");
+    }
+}
+
+// ---- elements (ADR 0094) ------------------------------------------------------------------------------------------
+
+fn diagram(theme: &str, fallback: &str) -> Value {
+    json!({"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Intro"}]},
+        {"type": "element", "attrs": {"blockId": "e1", "kind": "@nuah/mermaid/diagram", "v": 1, "plugin": "@nuah/mermaid", "data": {"theme": theme}, "fallback": {"text": fallback}}}]})
+}
+
+#[test]
+fn page_with_mermaid_element_saves() {
+    let a = app();
+    let al = who("al");
+    let p = a.ok(&al, "pages.create", json!({"title": "Flows", "body": diagram("dark", "flowchart LR")}));
+    let got = a.ok(&al, "pages.get", json!({"id": p["id"]}));
+    assert_eq!(got["body"]["content"][1]["attrs"]["kind"], "@nuah/mermaid/diagram");
+    assert_eq!(got["body"]["content"][1]["attrs"]["data"]["theme"], "dark");
+}
+
+#[test]
+fn bad_element_data_refused_with_reason() {
+    let a = app();
+    let al = who("al");
+    let e = a.err(&al, "pages.create", json!({"title": "Flows", "body": diagram("neon", "x")}));
+    assert_eq!(e.category, Category::Invalid, "{e}");
+    let e = a.err(&al, "pages.create", json!({"title": "Flows", "body": {"type": "doc", "content": [{"type": "element", "attrs": {"kind": "@nuah/mermaid/diagram", "plugin": "@evil/x", "data": {}}}]}}));
+    assert_eq!(e.category, Category::Invalid, "{e}");
+    // a kind no enabled plugin declares is kept as it is
+    a.ok(&al, "pages.create", json!({"title": "Kept", "body": {"type": "doc", "content": [{"type": "element", "attrs": {"kind": "@acme/sketch/canvas", "plugin": "@acme/sketch", "data": {"anything": [1]}}}]}}));
+}
+
+#[test]
+fn search_finds_fallback_text() {
+    let a = app();
+    let al = who("al");
+    a.ok(&al, "pages.create", json!({"title": "Flows", "body": diagram("default", "flowchart giraffe to zebra")}));
+    a.settle();
+    let found = a.ok(&al, "search.query", json!({"q": "giraffe"}));
+    assert!(found.to_string().contains("Flows"), "{found}");
+}
+
+#[test]
+fn the_editor_is_the_plugin_that_provides_face_editor() {
+    let a = app();
+    let d = a.core.describe_public();
+    let host = d["browser"].as_array().unwrap().iter().find(|b| b["point"] == "face.editor").cloned();
+    assert_eq!(host.map(|h| h["plugin"].clone()), Some(json!("@nuah/editor")));
+    let kinds = a.ok(&who("al"), "editor.elements", json!({}))["kinds"].as_array().unwrap().iter().map(|k| k["kind"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    for k in ["@nuah/editor-basic/paragraph", "@nuah/mermaid/diagram", "@nuah/excalidraw/sketch", "@nuah/notebook/cell", "@madar/task-block/task"] {
+        assert!(kinds.contains(&k.to_string()), "{k} in {kinds:?}");
     }
 }

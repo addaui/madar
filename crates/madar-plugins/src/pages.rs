@@ -169,7 +169,8 @@ fn create(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     title_ok(&i["title"])?;
     icon_ok(i.get("icon"))?;
     let body = i.get("body").cloned().unwrap_or_else(richtext::empty);
-    richtext::check("body", &body)?;
+    let kinds = element_kinds(tx);
+    check_body(&body, &kinds)?;
     let folder = i.get("folder").and_then(|f| f.as_bool()).unwrap_or(false);
     let parent = i.get("parent").and_then(|p| p.as_str()).map(String::from);
     // your own pages live in a Space: the parent's, or the one asked for, or the default
@@ -317,7 +318,8 @@ fn body_push(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let page = get(tx, &s, text(i, "id"))?;
     let bytes = nuah_live::unb64("update", text(i, "update"))?;
     spell(tx, &page, false)?;
-    let w = LIVE.push(tx, &page.id, &bytes, &|j| richtext::check("body", j))?;
+    let kinds = element_kinds(tx);
+    let w = LIVE.push(tx, &page.id, &bytes, &|j| check_body(j, &kinds))?;
     if w.update.is_empty() {
         return Ok(json!({"version": nuah_live::b64(&w.version)}));
     }
@@ -438,7 +440,8 @@ fn update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     }
     let mut written = None;
     if let Some(body) = i.get("body") {
-        richtext::check("body", body)?;
+        let kinds = element_kinds(tx);
+        check_body(body, &kinds)?;
         if body != &old.body["body"] {
             spell(tx, &old, false)?;
             if let Some(w) = LIVE.write(tx, &old.id, body)? {
@@ -544,10 +547,26 @@ fn move_page(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     Ok(view(&d, false))
 }
 
-/// The kinds of block that are tasks (ADR 0075), from what the blocks declare: `{node: {done, due, priority, notes}}` (the names of the attributes). With no editor, none.
+/// The node types that are tasks (ADR 0075), from what element kinds declare: `{node: {done, due, priority, notes}}` (the names of the
+/// attributes). With no editor, none.
 fn task_nodes(tx: &mut Tx) -> std::collections::BTreeMap<String, Value> {
-    let blocks = tx.call("editor.blocks", json!({})).ok().and_then(|b| b["blocks"].as_array().cloned()).unwrap_or_default();
-    blocks.into_iter().filter(|b| b["task"].is_object()).filter_map(|b| Some((b["node"].as_str()?.to_string(), b["task"].clone()))).collect()
+    let kinds = tx.call("editor.elements", json!({})).ok().and_then(|b| b["kinds"].as_array().cloned()).unwrap_or_default();
+    kinds
+        .into_iter()
+        .filter(|k| k["task"].is_object())
+        .flat_map(|k| k["nodes"].as_array().cloned().unwrap_or_default().into_iter().filter_map(move |n| Some((n.as_str()?.to_string(), k["task"].clone()))))
+        .collect()
+}
+
+/// The element kinds the enabled plugins declare (ADR 0094), by name; none without an editor.
+fn element_kinds(tx: &mut Tx) -> std::collections::BTreeMap<String, Value> {
+    tx.call("editor.elements", json!({})).map(|all| nuah_editor::kinds_of(&all)).unwrap_or_default()
+}
+
+/// Checks a body: its structure, and its elements against their kinds (ADR 0094).
+fn check_body(body: &Value, kinds: &std::collections::BTreeMap<String, Value>) -> Result<()> {
+    richtext::check("body", body)?;
+    nuah_editor::check_elements(body, kinds)
 }
 
 /// One task block of a document: its block id, whether it is done, its title (the first line), and its details.

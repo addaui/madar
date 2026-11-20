@@ -1,0 +1,21 @@
+{
+  "name": "madar-elements",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Madar's element plugins' Browser modules (ADR 0094): each builds into crates/madar-plugins/browser/<plugin>/, embedded by its plugin.",
+  "scripts": { "test": "vitest run", "typecheck": "tsc --noEmit", "build": "node --experimental-strip-types build.ts" },
+  "dependencies": {
+    "@nuah/editor-api": "link:../../../nuah-plugins/packages/editor-api",
+    "@nuah/editor-core": "link:../../../nuah-plugins/packages/editor-core"
+  },
+  "devDependencies": {
+    "@nuah/editor": "link:../../../nuah-plugins/packages/editor",
+    "@nuah/browser-kit": "link:../../../nuah-plugins/packages/browser-kit",
+    "loro-crdt": "1.18.0",
+    "typescript": "^5.9",
+    "vitest": "^3",
+    "jsdom": "26.1.0",
+    "@types/node": "^22"
+  }
+}

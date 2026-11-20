@@ -323,7 +323,7 @@ fn open_impl(tx: &mut Tx, i: &Value, signed: bool) -> Result<Value> {
     // the font the page chose, with its faces, so a reader who is not signed in can draw it (ADR 0090); a page of a deployment with no font plugin has none
     let family = page.as_ref().and_then(|p| p["settings"]["font"].as_str()).map(|f| match f { "serif" => "fraunces", "mono" => "jetbrains-mono", other => other }.to_string());
     let fonts = family.and_then(|f| tx.call("fonts.families", json!({"ids": [f]})).ok()).map(|o| o["families"].clone()).unwrap_or_else(|| json!([]));
-    Ok(json!({"share": {"id": share.id, "kind": share.body["kind"], "title": share.body["title"], "audience": share.body["audience"], "mode": share.body["mode"]}, "tree": tree, "page": page, "blocks": blocks_of(tx), "fonts": fonts}))
+    Ok(json!({"share": {"id": share.id, "kind": share.body["kind"], "title": share.body["title"], "audience": share.body["audience"], "mode": share.body["mode"]}, "tree": tree, "page": page, "elements": elements_of(tx), "fonts": fonts}))
 }
 
 /// One uploaded file of a shared page, only when the shared pages use it.
@@ -342,9 +342,9 @@ fn file_impl(tx: &mut Tx, i: &Value, signed: bool) -> Result<Value> {
     Ok(json!({"name": meta.body["name"], "type": meta.body["type"], "size": meta.body["size"], "data": got["data"]}))
 }
 
-/// What the editor needs to draw the blocks plugins add (a reader has no sign-in to ask for them with), and nothing else.
-fn blocks_of(tx: &mut Tx) -> Value {
-    tx.call("editor.blocks", json!({})).ok().and_then(|b| b.get("blocks").cloned()).unwrap_or_else(|| json!([]))
+/// What the editor needs to draw a shared page's elements (a reader has no sign-in to ask for them with): the kinds and Runners.
+fn elements_of(tx: &mut Tx) -> Value {
+    tx.call("editor.elements", json!({})).unwrap_or_else(|_| json!({"kinds": [], "runners": []}))
 }
 
 pub struct Shares;

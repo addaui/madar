@@ -1,0 +1,90 @@
+{
+ "kinds": [
+  {
+   "kind": "@madar/task-block/task",
+   "version": 1,
+   "shape": "content",
+   "placement": "block",
+   "label": {
+    "en": "Task",
+    "ar": "مهمة"
+   },
+   "icon": "task",
+   "group": "list",
+   "keywords": "task todo due priority deadline",
+   "nodes": [
+    "taskBlock"
+   ],
+   "options": [
+    {
+     "id": "checked",
+     "type": "toggle",
+     "attr": "checked",
+     "label": {
+      "en": "Done",
+      "ar": "منجزة"
+     },
+     "default": false,
+     "pinned": true
+    },
+    {
+     "id": "due",
+     "type": "date",
+     "attr": "due",
+     "label": {
+      "en": "Due date",
+      "ar": "تاريخ الاستحقاق"
+     },
+     "pinned": true
+    },
+    {
+     "id": "priority",
+     "type": "choice",
+     "attr": "priority",
+     "label": {
+      "en": "Priority",
+      "ar": "الأولوية"
+     },
+     "choices": [
+      {
+       "value": "low",
+       "label": {
+        "en": "Low",
+        "ar": "منخفضة"
+       }
+      },
+      {
+       "value": "medium",
+       "label": {
+        "en": "Medium",
+        "ar": "متوسطة"
+       }
+      },
+      {
+       "value": "high",
+       "label": {
+        "en": "High",
+        "ar": "عالية"
+       }
+      }
+     ]
+    },
+    {
+     "id": "details",
+     "type": "text",
+     "attr": "details",
+     "label": {
+      "en": "Notes",
+      "ar": "ملاحظات"
+     }
+    }
+   ],
+   "task": {
+    "done": "checked",
+    "due": "due",
+    "priority": "priority",
+    "notes": "details"
+   }
+  }
+ ]
+}

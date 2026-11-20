@@ -134,6 +134,15 @@ pub mod richtext {
             if let Some(t) = n["text"].as_str() {
                 out.push_str(t);
             }
+            // an element says what it is in its Fallback (ADR 0094)
+            if n["type"] == "element" || n["type"] == "elementInline" {
+                if let Some(t) = n["attrs"]["fallback"]["text"].as_str() {
+                    out.push_str(t);
+                }
+                if n["type"] == "element" && !out.ends_with('\n') {
+                    out.push('\n');
+                }
+            }
             if let Some(kids) = n["content"].as_array() {
                 let block = n["type"] != "text" && n["type"] != "doc";
                 for k in kids {
@@ -202,166 +211,6 @@ pub mod richtext {
 }
 
 // ---- editor: the registry of blocks ----------------------------------------------------------------------
-
-pub struct Editor;
-impl Plugin for Editor {
-    fn manifest(&self) -> Manifest {
-        manifest(json!({
-            "id": "@madar/editor", "version": "0.1.0", "name": "Editor", "namespaces": ["editor"],
-            "description": "Which blocks the rich-text editor offers; other plugins add blocks (editor.block)",
-            "requires": {"extension_points": ["editor.block"]},
-            "provides": [{"extension_point": "prefs.item", "optional": true}],
-            "defines": {"extension_points": {"editor.block": {"policy": "many",
-                "description": "A plugin answers with the blocks it adds: {blocks: [{id, node, attrs?, label, group, keywords}]}",
-                "input": {"type":"object"}}}},
-            "operations": {
-                "editor.blocks": {"kind": "query", "description": "The blocks the editor offers, for the slash menu",
-                    "output": {"type":"object","required":["blocks"]}}
-            }
-        }))
-    }
-    fn bind(&self, b: &mut Bindings) {
-        b.op("editor.blocks", |tx, _| {
-            let answers = tx.extension_call("editor.block", json!({}))?;
-            let mut blocks: Vec<Value> = vec![];
-            let mut added: Vec<(Value, Value)> = vec![];
-            for a in answers.as_array().cloned().unwrap_or_default() {
-                if a["ok"] == true {
-                    for extra in a["output"]["options_for"].as_array().cloned().unwrap_or_default() {
-                        // another plugin's option for a block it does not own: kept for the merge below
-                        added.push((a["provider"].clone(), extra));
-                    }
-                    for blk in a["output"]["blocks"].as_array().cloned().unwrap_or_default() {
-                        let id = blk["id"].as_str().unwrap_or("").to_string();
-                        if !id.is_empty() && !blocks.iter().any(|x| x["id"] == id.as_str()) {
-                            let mut blk = blk;
-                            blk["plugin"] = a["provider"].clone();
-                            blocks.push(blk);
-                        }
-                    }
-                }
-            }
-            // Options one plugin adds to a block another owns are merged by node type; an id already there is refused, so two plugins cannot silently fight.
-            for (provider, extra) in added {
-                let (node, opt) = (extra["node"].as_str().unwrap_or(""), extra["option"].clone());
-                let id = opt["id"].as_str().unwrap_or("");
-                if node.is_empty() || id.is_empty() {
-                    continue;
-                }
-                let taken = blocks.iter().any(|b| b["node"] == node && b["options"].as_array().is_some_and(|o| o.iter().any(|x| x["id"] == id)));
-                if taken {
-                    continue;
-                }
-                if let Some(b) = blocks.iter_mut().find(|b| b["node"] == node) {
-                    let mut opt = opt;
-                    opt["plugin"] = provider;
-                    match b["options"].as_array_mut() {
-                        Some(list) => list.push(opt),
-                        None => b["options"] = json!([opt]),
-                    }
-                }
-            }
-            Ok(json!({"blocks": blocks}))
-        });
-        // The person's choice of whether the Element tab names the element's type (ADR 0073).
-        b.provide("prefs.item", |_tx, _i| {
-            Ok(nuah_prefs::pref_answer(vec![json!({"key": "editor.element_type_in_tab", "group": "appearance", "type": "boolean", "default": false,
-                "label": {"en": "Show the element's type under the Element tab's name", "ar": "إظهار نوع العنصر تحت اسم تبويب العنصر"}})]))
-        });
-    }
-}
-
-/// A block the slash menu offers. `icon` is a name a Face draws in its own way (the menu shows it before the label).
-pub(crate) fn block(id: &str, node: &str, attrs: Value, en: &str, ar: &str, group: &str, keywords: &str, icon: &str) -> Value {
-    json!({"id": id, "node": node, "attrs": attrs, "label": {"en": en, "ar": ar}, "group": group, "keywords": keywords, "icon": icon})
-}
-
-/// A block with a submenu: choosing it lists `variants` (each has its own id, label and icon, and is inserted like a block of its own).
-fn with_variants(mut parent: Value, variants: Vec<Value>) -> Value {
-    parent["variants"] = Value::Array(variants);
-    parent
-}
-
-fn variant(id: &str, en: &str, ar: &str, keywords: &str, icon: &str) -> Value {
-    json!({"id": id, "label": {"en": en, "ar": ar}, "keywords": keywords, "icon": icon})
-}
-
-/// An option of a block (ADR 0073): a named, typed, labelled attribute with a default. `inherit` lets the page set it for every element of the type.
-pub(crate) fn choice(id: &str, en: &str, ar: &str, default: Value, choices: Vec<(Value, &str, &str)>, inherit: bool) -> Value {
-    let list: Vec<Value> = choices.into_iter().map(|(v, e, a)| json!({"value": v, "label": {"en": e, "ar": a}})).collect();
-    json!({"id": id, "type": "choice", "label": {"en": en, "ar": ar}, "default": default, "choices": list, "inherit": inherit})
-}
-pub(crate) fn number_opt(id: &str, en: &str, ar: &str, default: Value, min: i64, max: i64, unit: &str) -> Value {
-    json!({"id": id, "type": "number", "label": {"en": en, "ar": ar}, "default": default, "min": min, "max": max, "unit": unit})
-}
-pub(crate) fn date_opt(id: &str, en: &str, ar: &str) -> Value {
-    json!({"id": id, "type": "date", "label": {"en": en, "ar": ar}, "default": ""})
-}
-pub(crate) fn text_opt(id: &str, en: &str, ar: &str) -> Value {
-    json!({"id": id, "type": "text", "label": {"en": en, "ar": ar}, "default": ""})
-}
-pub(crate) fn with_options(mut block: Value, options: Vec<Value>) -> Value {
-    block["options"] = Value::Array(options);
-    block
-}
-fn align_option() -> Value {
-    choice("align", "Alignment", "المحاذاة", json!("start"), vec![(json!("start"), "Start", "البداية"), (json!("center"), "Centre", "الوسط"), (json!("end"), "End", "النهاية"), (json!("justify"), "Justified", "ضبط")], true)
-}
-/// A block that is not offered in the slash menu but whose options are shown (plain text).
-fn hidden(mut block: Value) -> Value {
-    block["insert"] = json!(false);
-    block
-}
-
-pub struct EditorBasic;
-impl Plugin for EditorBasic {
-    fn manifest(&self) -> Manifest {
-        manifest(json!({
-            "id": "@madar/editor-basic", "version": "0.1.0", "name": "Basic blocks", "namespaces": ["editor-basic"],
-            "description": "Headings, lists, quote, code, checklist, toggle, callouts, image, file, embeds and references",
-            "requires": {"plugins": ["@madar/editor"]},
-            "provides": [{"extension_point": "editor.block"}]
-        }))
-    }
-    fn bind(&self, b: &mut Bindings) {
-        b.provide("editor.block", |_tx, _i| {
-            Ok(json!({"blocks": [
-                hidden(with_options(block("paragraph", "paragraph", json!({}), "Text", "نص", "text", "plain paragraph", "type"), vec![align_option()])),
-                with_options(block("heading1", "heading", json!({"level": 1}), "Heading 1", "عنوان ١", "text", "title h1", "heading-1"), vec![
-                    choice("level", "Level", "المستوى", json!(1), vec![(json!(1), "Heading 1", "عنوان ١"), (json!(2), "Heading 2", "عنوان ٢"), (json!(3), "Heading 3", "عنوان ٣")], false), align_option()]),
-                block("heading2", "heading", json!({"level": 2}), "Heading 2", "عنوان ٢", "text", "subtitle h2", "heading-2"),
-                block("heading3", "heading", json!({"level": 3}), "Heading 3", "عنوان ٣", "text", "h3", "heading-3"),
-                with_options(block("blockquote", "blockquote", json!({}), "Quote", "اقتباس", "text", "blockquote cite", "quote"), vec![align_option()]),
-                block("divider", "horizontalRule", json!({}), "Divider", "فاصل", "text", "line hr separator", "divider"),
-                with_options(block("codeBlock", "codeBlock", json!({}), "Code block", "كتلة شيفرة", "text", "code snippet", "code"), vec![text_opt("language", "Language", "اللغة")]),
-                block("bulletList", "bulletList", json!({}), "Bullet list", "قائمة نقطية", "list", "ul unordered", "list-bullet"),
-                with_options(block("orderedList", "orderedList", json!({}), "Numbered list", "قائمة مرقمة", "list", "ol ordered", "list-ordered"), vec![number_opt("start", "Starts at", "يبدأ من", json!(1), 1, 9999, "")]),
-                block("taskList", "taskList", json!({}), "Checklist", "قائمة مهام", "list", "todo check task", "list-check"),
-                block("toggle", "toggle", json!({}), "Toggle", "قسم قابل للطي", "layout", "collapse fold details", "toggle"),
-                with_options(with_variants(block("callout", "callout", json!({"tone": "info"}), "Callout", "تنبيه", "layout", "note highlight box", "callout"), vec![
-                    variant("calloutInfo", "Info", "معلومة", "note", "info"),
-                    variant("calloutTip", "Tip", "نصيحة", "hint idea", "tip"),
-                    variant("calloutWarning", "Warning", "تحذير", "caution", "warning"),
-                    variant("calloutDanger", "Danger", "خطر", "error alert", "danger")]), vec![
-                    choice("tone", "Kind", "النوع", json!("info"), vec![(json!("info"), "Info", "معلومة"), (json!("tip"), "Tip", "نصيحة"), (json!("warning"), "Warning", "تحذير"), (json!("danger"), "Danger", "خطر")], false)]),
-                with_options(block("image", "image", json!({}), "Image", "صورة", "media", "picture photo", "image"), vec![
-                    choice("size", "Size", "الحجم", json!("auto"), vec![(json!("auto"), "Original", "الأصلي"), (json!("small"), "Small", "صغير"), (json!("medium"), "Medium", "متوسط"), (json!("large"), "Large", "كبير"), (json!("full"), "Full width", "عرض كامل")], true),
-                    text_opt("alt", "Description", "الوصف")]),
-                block("file", "fileAttachment", json!({}), "File", "ملف", "media", "attachment upload", "attachment"),
-                with_options(block("youtube", "youtube", json!({}), "YouTube", "يوتيوب", "embed", "video", "video"), vec![
-                    choice("size", "Size", "الحجم", json!("wide"), vec![(json!("small"), "Small", "صغير"), (json!("medium"), "Medium", "متوسط"), (json!("wide"), "Wide", "عريض"), (json!("full"), "Full width", "عرض كامل")], true),
-                    choice("ratio", "Shape", "الشكل", json!("16-9"), vec![(json!("16-9"), "16:9", "16:9"), (json!("4-3"), "4:3", "4:3"), (json!("1-1"), "Square", "مربع")], true),
-                    number_opt("start", "Starts at", "يبدأ من", json!(0), 0, 86400, "s")]),
-                with_options(block("linkPreview", "linkPreview", json!({}), "Link preview", "معاينة رابط", "embed", "url bookmark", "bookmark"), vec![
-                    choice("mode", "Shown as", "العرض", json!("card"), vec![(json!("card"), "Wide card", "بطاقة عريضة"), (json!("compact"), "Compact", "مضغوطة"), (json!("stack"), "Picture on top", "الصورة في الأعلى"), (json!("side"), "Picture at the side", "الصورة على الجانب")], true)]),
-                block("subpage", "entityRef", json!({}), "Page", "صفحة", "reference", "page subpage new child nested", "page"),
-                block("entityRef", "entityRef", json!({}), "Link to a page or task", "رابط إلى صفحة أو مهمة", "reference", "mention reference link", "mention")
-            ]}))
-        });
-    }
-}
-
-// ---- references (ADR 0019, ADR 0092) ------------------------------------------------------------------------
 
 /// What refers to an item. The index of entities (`@nuah/entities`) keeps the links from the `refs` that pages, tasks
 /// and discussion put in their Events, and answers only with links from what the caller can see.

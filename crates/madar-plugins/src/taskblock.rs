@@ -1,32 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The task block (ADR 0075): a block that makes a task, with details, inside a page. Only these are the tasks Today shows from pages; a checklist is not a task.
+//! The task element (ADR 0075, 0094): a task with details inside a page. Only these are the tasks Today shows from pages; a checklist is
+//! not a task. An element plugin like any other: its kind is data (`browser/task-block/kinds.json`, with `task`, the attributes that hold
+//! what Today shows), and its Browser module is embedded; both are written by `faces/elements`' build.
 
-use crate::content::{block, choice, date_opt, text_opt, with_options};
 use crate::util::manifest;
 use nuah_kernel::*;
-use serde_json::json;
+use serde_json::{json, Value};
+
+const FILES: &[(&str, &[u8])] = include!("../browser/task-block/files.rs");
+const KINDS: &str = include_str!("../browser/task-block/kinds.json");
 
 pub struct TaskBlock;
 impl Plugin for TaskBlock {
     fn manifest(&self) -> Manifest {
+        let kinds: Value = serde_json::from_str(KINDS).expect("kinds.json is JSON");
         manifest(json!({
-            "id": "@madar/task-block", "version": "0.1.0", "name": "Task block", "namespaces": ["task-block"],
+            "id": "@madar/task-block", "version": "0.2.0", "name": "Task block", "namespaces": ["task-block"], "runtime": "data",
             "description": "A block that makes a task with details (done, due date, priority, notes) inside a page; these are the tasks Today shows from pages",
-            "requires": {"plugins": ["@madar/editor"]},
-            "provides": [{"extension_point": "editor.block"}]
+            "requires": {"extension_points": ["editor.element@^1"]},
+            "provides": [{"extension_point": "editor.element", "data": kinds}],
+            "browser": {"editor.element": "index.js"}
         }))
     }
-    fn bind(&self, b: &mut Bindings) {
-        b.provide("editor.block", |_tx, _i| {
-            let mut task = with_options(block("taskBlock", "taskBlock", json!({}), "Task", "مهمة", "list", "task todo due priority deadline", "task"), vec![
-                json!({"id": "checked", "type": "toggle", "label": {"en": "Done", "ar": "منجزة"}, "default": false}),
-                date_opt("due", "Due date", "تاريخ الاستحقاق"),
-                choice("priority", "Priority", "الأولوية", json!(null), vec![(json!("low"), "Low", "منخفضة"), (json!("medium"), "Medium", "متوسطة"), (json!("high"), "High", "عالية")], false),
-                text_opt("details", "Notes", "ملاحظات"),
-            ]);
-            // which attributes hold the details Today shows (read by the pages plugin from the declaration)
-            task["task"] = json!({"done": "checked", "due": "due", "priority": "priority", "notes": "details"});
-            Ok(json!({"blocks": [task]}))
-        });
+    fn browser_files(&self) -> &'static [(&'static str, &'static [u8])] {
+        FILES
     }
 }

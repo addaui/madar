@@ -261,7 +261,7 @@ pub fn share_opened() -> Value {
         json!({
             "share": obj(&["id", "kind", "title", "audience", "mode"], json!({"id": s(), "kind": s(), "title": s(), "audience": s(), "mode": s()})),
             "tree": list(obj(&["id", "title"], json!({"id": s(), "parent": nullable(STR), "title": s(), "icon": nullable(STR), "position": num(), "folder": boolean(), "group": int(), "group_name": nullable(STR)}))),
-            "blocks": {"type": "array"},
+            "elements": {"type": "object", "description": "The element kinds and Runners the editor needs to draw the page (editor.elements; a reader is not signed in to ask)"},
             "fonts": {"type": "array"},
             "page": {"anyOf": [obj(&["id", "title", "body"], json!({"id": s(), "title": s(), "icon": nullable(STR), "body": {"type": "object"}, "settings": {"type": "object"}, "folder": boolean()})), {"type": "null"}]},
         }),

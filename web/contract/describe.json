@@ -1,5 +1,5 @@
 {
-  "contract": "ca83bb4af1a140b5",
+  "contract": "10c9ca49786b06e6",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -654,9 +654,9 @@
         "type": "projects.project"
       }
     },
-    "editor.blocks": {
+    "editor.elements": {
       "allowed": true,
-      "description": "The blocks the editor offers, for the slash menu",
+      "description": "Every element kind the enabled plugins bring, with its plugin, module address, Openers and the Owner's default; every Runner",
       "input": {
         "additionalProperties": false,
         "type": "object"
@@ -664,14 +664,50 @@
       "kind": "query",
       "output": {
         "required": [
-          "blocks"
+          "kinds",
+          "runners"
         ],
         "type": "object"
       },
       "permission": null,
-      "plugin": "@madar/editor",
+      "plugin": "@nuah/editor",
       "public": false,
       "reasons": {},
+      "resource": null
+    },
+    "editor.opener.set": {
+      "allowed": true,
+      "description": "Set (or clear, with null) the plugin that opens a kind by default",
+      "input": {
+        "properties": {
+          "kind": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "plugin": {
+            "maxLength": 120,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "plugin"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "type": "object"
+      },
+      "permission": "editor.manage",
+      "plugin": "@nuah/editor",
+      "public": false,
+      "reasons": {
+        "editor.not_an_opener": "That plugin cannot open this kind of element"
+      },
       "resource": null
     },
     "emoji.asset": {
@@ -6759,8 +6795,9 @@
       "kind": "query",
       "output": {
         "properties": {
-          "blocks": {
-            "type": "array"
+          "elements": {
+            "description": "The element kinds and Runners the editor needs to draw the page (editor.elements; a reader is not signed in to ask)",
+            "type": "object"
           },
           "fonts": {
             "type": "array"
@@ -6919,8 +6956,9 @@
       "kind": "query",
       "output": {
         "properties": {
-          "blocks": {
-            "type": "array"
+          "elements": {
+            "description": "The element kinds and Runners the editor needs to draw the page (editor.elements; a reader is not signed in to ask)",
+            "type": "object"
           },
           "fonts": {
             "type": "array"

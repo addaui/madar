@@ -81,7 +81,11 @@ impl Plugin for WebReact {
         serde_json::from_value(json!({
             "id": "@madar/web-react", "version": "0.1.0", "name": "Web (React)", "runtime": "data",
             "description": "Madar's web app rebuilt on React 19, published as the Face `web-react`, shown at /faces/web-react/",
-            "requires": {"plugins": ["@nuah/http"]},
+            "namespaces": ["face"],
+            "requires": {"plugins": ["@nuah/http"], "extension_points": ["face.editor@^1"]},
+            // the page's editor: whichever plugin provides it, never named here (ADR 0095)
+            "defines": {"extension_points": {"face.editor": {"policy": "single", "browser": true, "version": "1.0.0", "input": {"type": "object"},
+                "description": "The editor this Face mounts: a Browser module whose default export is {version, mount(place, hooks)}"}}},
             "face": "web-react"
         }))
         .unwrap()

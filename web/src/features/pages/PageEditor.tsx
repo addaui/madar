@@ -52,6 +52,8 @@ export interface PageEditorProps {
   preview?: (url: string) => Promise<unknown>;
   turnIntoPage?: (title: string) => Promise<{ id: string; title: string; icon?: string | null } | null>;
   newPage?: () => Promise<{ id: string; title: string; icon?: string | null } | null>;
+  /** The element kinds when this Face cannot ask (a shared page's reader is not signed in): what `shares.open` answered. */
+  elements?: unknown;
   /** Stickers (ADR 0071): the layers to draw in, the list, and when to lay them out again. */
   stickers?: { onList: (list: unknown[]) => void; onLayers: (l: { back: HTMLElement; front: HTMLElement }) => void; onLayout: () => void };
   onContext?: (ctx: { chain: { node: string; pos: number; attrs: Record<string, unknown>; id: string | null; kind?: string | null; options?: unknown[] }[]; selected: boolean } | null) => void;
@@ -61,7 +63,7 @@ export interface PageEditorProps {
   live?: { doc: unknown; ephemeral?: unknown; user?: { name: string; color: string } };
 }
 
-export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady, project, comments, commentsVersion, stickers, onContext, version, live, onOpenRef, pickRef, preview, turnIntoPage, newPage }: PageEditorProps) {
+export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady, project, comments, commentsVersion, stickers, onContext, version, live, onOpenRef, pickRef, preview, turnIntoPage, newPage, elements }: PageEditorProps) {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<EditorHandle | null>(null);
@@ -85,7 +87,7 @@ export function PageEditor({ doc, editable, lang, placeholder, onChange, onReady
           onChange: (d: EditorJson) => latest.current.onChange(d),
           onContext: (c: never) => latest.current.onContext?.(c),
           floating: stickers,
-          elements: () => link.call("editor.elements" as never, {} as never),
+          elements: () => (elements ? Promise.resolve(elements) : link.call("editor.elements", {})),
           call: (op: string, input: unknown) => link.call(op as never, input as never),
           files: { upload: async (b: Blob, name?: string) => (await uploadFile(new File([b], name ?? "file", { type: b.type }), () => undefined, { project })).url },
           needsPlugin: needsPluginFor(features, who.roles ?? [], async (id) => { await link.call("features.enable" as never, { id } as never); toast(t("saved")); }),
