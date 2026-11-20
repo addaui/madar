@@ -1,0 +1,20 @@
+{
+ "kinds": [
+  {
+   "kind": "@madar/refs/mention",
+   "version": 1,
+   "shape": "content",
+   "placement": "inline",
+   "label": {
+    "en": "Link to a page or task",
+    "ar": "رابط إلى صفحة أو مهمة"
+   },
+   "icon": "mention",
+   "group": "reference",
+   "keywords": "mention reference link page task",
+   "nodes": [
+    "entityRef"
+   ]
+  }
+ ]
+}

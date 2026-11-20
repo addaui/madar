@@ -214,13 +214,22 @@ pub mod richtext {
 
 /// What refers to an item. The index of entities (`@nuah/entities`) keeps the links from the `refs` that pages, tasks
 /// and discussion put in their Events, and answers only with links from what the caller can see.
+const REFS_FILES: &[(&str, &[u8])] = include!("../browser/refs/files.rs");
+const REFS_KINDS: &str = include_str!("../browser/refs/kinds.json");
+
 pub struct Refs;
 impl Plugin for Refs {
+    fn browser_files(&self) -> &'static [(&'static str, &'static [u8])] {
+        REFS_FILES
+    }
     fn manifest(&self) -> Manifest {
         manifest(json!({
             "id": "@madar/refs", "version": "0.2.0", "name": "References", "namespaces": ["refs"],
             "description": "Shows what refers to an item, from everything you can see",
             "requires": {"plugins": ["@madar/projects", "@nuah/entities"], "capabilities": ["call"]},
+            // mentions of pages and tasks in text, when an editor is on (ADR 0094); backlinks work without one
+            "provides": [{"extension_point": "editor.element", "optional": true, "data": serde_json::from_str::<Value>(REFS_KINDS).expect("kinds.json is JSON")}],
+            "browser": {"editor.element": "index.js"},
             "operations": {
                 "refs.to": {"kind": "query", "description": "What refers to an item of a project, from everything you can see", "permission": "projects.read",
                     "resource": {"type":"projects.project","id":"project"},
