@@ -112,6 +112,12 @@ impl nuah_shell::Product for Madar {
         full_catalog()
     }
     /// The editor became @nuah/editor and its basic elements @nuah/editor-basic (ADR 0094): instances set up before move to them.
+    /// What this build is made from (ADR 0100): Madar's version and commit (recorded by `build.rs`), and the Nuah and nuah-plugins
+    /// tags and commits its `Cargo.lock` pins.
+    fn about(&self) -> serde_json::Value {
+        let components = nuah_shell::components_from_lock(include_str!("../../../Cargo.lock"), &[("Nuah", "nuah-kernel"), ("Nuah plugins", "nuah-prefs")]);
+        serde_json::json!({"name": "madar", "version": env!("CARGO_PKG_VERSION"), "commit": env!("MADAR_COMMIT"), "components": components})
+    }
     fn replaced(&self) -> Vec<(String, String)> {
         // plugins that moved to nuah-plugins under @nuah (ADR 0094, ADR 0099): an instance's Profile follows them when it starts
         vec![

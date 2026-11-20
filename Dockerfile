@@ -4,6 +4,9 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+# the commit this image is built from (the build has no .git), shown in Settings, About (ADR 0100)
+ARG MADAR_COMMIT=unknown
+ENV MADAR_COMMIT=$MADAR_COMMIT
 RUN set -eu; \
     cargo build --release --locked -p madar; \
     cp target/release/madar /madar; \

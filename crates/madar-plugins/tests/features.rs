@@ -251,3 +251,15 @@ fn a_profile_with_madars_old_features_and_previews_starts() {
     let problems = Core::check(&Distribution { name: "t".into(), catalog: cat, profile: p });
     assert!(problems.is_empty(), "{problems:#?}");
 }
+
+/// What this build is made from (ADR 0100): Madar's version and commit, and the Nuah and nuah-plugins it pins.
+#[test]
+fn madar_says_what_it_is_built_from() {
+    use nuah_shell::Product;
+    let a = Madar.about();
+    assert_eq!(a["name"], "madar");
+    assert_eq!(a["version"], env!("CARGO_PKG_VERSION"));
+    assert!(a["commit"].as_str().is_some_and(|c| !c.is_empty()), "{a}");
+    let names: Vec<&str> = a["components"].as_array().unwrap().iter().filter_map(|c| c["name"].as_str()).collect();
+    assert_eq!(names, ["Nuah", "Nuah plugins"]);
+}
