@@ -28,22 +28,27 @@ Madar uses the `@nuah/emoji` plugin from the nuah-plugins repository, which ship
 
 The bell, heading, list, code, callout, attachment, video, bookmark and mention icons in `web/src/ui/icons.ts` follow the shapes of the Lucide icons of the same names (https://lucide.dev, ISC License, Copyright Lucide Contributors; parts by Cole Bemis 2013-2022 under the MIT License).
 
-## Editor bundle
+## The editor and its element plugins
 
-`web/public/vendor-editor.js` is built from `faces/editor-src` and contains the following open-source packages. Package names are from the package manager's metadata; the file is minified, so the exact set follows from the dependencies listed in `faces/editor-src/package.json`.
+The editor (`@nuah/editor`) and the element plugins Madar enables (`@nuah/editor-basic`, `@nuah/mermaid`, `@nuah/excalidraw`, `@nuah/notebook`, `@nuah/python`, and Madar's own task, mention, picture, link card and comments modules) carry their built browser files inside the program (ADR 0095); they are built from nuah-plugins' `packages/` and this repository's `faces/elements`. They contain the following open-source packages.
 
 | Package | License | Copyright |
 |---|---|---|
-| @tiptap/core and the @tiptap/extension-* packages, @tiptap/pm | MIT | 2025, Tiptap GmbH |
-| ProseMirror packages (prosemirror-*), pulled in by @tiptap/pm | MIT | 2015-2017 by Marijn Haverbeke and others |
-| orderedmap, rope-sequence, w3c-keyname, crelt | MIT | Marijn Haverbeke and others |
+| ProseMirror packages (prosemirror-*) | MIT | 2015-2017 by Marijn Haverbeke and others |
+| orderedmap, rope-sequence, w3c-keyname | MIT | Marijn Haverbeke and others |
 | lowlight | MIT | Titus Wormer |
 | devlop | MIT | 2023 Titus Wormer |
-| linkifyjs | MIT | 2024 Nick Frasser |
 | highlight.js | BSD-3-Clause | 2006 Ivan Sagalaev |
 | loro-crdt (with its WebAssembly, `web/public/loro.wasm`) | MIT | 2022 Zixuan Chen |
 | loro-prosemirror | MIT | 2019 Kevin Jahns |
 | lib0, pulled in by loro-prosemirror | MIT | Kevin Jahns |
+| mermaid, and what it bundles (d3 and its modules: ISC; dagre-d3-es: MIT; khroma: MIT; dompurify: Apache-2.0 or MPL-2.0; marked: MIT; cytoscape: MIT; katex: MIT) | MIT | 2014-2026 Knut Sveidqvist and contributors |
+| @excalidraw/excalidraw, and what it bundles (roughjs: MIT; perfect-freehand: MIT; jotai: MIT) | MIT | 2020 Excalidraw |
+| Excalidraw's fonts: Excalifont, Virgil, Nunito, Lilita One, Assistant, Liberation Sans, Cascadia Code (SIL Open Font License 1.1); Comic Shanns (MIT) | OFL-1.1 / MIT | their authors, as named in each font file |
+| Pyodide (`pyodide.mjs`, `pyodide.asm.js`, `pyodide.asm.wasm`, `pyodide-lock.json`) | MPL-2.0 | 2019-2026 the Pyodide contributors and Mozilla |
+| CPython's standard library (`python_stdlib.zip`, inside Pyodide) | PSF License | 2001-2026 Python Software Foundation |
+
+Packages a code cell imports (numpy, matplotlib and others) are not shipped: the Python runner loads them from the Pyodide CDN when a cell uses them.
 
 ### MIT License
 

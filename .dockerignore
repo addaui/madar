@@ -8,4 +8,4 @@ target
 .cargo
 deploy
 prototypes
-faces/editor-src
+faces/elements/node_modules

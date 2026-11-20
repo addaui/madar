@@ -56,7 +56,7 @@ cargo run -p madar -- serve   # setup runs first; the Faces are looked for in ./
 - `crates/madar`: the program (only `main`)
 - `crates/madar-cli`: the `madar-cli` command
 - `web`: the web app (React), built into `faces/madar/web-react` (`pnpm build` in `web/`, with nuah-plugins checked out beside this repository; CI does this before the image). The console and the setup page come from Nuah: copy its `faces/nuah` to `faces/nuah` for a run from source
-- `faces/editor-src`: editor source
+- `faces/elements`: the browser modules of Madar's element plugins (task, mention, picture, link card, comments), built into `crates/madar-plugins/browser/` (`pnpm build` in `faces/elements/`); the editor itself is `@nuah/editor` from nuah-plugins
 - `deploy`: compose file
 
 ## License

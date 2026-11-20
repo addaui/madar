@@ -20,7 +20,7 @@ pub const VERSIONS: &str = "pages.versions";
 pub const BODIES: &str = "pages.bodies";
 pub const BODY_UPDATES: &str = "pages.body_updates";
 /// Page bodies are Live documents ([ADR 0093]): the browser and the server hold the same Loro document; the page keeps a JSON copy.
-/// Links and inline code do not grow when typing at their edge (Tiptap's `inclusive: false`).
+/// Links and inline code do not grow when typing at their edge (ProseMirror's `inclusive: false`).
 ///
 /// [ADR 0093]: https://docs.addaui.com/nuah/adr/0093-page-bodies-are-live-documents-on-loro-in-the-browser-and-on-the-server-edits-travel-as-operations-and-pulse-presence-as-signals-versions-are-points-in-the-history/
 pub const LIVE: nuah_live::LiveStore = nuah_live::LiveStore { bodies: BODIES, updates: BODY_UPDATES, versions: VERSIONS, rejected: "pages.body_rejected",

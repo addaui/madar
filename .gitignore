@@ -6,7 +6,7 @@ node_modules/
 .DS_Store
 
 # the editor build resolves packages from here (a link or an install); never committed
-faces/editor-src/node_modules
+faces/elements/node_modules
 
 
 # the React Face is built from web/ (pnpm build); the Core serves the output from here

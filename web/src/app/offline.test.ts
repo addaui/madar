@@ -25,7 +25,6 @@ describe("the service worker (ADR 0093)", () => {
   it("keeps hashed files for good, and takes the rest of the app from the server while it answers (a new release never meets an old editor)", () => {
     expect(route("https://m.example/faces/web-react/assets/app-3f9a1c.js", "GET")).toBe("cache-first");
     expect(route("https://m.example/faces/web-react/loro.wasm", "GET")).toBe("network-first");
-    expect(route("https://m.example/faces/web-react/vendor-editor.js", "GET")).toBe("network-first");
     expect(route("https://m.example/faces/web-react/", "GET", "navigate")).toBe("app-shell");
   });
   it("keeps plugins' browser files: a file with its hash for good, the rest from the server while it answers (ADR 0095)", () => {
