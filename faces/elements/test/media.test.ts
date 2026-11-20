@@ -24,6 +24,14 @@ describe("pictures", () => {
     m.handle.destroy();
   });
 
+  it("the_picker_opens_where_the_editor_says_the_insertion_happens", async () => {
+    const pick = vi.fn(async () => null);
+    let def: any;
+    files({ element: (d: any) => (def = d), menu() {}, margin() {}, service: () => pick, lang: () => "en" } as never);
+    await def.ways.slash[0].apply({ spot: () => ({ left: 40, top: 100, bottom: 118 }) });
+    expect(pick).toHaveBeenCalledWith({ left: 40, top: 100, bottom: 118 });
+  });
+
   it("a_dropped_picture_is_uploaded", async () => {
     const upload = vi.fn(async () => "/files/up1");
     const m = await openPage([BASIC, F], { hooks: { files: { upload } } as never });

@@ -21,8 +21,7 @@ export default function register(api: EditorApi) {
     nodes: [{ id: "image", group: "block", atom: true, ids: true, attrs: { src: { default: "" }, alt: { default: "" }, width: { default: null }, size: { default: null } } }],
     ways: {
       slash: pick ? [{ id: "image", label: decl.label, icon: "image", group: "media", keywords: decl.keywords, apply: async (c) => {
-        const sel = document.getSelection()?.rangeCount ? document.getSelection()!.getRangeAt(0).getBoundingClientRect() : null;
-        const src = await pick({ left: sel?.left ?? 0, top: sel?.top ?? 0, bottom: sel?.bottom ?? 0 });
+        const src = await pick(c.spot());
         if (src) c.insertNode({ type: "image", attrs: { src, alt: "" } });
       } }] : [],
       files: [{ accept: decl.accepts!, make: async (f) => ({ node: { type: "image", attrs: { src: await api.files.upload(f, f.name), alt: f.name.replace(/\.[^.]+$/, "") } } }) }],
