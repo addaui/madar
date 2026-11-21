@@ -2432,3 +2432,50 @@ fn the_editor_is_the_plugin_that_provides_face_editor() {
         assert!(kinds.contains(&k.to_string()), "{k} in {kinds:?}");
     }
 }
+
+/// ADR 0103: a page is written block by block, each kind from the input it publishes, never from its internal JSON.
+#[test]
+fn a_page_is_written_block_by_block_from_each_kinds_input() {
+    let a = app();
+    let al = who("al");
+    let code = json!({"type": "codeBlock", "attrs": {"language": "mermaid"}, "content": [{"type": "text", "text": "graph TD; A-->B"}]});
+    let p = a.ok(&al, "pages.create", json!({"title": "Flows", "body": {"type": "doc", "content": [code]}}));
+    let id = p["id"].clone();
+    // what each kind takes
+    let inputs = a.ok(&al, "editor.inputs", json!({}));
+    let m = inputs["kinds"].as_array().unwrap().iter().find(|k| k["kind"] == "@nuah/mermaid/diagram").unwrap();
+    assert!(m["input"]["properties"]["source"].is_object(), "{m}");
+    // the outline: a block without a block id is named by its container
+    let o = a.ok(&al, "pages.blocks", json!({"id": id}));
+    let first = &o["blocks"][0];
+    assert_eq!(first["kind"], "@nuah/editor-basic/code");
+    assert_eq!(first["input"], json!({"text": "graph TD; A-->B"}));
+    // the code block becomes a Mermaid card in place
+    let u = a.ok(&al, "pages.blocks.update", json!({"id": id, "block": first["id"], "kind": "@nuah/mermaid/diagram", "input": {"source": "graph TD; A-->B"}}));
+    let card = u["block"].as_str().unwrap().to_string();
+    let o = a.ok(&al, "pages.blocks", json!({"id": id}));
+    assert_eq!(o["blocks"].as_array().unwrap().len(), 1);
+    assert_eq!(o["blocks"][0]["id"], card.as_str());
+    assert_eq!(o["blocks"][0]["input"], json!({"source": "graph TD; A-->B"}));
+    let got = a.ok(&al, "pages.get", json!({"id": id}));
+    assert_eq!(got["body"]["content"][0]["attrs"]["fallback"], json!({"text": "graph TD; A-->B"}));
+    // a card's update keeps what it is not given
+    a.ok(&al, "pages.blocks.update", json!({"id": id, "block": card, "input": {"theme": "dark"}}));
+    assert_eq!(a.ok(&al, "pages.blocks", json!({"id": id}))["blocks"][0]["input"], json!({"source": "graph TD; A-->B", "theme": "dark"}));
+    // insert at the start and at the end, move, delete
+    let h = a.ok(&al, "pages.blocks.insert", json!({"id": id, "after": null, "kind": "@nuah/editor-basic/heading", "input": {"text": "Flows **now**", "level": 2}}))["block"].clone();
+    let t = a.ok(&al, "pages.blocks.insert", json!({"id": id, "kind": "@nuah/editor-basic/paragraph", "input": {"text": "the end"}}))["block"].clone();
+    let kinds = |a: &App| a.ok(&al, "pages.blocks", json!({"id": id}))["blocks"].as_array().unwrap().iter().map(|b| b["kind"].as_str().unwrap().rsplit('/').next().unwrap().to_string()).collect::<Vec<_>>();
+    assert_eq!(kinds(&a), ["heading", "diagram", "paragraph"]);
+    a.ok(&al, "pages.blocks.move", json!({"id": id, "block": t, "after": h}));
+    assert_eq!(kinds(&a), ["heading", "paragraph", "diagram"]);
+    a.ok(&al, "pages.blocks.delete", json!({"id": id, "block": h}));
+    assert_eq!(kinds(&a), ["paragraph", "diagram"]);
+    // an input that does not fit names what was expected; an unknown block says so
+    let e = a.err(&al, "pages.blocks.insert", json!({"id": id, "kind": "@nuah/mermaid/diagram", "input": {"diagram": "x"}}));
+    assert_eq!(e.reason.as_deref(), Some("editor.bad_input"), "{e}");
+    let e = a.err(&al, "pages.blocks.delete", json!({"id": id, "block": "nope"}));
+    assert_eq!(e.reason.as_deref(), Some("live.no_block"), "{e}");
+    // the same operations for a project's knowledge, under its permissions
+    assert!(a.core.describe(&al)["operations"]["knowledge.blocks.update"].is_object());
+}

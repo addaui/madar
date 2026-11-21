@@ -271,3 +271,8 @@ pub fn share_opened() -> Value {
 pub fn share_file() -> Value {
     obj(&["name", "type", "data"], json!({"name": s(), "type": s(), "size": int(), "data": s()}))
 }
+
+/// What a block operation gives back: the block's name (ADR 0103).
+pub fn block_ref() -> Value {
+    json!({"type": "object", "required": ["block"], "properties": {"block": {"type": "string"}}})
+}

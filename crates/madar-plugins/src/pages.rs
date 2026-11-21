@@ -334,6 +334,132 @@ fn body_push(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     Ok(json!({"version": nuah_live::b64(&w.version)}))
 }
 
+// ---- one block at a time (ADR 0103): each kind is written from the input it publishes (`editor.inputs`), never its internal JSON
+
+fn decl_of<'a>(kinds: &'a std::collections::BTreeMap<String, Value>, kind: &str) -> Result<&'a Value> {
+    kinds.get(kind).ok_or_else(|| Error::reason(Category::Invalid, "pages.unknown_kind", &format!("There is no kind {kind} here (see editor.inputs)")))
+}
+
+/// A block as callers see it: its name, its kind, and what it holds as its kind's input (or its plain text).
+fn block_view(doc: &nuah_live::loro::LoroDoc, b: &nuah_live::blocks::Block, kinds: &std::collections::BTreeMap<String, Value>) -> Value {
+    let kind = nuah_editor::blocks::kind_of(&b.node, kinds);
+    let input = match kind.as_deref().and_then(|k| kinds.get(k)) {
+        Some(d) => {
+            let content = b.node["attrs"]["blockId"].as_str().and_then(|id| nuah_live::blocks::content(doc, id));
+            nuah_editor::blocks::read(d, &b.node, content.as_ref())
+        }
+        None => json!({"text": nuah_editor::blocks::text_of(&b.node)}),
+    };
+    json!({"id": b.id, "kind": kind.map(Value::from).unwrap_or_else(|| b.node["type"].clone()), "input": input})
+}
+
+/// The top-level blocks of a page, in order.
+fn blocks_list(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let kinds = element_kinds(tx);
+    let doc = LIVE.load(tx, &page.id)?;
+    let list: Vec<Value> = nuah_live::blocks::outline(&doc).iter().map(|b| block_view(&doc, b, &kinds)).collect();
+    Ok(json!({"blocks": list}))
+}
+
+/// Where `after` puts a block: null at the start, a block's name just after it, left out at the end.
+fn place_after(doc: &nuah_live::loro::LoroDoc, i: &Value) -> Result<usize> {
+    match i.get("after") {
+        None => Ok(usize::MAX),
+        Some(Value::Null) => Ok(0),
+        Some(a) => Ok(nuah_live::blocks::position(doc, a.as_str().unwrap_or(""))? + 1),
+    }
+}
+
+/// Runs a block edit on a page's Live document, checked like a browser's edit; keeps the page's copy and tells the browsers on it.
+fn edit_blocks(tx: &mut Tx, i: &Value, personal: bool, f: impl FnOnce(&nuah_live::loro::LoroDoc, &std::collections::BTreeMap<String, Value>) -> Result<Value>) -> Result<Value> {
+    let s = Scope::of(tx, i, personal);
+    let page = get(tx, &s, text(i, "id"))?;
+    let kinds = element_kinds(tx);
+    let before = page.body["body"].clone();
+    spell(tx, &page, false)?;
+    let (written, out) = LIVE.edit(tx, &page.id, &|j| check_body_since(j, Some(&before), &kinds), |doc| f(doc, &kinds))?;
+    if let Some(w) = written {
+        let mut b = page.body.clone();
+        b["body"] = w.json.clone();
+        b["updated_at"] = json!(tx.now());
+        let d = tx.put(PAGES, &page.id, b, Expect::Any)?;
+        body_signal(tx, &s, &d.id, &w, "server")?;
+        tx.emit("pages.updated", s.audience(), s.event_data(json!({"page": d.id, "title": d.body["title"], "changes": {"body": true}, "entity": entity(&d),
+            "refs": richtext::refs_for(KIND, &d.id, text(&d.body, "title"), &shown(&d.body))})))?;
+    }
+    Ok(out)
+}
+
+/// Writes a block of `decl`'s kind from `input` at the block named `at` (replacing it), or as a new block at position `new_at`.
+fn write_block(doc: &nuah_live::loro::LoroDoc, decl: &Value, input: &Value, id: &str, at: std::result::Result<&str, usize>) -> Result<String> {
+    let built = nuah_editor::blocks::build(decl, input, id)?;
+    let name = match at {
+        Ok(existing) => {
+            nuah_live::blocks::replace(doc, existing, &built.node)?;
+            id.to_string()
+        }
+        Err(index) => nuah_live::blocks::insert(doc, index, &built.node)?,
+    };
+    if let Some(c) = &built.content {
+        nuah_live::blocks::set_content(doc, id, decl["state"].as_str().unwrap_or("text"), c)?;
+    }
+    Ok(name)
+}
+
+fn new_block_id(tx: &Tx) -> String {
+    format!("b{}", tx.new_id().chars().filter(|c| c.is_ascii_alphanumeric()).take(12).collect::<String>())
+}
+
+fn blocks_insert(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let id = new_block_id(tx);
+    edit_blocks(tx, i, personal, |doc, kinds| {
+        let decl = decl_of(kinds, text(i, "kind"))?;
+        let at = place_after(doc, i)?;
+        write_block(doc, decl, &i["input"], &id, Err(at))?;
+        Ok(json!({"block": id}))
+    })
+}
+
+/// A block takes new input, or becomes another kind in place (`kind`). A card keeps the fields it is not given.
+fn blocks_update(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    let fresh = new_block_id(tx);
+    edit_blocks(tx, i, personal, |doc, kinds| {
+        let name = text(i, "block");
+        let at = nuah_live::blocks::position(doc, name)?;
+        let cur = nuah_live::blocks::outline(doc).swap_remove(at);
+        let cur_kind = nuah_editor::blocks::kind_of(&cur.node, kinds);
+        let kind = i.get("kind").and_then(|k| k.as_str()).map(String::from).or(cur_kind.clone())
+            .ok_or_else(|| Error::reason(Category::Invalid, "pages.unknown_kind", "Say which kind this block becomes"))?;
+        let decl = decl_of(kinds, &kind)?;
+        let id = cur.node["attrs"]["blockId"].as_str().filter(|b| !b.is_empty()).map(String::from).unwrap_or(fresh);
+        let mut input = i["input"].clone();
+        if decl["shape"] == "card" && cur_kind.as_deref() == Some(kind.as_str()) {
+            let mut had = block_view(doc, &cur, kinds)["input"].as_object().cloned().unwrap_or_default();
+            had.extend(input.as_object().cloned().unwrap_or_default());
+            input = Value::Object(had);
+        }
+        write_block(doc, decl, &input, &id, Ok(name))?;
+        Ok(json!({"block": id}))
+    })
+}
+
+fn blocks_delete(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    edit_blocks(tx, i, personal, |doc, _| {
+        nuah_live::blocks::remove(doc, text(i, "block"))?;
+        Ok(json!({"block": text(i, "block")}))
+    })
+}
+
+fn blocks_move(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
+    edit_blocks(tx, i, personal, |doc, _| {
+        let to = place_after(doc, i)?;
+        let to = if to == usize::MAX { nuah_live::blocks::outline(doc).len() } else { to };
+        Ok(json!({"block": nuah_live::blocks::move_to(doc, text(i, "block"), to)?}))
+    })
+}
+
 /// Who is on the page and where their cursor is (Presence): a Loro ephemeral update passed on as a Signal, never stored.
 fn presence(tx: &mut Tx, i: &Value, personal: bool) -> Result<Value> {
     let s = Scope::of(tx, i, personal);
@@ -855,13 +981,25 @@ fn ops_for(prefix: &str, personal: bool) -> Value {
     add("body.push", "command", true, "A browser's edits to the page's Live document (a base64 Loro update, at most 1 MB)", json!({"id": id, "update": bytes(1_398_104), "client": {"type": "string", "maxLength": 64}}), vec!["id", "update", "client"]);
     add("presence", "command", false, "Tell the others on the page where you are (a base64 Loro ephemeral update; not stored)", json!({"id": id, "state": bytes(21_848)}), vec!["id", "state"]);
     add("tags", "query", false, &format!("The tags in use on {scope}, most used first"), json!({}), vec![]);
+    // ADR 0103: one block at a time, each kind from the input it publishes
+    let block = json!({"type": "string", "minLength": 1, "maxLength": 80, "description": "A block's name, as blocks lists it"});
+    let after = json!({"type": ["string", "null"], "maxLength": 80, "description": "The block it goes after; null for the start, left out for the end"});
+    let kind = json!({"type": "string", "maxLength": 200, "description": "The kind of block, as editor.inputs lists it (@nuah/editor-basic/paragraph, @nuah/mermaid/diagram, ...)"});
+    let input = json!({"type": "object", "description": "What the block holds, in the shape its kind takes: editor.inputs gives each kind's input schema"});
+    add("blocks", "query", false, "The page's top-level blocks in order: each block's name, kind and what it holds (its kind's input, or its text)", json!({"id": id}), vec!["id"]);
+    add("blocks.insert", "command", true, "Add a block of a kind, from the input that kind takes (see editor.inputs); it merges with what others are typing", json!({"id": id, "kind": kind, "input": input, "after": after}), vec!["id", "kind", "input"]);
+    add("blocks.update", "command", true, "Give a block new input, or turn it into another kind in place (kind); a card keeps the fields you leave out, a text block takes the input whole", json!({"id": id, "block": block, "kind": kind, "input": input}), vec!["id", "block", "input"]);
+    add("blocks.delete", "command", true, "Take a block off the page", json!({"id": id, "block": block}), vec!["id", "block"]);
+    add("blocks.move", "command", true, "Move a block after another (null: to the start; left out: to the end)", json!({"id": id, "block": block, "after": after}), vec!["id", "block"]);
     add("search", "query", false, &format!("Find pages in {scope} by title or tag (#tag for a tag)"), json!({"q": {"type":"string","minLength":1,"maxLength":100}}), vec!["q"]);
     // what each operation returns, from `schemas` (the Core checks it; the Face's client is generated from it)
     for (name, out) in [("create", crate::schemas::page()), ("get", crate::schemas::page()), ("list", crate::schemas::pages()), ("update", crate::schemas::page()),
         ("move", crate::schemas::page_item()), ("delete", crate::schemas::removed()), ("restore", crate::schemas::page()), ("tasks", crate::schemas::page_tasks()),
         ("set_space", crate::schemas::page_item()), ("tags", crate::schemas::page_tags()), ("styles", crate::schemas::page_styles()), ("style_delete", crate::schemas::removed()),
         ("set_task", crate::schemas::page()), ("search", crate::schemas::pages()), ("versions", crate::schemas::page_versions()), ("version", crate::schemas::page_version()), ("style_save", crate::schemas::page_style()),
-        ("version_name", crate::schemas::page_version_item()), ("body.pull", crate::schemas::live_pull()), ("body.push", crate::schemas::live_version()), ("presence", json!({"type": "object"}))] {
+        ("version_name", crate::schemas::page_version_item()), ("body.pull", crate::schemas::live_pull()), ("body.push", crate::schemas::live_version()), ("presence", json!({"type": "object"})),
+        ("blocks", json!({"type": "object", "required": ["blocks"], "properties": {"blocks": {"type": "array", "items": {"type": "object", "required": ["id", "kind", "input"]}}}})),
+        ("blocks.insert", crate::schemas::block_ref()), ("blocks.update", crate::schemas::block_ref()), ("blocks.delete", crate::schemas::block_ref()), ("blocks.move", crate::schemas::block_ref())] {
         if let Some(op) = m.get_mut(&format!("{prefix}.{name}")) {
             op["output"] = out;
         }
@@ -892,7 +1030,7 @@ impl Plugin for Pages {
         b.op("pages.set_task", |tx, i| set_task(tx, &i, true));
         b.op("knowledge.set_task", |tx, i| set_task(tx, &i, false));
         type H = fn(&mut Tx, &Value, bool) -> Result<Value>;
-        let all: [(&str, H); 15] = [("versions", versions), ("version", version), ("restore", restore), ("version_name", version_name), ("body.pull", body_pull), ("body.push", body_push), ("presence", presence), ("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search), ("tags", tags)];
+        let all: [(&str, H); 20] = [("blocks", blocks_list), ("blocks.insert", blocks_insert), ("blocks.update", blocks_update), ("blocks.delete", blocks_delete), ("blocks.move", blocks_move), ("versions", versions), ("version", version), ("restore", restore), ("version_name", version_name), ("body.pull", body_pull), ("body.push", body_push), ("presence", presence), ("create", create), ("get", read), ("list", list), ("update", update), ("move", move_page), ("delete", remove), ("search", search), ("tags", tags)];
         for (prefix, personal) in [("knowledge", false), ("pages", true)] {
             for (name, f) in all {
                 b.op(&format!("{prefix}.{name}"), move |tx, i| f(tx, &i, personal));

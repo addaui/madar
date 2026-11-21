@@ -1,5 +1,5 @@
 {
-  "contract": "cb9251f28516d531",
+  "contract": "df2210ddb8484bc8",
   "operations": {
     "appearance.get": {
       "allowed": true,
@@ -782,6 +782,48 @@
           "kinds",
           "runners",
           "modules"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@nuah/editor",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "editor.inputs": {
+      "allowed": true,
+      "description": "Every kind of block that can be written through block operations (a page's blocks.insert and blocks.update), with the input each takes as a JSON Schema: give {kind, input} and the element builds itself",
+      "input": {
+        "additionalProperties": false,
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "properties": {
+                "input": {
+                  "type": "object"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "shape": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kinds"
         ],
         "type": "object"
       },
@@ -1927,6 +1969,282 @@
       "public": false,
       "reasons": {},
       "resource": null
+    },
+    "knowledge.blocks": {
+      "allowed": true,
+      "description": "The page's top-level blocks in order: each block's name, kind and what it holds (its kind's input, or its text)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "blocks": {
+            "items": {
+              "required": [
+                "id",
+                "kind",
+                "input"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "blocks"
+        ],
+        "type": "object"
+      },
+      "permission": "projects.read",
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
+    },
+    "knowledge.blocks.delete": {
+      "allowed": true,
+      "description": "Take a block off the page",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "block": {
+            "description": "A block's name, as blocks lists it",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "id",
+          "block"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "block": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "block"
+        ],
+        "type": "object"
+      },
+      "permission": "projects.write",
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
+    },
+    "knowledge.blocks.insert": {
+      "allowed": true,
+      "description": "Add a block of a kind, from the input that kind takes (see editor.inputs); it merges with what others are typing",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "description": "The block it goes after; null for the start, left out for the end",
+            "maxLength": 80,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "input": {
+            "description": "What the block holds, in the shape its kind takes: editor.inputs gives each kind's input schema",
+            "type": "object"
+          },
+          "kind": {
+            "description": "The kind of block, as editor.inputs lists it (@nuah/editor-basic/paragraph, @nuah/mermaid/diagram, ...)",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "id",
+          "kind",
+          "input"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "block": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "block"
+        ],
+        "type": "object"
+      },
+      "permission": "projects.write",
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
+    },
+    "knowledge.blocks.move": {
+      "allowed": true,
+      "description": "Move a block after another (null: to the start; left out: to the end)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "description": "The block it goes after; null for the start, left out for the end",
+            "maxLength": 80,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "block": {
+            "description": "A block's name, as blocks lists it",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "id",
+          "block"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "block": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "block"
+        ],
+        "type": "object"
+      },
+      "permission": "projects.write",
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
+    },
+    "knowledge.blocks.update": {
+      "allowed": true,
+      "description": "Give a block new input, or turn it into another kind in place (kind); a card keeps the fields you leave out, a text block takes the input whole",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "block": {
+            "description": "A block's name, as blocks lists it",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "input": {
+            "description": "What the block holds, in the shape its kind takes: editor.inputs gives each kind's input schema",
+            "type": "object"
+          },
+          "kind": {
+            "description": "The kind of block, as editor.inputs lists it (@nuah/editor-basic/paragraph, @nuah/mermaid/diagram, ...)",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "id",
+          "block",
+          "input"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "block": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "block"
+        ],
+        "type": "object"
+      },
+      "permission": "projects.write",
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {
+        "spaces.feature_off": "This feature is switched off in the Space"
+      },
+      "resource": {
+        "id": "project",
+        "type": "projects.project"
+      }
     },
     "knowledge.body.pull": {
       "allowed": true,
@@ -3483,6 +3801,237 @@
         "links.too_big": "That picture is larger than 4 MiB",
         "links.unavailable": "Nothing could be read from that address"
       },
+      "resource": null
+    },
+    "pages.blocks": {
+      "allowed": true,
+      "description": "The page's top-level blocks in order: each block's name, kind and what it holds (its kind's input, or its text)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "kind": "query",
+      "output": {
+        "properties": {
+          "blocks": {
+            "items": {
+              "required": [
+                "id",
+                "kind",
+                "input"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "blocks"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "pages.blocks.delete": {
+      "allowed": true,
+      "description": "Take a block off the page",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "block": {
+            "description": "A block's name, as blocks lists it",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "block"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "block": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "block"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "pages.blocks.insert": {
+      "allowed": true,
+      "description": "Add a block of a kind, from the input that kind takes (see editor.inputs); it merges with what others are typing",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "description": "The block it goes after; null for the start, left out for the end",
+            "maxLength": 80,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "input": {
+            "description": "What the block holds, in the shape its kind takes: editor.inputs gives each kind's input schema",
+            "type": "object"
+          },
+          "kind": {
+            "description": "The kind of block, as editor.inputs lists it (@nuah/editor-basic/paragraph, @nuah/mermaid/diagram, ...)",
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "input"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "block": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "block"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "pages.blocks.move": {
+      "allowed": true,
+      "description": "Move a block after another (null: to the start; left out: to the end)",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "description": "The block it goes after; null for the start, left out for the end",
+            "maxLength": 80,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "block": {
+            "description": "A block's name, as blocks lists it",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "block"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "block": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "block"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {},
+      "resource": null
+    },
+    "pages.blocks.update": {
+      "allowed": true,
+      "description": "Give a block new input, or turn it into another kind in place (kind); a card keeps the fields you leave out, a text block takes the input whole",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "block": {
+            "description": "A block's name, as blocks lists it",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "input": {
+            "description": "What the block holds, in the shape its kind takes: editor.inputs gives each kind's input schema",
+            "type": "object"
+          },
+          "kind": {
+            "description": "The kind of block, as editor.inputs lists it (@nuah/editor-basic/paragraph, @nuah/mermaid/diagram, ...)",
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "block",
+          "input"
+        ],
+        "type": "object"
+      },
+      "kind": "command",
+      "output": {
+        "properties": {
+          "block": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "block"
+        ],
+        "type": "object"
+      },
+      "permission": null,
+      "plugin": "@madar/pages",
+      "public": false,
+      "reasons": {},
       "resource": null
     },
     "pages.body.pull": {
